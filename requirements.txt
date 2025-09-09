@@ -1,0 +1,18 @@
+# Backend
+flask
+flask_sqlalchemy
+sqlalchemy
+
+# Frontend / GUI
+streamlit
+rich
+jinja2
+
+# Utilities
+python-dotenv
+requests
+click
+
+# Testing / Dev
+pytest
+black
