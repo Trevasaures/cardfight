@@ -1,7 +1,7 @@
 """
 Database models for Deck and Match using SQLAlchemy.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from backend.database import db
 
 # --- Models ---
@@ -42,7 +42,7 @@ class Match(db.Model):
     deck1_id = db.Column(db.Integer, db.ForeignKey("deck.id"), nullable=False)
     deck2_id = db.Column(db.Integer, db.ForeignKey("deck.id"), nullable=False)
     winner_id = db.Column(db.Integer, db.ForeignKey("deck.id"))
-    date_played = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    date_played = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     notes = db.Column(db.Text, default="", nullable=False)
 
     def to_dict(self):

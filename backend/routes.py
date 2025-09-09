@@ -55,7 +55,7 @@ def list_decks():
 def create_deck():
     data = request.get_json(force=True, silent=True) or {}
     name = (data.get("name") or "").strip()
-    dtype = (data.get("type") or "").strip()  # "Standard" | "Stride"
+    dtype = (data.get("type") or "").strip()
 
     if not name or dtype not in ("Standard", "Stride"):
         return jsonify(error="Provide 'name' and 'type' as 'Standard' or 'Stride'."), 400
