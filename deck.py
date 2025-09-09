@@ -5,7 +5,7 @@ class DeckType(Enum):
     STRIDE = "Stride"
     STANDARD = "Standard"
 
-
+# Deck class to hold deck information
 class Deck:
     def __init__(self, name: str, deck_type: DeckType):
         """
@@ -19,7 +19,7 @@ class Deck:
         return f"Deck(name={self.name}, deck_type={self.deck_type.value})"
 
 
-# Define decks here with Enums instead of strings
+# Current list of decks
 decks = [
     Deck("Shiranui", DeckType.STRIDE),
     Deck("Messiah", DeckType.STRIDE),
