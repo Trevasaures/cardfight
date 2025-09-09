@@ -3,21 +3,18 @@ __pycache__/
 *.py[cod]
 *.pyo
 
-# Virtual environment
+# Virtual environments
 venv/
-.env
+.env/
 
 # SQLite database
 *.db
 
-# IDE/Editor junk
+# Logs
+*.log
+
+# Editor / OS files
 .vscode/
 .idea/
 *.swp
 .DS_Store
-
-# Logs
-*.log
-
-# Local notes/config
-config.json
