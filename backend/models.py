@@ -2,7 +2,7 @@
 Database models for Deck and Match using SQLAlchemy.
 """
 from datetime import datetime
-from datetime import ZoneInfo
+from zoneinfo import ZoneInfo
 from backend.database import db
 
 # --- Deck ---
