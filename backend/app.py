@@ -7,10 +7,7 @@ from flask import Flask, jsonify
 from backend.database import db
 from backend.routes import bp as api_bp
 
-# NEW: CORS (optional but handy if UI is on a different port)
 from flask_cors import CORS
-
-# NEW: Enforce SQLite foreign keys
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 

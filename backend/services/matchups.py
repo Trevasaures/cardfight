@@ -10,12 +10,13 @@ from backend.models import Deck
 Mode = Literal["any", "standard", "stride"]
 
 def pool_for_mode(mode: Mode) -> Sequence[Deck]:
+    q = Deck.query.filter_by(active=True)
     m = (mode or "any").lower()
     if m == "standard":
-        return Deck.query.filter_by(type="Standard").all()
-    if m == "stride":
-        return Deck.query.filter_by(type="Stride").all()
-    return Deck.query.all()
+        q = q.filter_by(type="Standard")
+    elif m == "stride":
+        q = q.filter_by(type="Stride")
+    return q.all()
 
 def random_matchup(mode: Mode) -> Tuple[Deck, Deck, Deck]:
     pool = pool_for_mode(mode)
