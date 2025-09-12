@@ -11,7 +11,7 @@ class Deck(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), unique=True, nullable=False)
-    type = db.Column(db.String(20), nullable=False)  # "Standard" | "Stride"
+    type = db.Column(db.String(20), nullable=False)
     wins = db.Column(db.Integer, default=0, nullable=False)
     losses = db.Column(db.Integer, default=0, nullable=False)
     active = db.Column(db.Boolean, default=True, nullable=False)
@@ -53,16 +53,14 @@ class Match(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    # participants
     deck1_id = db.Column(db.Integer, db.ForeignKey("deck.id"), nullable=False)
     deck2_id = db.Column(db.Integer, db.ForeignKey("deck.id"), nullable=False)
 
-    # outcome
     winner_id = db.Column(db.Integer, db.ForeignKey("deck.id"))  # nullable => undecided/log-only
     first_player_id = db.Column(db.Integer, db.ForeignKey("deck.id"))  # who went first
-    format = db.Column(db.String(20), nullable=True)  # "Standard" | "Stride" | "Any" (pool used)
+    format = db.Column(db.String(20), nullable=True)
 
-    date_played = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    date_played = db.Column(db.DateTime, default=lambda: datetime.now(ZoneInfo("America/Chicago")), nullable=False)
     notes = db.Column(db.Text, default="", nullable=False)
 
     __table_args__ = (
@@ -81,7 +79,7 @@ class Match(db.Model):
             "winner_id": self.winner_id,
             "first_player_id": self.first_player_id,
             "format": self.format,
-            "date_played": self.date_played.isoformat(),
+            "date_played": self.date_played.strftime("%m/%d/%Y %I:%M %p"),
             "notes": self.notes,
         }
 

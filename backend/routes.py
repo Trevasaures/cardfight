@@ -8,6 +8,7 @@ Includes endpoints for:
 from flask import Blueprint, jsonify, request
 from backend.database import db
 from backend.models import Deck, Match
+from backend.services.admin import recount_deck_records
 from backend.services.matchups import random_matchup as svc_random, fixed_matchup as svc_fixed
 from backend.services.stats import versus_for, matrix as svc_matrix
 
@@ -178,7 +179,14 @@ def versus_route(deck_id: int):
     return jsonify(versus_for(deck_id))
 
 
-# --- Win-rate matrix ---
+# --- StatsWin-rate matrix ---
 @bp.get("/stats/matrix")
 def matrix_route():
     return jsonify(svc_matrix())
+
+
+# --- Admin: Recount all deck records ---
+@bp.route("/admin/recount", methods=["POST", "GET"])
+def admin_recount():
+    summary = recount_deck_records()
+    return jsonify({"status": "ok", **summary}), 200
