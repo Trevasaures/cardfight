@@ -17,5 +17,3 @@ Clone the repo:
 ```bash
 git clone <your_repo_url>
 cd cardfight
-
-
