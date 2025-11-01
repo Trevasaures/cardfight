@@ -80,6 +80,15 @@ def fetch_stats_table():
 def fetch_matrix():
     return api_get("/api/stats/matrix")
 
+def fetch_matches(params: dict | None = None):
+    return api_get("/api/matches", params=params or {})
+
+def update_match_api(match_id: int, payload: dict):
+    return api_req("PATCH", f"/api/matches/{match_id}", payload)
+
+def delete_match_api(match_id: int):
+    return api_req("DELETE", f"/api/matches/{match_id}", None)
+
 
 # ---- shared UI bits ----
 def settings_expander():

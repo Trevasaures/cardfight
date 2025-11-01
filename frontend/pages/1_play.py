@@ -1,167 +1,78 @@
 """
-Play page
-- Random tab: roll matchup, pick winner, add notes, save
-- Custom tab: choose decks manually, choose who goes first, pick winner/undecided, add notes, save
+Play page (thin)
+- Random tab: roll matchup, pick winner, notes, save
+- Custom tab: pick decks, first player, winner, notes, save
 """
 import streamlit as st
-from common import (
-    settings_expander,
-    fetch_random,
-    submit_match,
-    fetch_decks,
-)
+from common import settings_expander, fetch_random, submit_match, fetch_decks
+from components.dialogs import show_saved_dialog
+from components.matchup_panel import current_matchup_section
+from components.inputs import winner_radio, first_player_radio, notes_area, clear_keys
+from components.toolbar import format_selector
 
 st.set_page_config(page_title="Play", page_icon="🎲", layout="centered")
 st.title("🎲 Play")
 
 settings_expander()
 
-# ---------- modal confirmation machinery ----------
-def show_saved_dialog():
-    """If a saved-match payload exists, show modal and short-circuit page rendering."""
-    payload = st.session_state.get("__saved_match__")
-    if not payload:
-        return False  # nothing to show
-
-    title = payload.get("title", "Match saved")
-    summary_lines = payload.get("summary_lines", [])
-    mode = payload.get("mode", "Any")
-
-    @st.dialog(title)
-    def _dialog():
-        st.success("The match has been recorded successfully ✅")
-        if mode:
-            st.caption(f"Format: **{mode}**")
-        for line in summary_lines:
-            st.write(line)
-
-        st.divider()
-
-        col_left, col_spacer, col_right = st.columns([3, 7, 3])
-
-        with col_left:
-            if st.button("Close", type="primary", key="dlg_close", width="content"):
-                st.session_state.pop("__saved_match__", None)
-                st.rerun()
-
-        with col_right:
-            if st.button("View stats", key="dlg_view_stats", help="Open the Stats page", width="content"):
-                st.session_state.pop("__saved_match__", None)
-                st.switch_page("pages/3_Stats.py")
-
-    _dialog()
-    return True
-
-
-# If we have a saved confirmation to show, render it and stop
+# Show confirmation modal if a match was saved
 if show_saved_dialog():
     st.stop()
 
-
-# ---------- Shared format selector ----------
-mode = st.radio(
-    "Choose mode (affects deck pool)",
-    options=["any", "standard", "stride"],
-    index=0,
-    horizontal=True,
-    help="Filters deck pool by type for both Random and Custom.",
-)
+# Shared format selector
+mode = format_selector()
 
 tab_random, tab_custom = st.tabs(["🎲 Random", "🛠️ Custom"])
 
-
 # ---------------------- RANDOM TAB ----------------------
 with tab_random:
-    col1, col2 = st.columns(2)
-    with col1:
+    c1, c2 = st.columns(2)
+    with c1:
         if st.button("Generate Matchup", width="stretch"):
             try:
                 data = fetch_random(mode)
                 st.session_state["matchup"] = data
-                # clear widget-bound keys so defaults apply cleanly
-                for k in ("notes_random", "winner_random"):
-                    st.session_state.pop(k, None)
+                clear_keys("notes_random", "winner_random")  # reset widget-bound state
                 st.toast("Matchup generated 🎲")
                 st.rerun()
             except Exception as e:
                 st.error(f"Failed to generate matchup: {e}")
-
-    with col2:
+    with c2:
         if st.button("Clear", width="stretch"):
-            for k in ("matchup", "notes_random", "winner_random"):
-                st.session_state.pop(k, None)
+            clear_keys("matchup", "notes_random", "winner_random")
 
     matchup = st.session_state.get("matchup")
     if matchup:
-        d1 = matchup["deck1"]; d2 = matchup["deck2"]; first_id = matchup["first_player_id"]
-
-        st.subheader("Current Matchup")
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown(
-                f"**{d1['name']}**  \n"
-                f"Type: `{d1['type']}`  \n"
-                f"Record: {d1['wins']}-{d1['losses']}  \n"
-                f"{'🟢 Goes first' if d1['id'] == first_id else ''}"
-            )
-        with c2:
-            st.markdown(
-                f"**{d2['name']}**  \n"
-                f"Type: `{d2['type']}`  \n"
-                f"Record: {d2['wins']}-{d2['losses']}  \n"
-                f"{'🟢 Goes first' if d2['id'] == first_id else ''}"
-            )
+        d1, d2, first_id = matchup["deck1"], matchup["deck2"], matchup["first_player_id"]
+        current_matchup_section(d1, d2, first_id)
 
         st.subheader("Pick the Winner")
-        radio_kwargs = dict(
-            options=[d1["id"], d2["id"], None],
-            format_func=lambda x: {d1["id"]: d1["name"], d2["id"]: d2["name"], None: "Undecided / Log without winner"}[x],
-            horizontal=True,
-            key="winner_random",
-        )
-        if "winner_random" not in st.session_state:
-            radio_kwargs["index"] = 2  # default to undecided
-        st.radio("Winner", **radio_kwargs)
-
-        st.text_area(
-            "Match notes (optional)",
-            key="notes_random",
-            placeholder="e.g., Came down to last turn, double trigger, etc.",
-        )
+        winner_id = winner_radio("winner_random", d1, d2)
+        notes = notes_area("notes_random", "e.g., Came down to last turn, double trigger, etc.")
 
         if st.button("Save Result", type="primary", width="stretch"):
             try:
                 fmt = "Standard" if mode == "standard" else "Stride" if mode == "stride" else "Any"
-                submit_match(
-                    d1["id"],
-                    d2["id"],
-                    st.session_state.get("winner_random"),
-                    st.session_state.get("notes_random", ""),
-                    first_player_id=first_id,  # from random roll
-                    fmt=fmt,
-                )
+                submit_match(d1["id"], d2["id"], winner_id, notes, first_player_id=first_id, fmt=fmt)
 
-                # Prepare confirmation payload and clear page panels
+                # queue dialog and clear panels
                 st.session_state["__saved_match__"] = {
                     "title": "Match saved",
                     "mode": fmt,
                     "summary_lines": [
                         f"**{d1['name']}** vs **{d2['name']}**",
                         f"First player: **{(d1['name'] if first_id == d1['id'] else d2['name'])}**",
-                        f"Winner: **{(d1['name'] if st.session_state.get('winner_random') == d1['id'] else (d2['name'] if st.session_state.get('winner_random') == d2['id'] else 'Undecided'))}**",
+                        f"Winner: **{(d1['name'] if winner_id == d1['id'] else (d2['name'] if winner_id == d2['id'] else 'Undecided'))}**",
                     ],
                 }
-                for k in ("matchup", "notes_random", "winner_random"):
-                    st.session_state.pop(k, None)
+                clear_keys("matchup", "notes_random", "winner_random")
                 st.rerun()
             except Exception as e:
                 st.error(f"Failed to save: {e}")
 
-
 # ---------------------- CUSTOM TAB ----------------------
 with tab_custom:
     st.caption("Build your own matchup: pick two decks, who goes first, set winner, add notes.")
-
     try:
         all_decks = fetch_decks(include_inactive=False)
     except Exception as e:
@@ -177,67 +88,33 @@ with tab_custom:
         st.warning("Not enough active decks in this mode to create a custom match.")
         st.stop()
 
-    left, right = st.columns(2)
-    opts = [f"{d['name']} ({d['type']})" for d in decks]
-    with left:
-        d1_label = st.selectbox("Deck A", options=opts, index=0, key="custom_d1_label")
-    with right:
-        d2_default_idx = 1 if len(decks) > 1 else 0
-        d2_label = st.selectbox("Deck B", options=opts, index=d2_default_idx, key="custom_d2_label")
-
+    labels = [f"{d['name']} ({d['type']})" for d in decks]
     by_label = {f"{d['name']} ({d['type']})": d for d in decks}
-    d1 = by_label[d1_label]
-    d2 = by_label[d2_label]
 
+    left, right = st.columns(2)
+    with left:
+        d1_label = st.selectbox("Deck A", options=labels, index=0, key="custom_d1_label")
+    with right:
+        d2_label = st.selectbox("Deck B", options=labels, index=(1 if len(labels) > 1 else 0), key="custom_d2_label")
+
+    d1, d2 = by_label[d1_label], by_label[d2_label]
     if d1["id"] == d2["id"]:
         st.error("Deck A and Deck B must be different.")
         st.stop()
 
     st.subheader("Who goes first?")
-    first_options = [d1["id"], d2["id"]]
-    first_labels = {d1["id"]: d1["name"], d2["id"]: d2["name"]}
-    st.radio(
-        "First player",
-        options=first_options,
-        index=0 if "custom_first" not in st.session_state else None,
-        format_func=lambda x: first_labels[x],
-        horizontal=True,
-        key="custom_first",
-    )
+    first_id = first_player_radio("custom_first", d1, d2)
 
     st.subheader("Winner")
-    win_options = [d1["id"], d2["id"], None]
-    win_labels = {d1["id"]: d1["name"], d2["id"]: d2["name"], None: "Undecided / Log without winner"}
-    st.radio(
-        "Result",
-        options=win_options,
-        index=2 if "custom_winner" not in st.session_state else None,
-        format_func=lambda x: win_labels[x],
-        horizontal=True,
-        key="custom_winner",
-    )
+    winner_id = winner_radio("custom_winner", d1, d2)
 
-    st.text_area(
-        "Match notes (optional)",
-        key="notes_custom",
-        placeholder="e.g., Mulliganed to 5; trigger flood; misplay on T3; etc.",
-    )
+    notes = notes_area("notes_custom", "e.g., Mulliganed to 5; trigger flood; misplay on T3; etc.")
 
     if st.button("Save Custom Match", type="primary", width="stretch"):
         try:
             fmt = "Standard" if mode == "standard" else "Stride" if mode == "stride" else "Any"
-            submit_match(
-                d1["id"],
-                d2["id"],
-                st.session_state.get("custom_winner"),
-                st.session_state.get("notes_custom", ""),
-                first_player_id=st.session_state.get("custom_first"),
-                fmt=fmt,
-            )
+            submit_match(d1["id"], d2["id"], winner_id, notes, first_player_id=first_id, fmt=fmt)
 
-            # Prepare confirmation payload and clear inputs
-            winner_id = st.session_state.get("custom_winner")
-            first_id = st.session_state.get("custom_first")
             st.session_state["__saved_match__"] = {
                 "title": "Custom match saved",
                 "mode": fmt,
@@ -247,8 +124,7 @@ with tab_custom:
                     f"Winner: **{(d1['name'] if winner_id == d1['id'] else (d2['name'] if winner_id == d2['id'] else 'Undecided'))}**",
                 ],
             }
-            for k in ("notes_custom", "custom_winner", "custom_first", "custom_d1_label", "custom_d2_label"):
-                st.session_state.pop(k, None)
+            clear_keys("notes_custom", "custom_winner", "custom_first", "custom_d1_label", "custom_d2_label")
             st.rerun()
         except Exception as e:
             st.error(f"Failed to save: {e}")

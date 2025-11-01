@@ -1,16 +1,10 @@
-"""
-Application factory for the Flask app.
-Includes health check endpoint and registers API routes.
-"""
 import os
 from flask import Flask, jsonify
 from backend.database import db
-from backend.routes import bp as api_bp
-
 from flask_cors import CORS
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
-
+from backend.routes import all_blueprints  # <-- NEW
 
 def create_app():
     app = Flask(__name__)
@@ -30,7 +24,6 @@ def create_app():
         except Exception:
             pass
 
-    # Create tables if not present
     with app.app_context():
         db.create_all()
 
@@ -46,7 +39,10 @@ def create_app():
     def not_found(e):
         return jsonify(error="not found"), 404
 
-    app.register_blueprint(api_bp)
+    # Register modular blueprints
+    for bp in all_blueprints:
+        app.register_blueprint(bp)
+
     return app
 
 app = create_app()
