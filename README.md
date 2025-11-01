@@ -18,5 +18,5 @@ Clone the repo:
 git clone <your_repo_url>
 cd cardfight
 
-make sure you are in the corect workinf directory then reference
+make sure you are in the correct working directory then reference
 the 'DEV_SETUP' file for the more of an in depth explanation of what goes on next!

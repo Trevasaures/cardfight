@@ -36,20 +36,21 @@ def show_saved_dialog():
             st.write(line)
 
         st.divider()
-        c1, c2 = st.columns([1, 1])
-        with c1:
-            if st.button("Close", type="primary"):
-                # clear the flag and refresh page
+
+        col_left, col_spacer, col_right = st.columns([3, 7, 3])
+
+        with col_left:
+            if st.button("Close", type="primary", key="dlg_close", width="content"):
                 st.session_state.pop("__saved_match__", None)
                 st.rerun()
-        with c2:
-            # optional quick-action: go to Head-to-Head page (if you want)
-            if st.button("View stats", help="Opens the Stats tab"):
+
+        with col_right:
+            if st.button("View stats", key="dlg_view_stats", help="Open the Stats page", width="content"):
                 st.session_state.pop("__saved_match__", None)
-                st.switch_page("pages/3_Stats.py")  # adjust path if needed
+                st.switch_page("pages/3_Stats.py")
 
     _dialog()
-    return True  # dialog rendered; caller should skip rest of page
+    return True
 
 
 # If we have a saved confirmation to show, render it and stop
