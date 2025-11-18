@@ -129,34 +129,47 @@ if "__edit_match__" in st.session_state:
 
     @st.dialog("Edit match")
     def _edit_dialog():
-        # date/time
-        dt_val = st.text_input("Date (America/Chicago)", value=datetime.now().strftime("%Y-%m-%d %H:%M"))
-        fmt_val = st.selectbox("Format", ["Standard", "Stride", "Any", "—"], index=(["Standard","Stride","Any","—"].index(m.get("format") or "—")))
+        fmt_val = st.selectbox(
+            "Format",
+            ["Standard", "Stride", "Any", "—"],
+            index=(["Standard","Stride","Any","—"].index(m.get("format") or "—"))
+        )
 
-        # first player
-        fp = st.radio("First player", options=[d1_id, d2_id, None],
-                      index=0 if m.get("first_player_id")==d1_id else 1 if m.get("first_player_id")==d2_id else 2,
-                      format_func=lambda x: d1_name if x==d1_id else d2_name if x==d2_id else "—",
-                      horizontal=True)
+        # First player
+        fp = st.radio(
+            "First player",
+            options=[d1_id, d2_id, None],
+            index=0 if m.get("first_player_id") == d1_id else 1 if m.get("first_player_id") == d2_id else 2,
+            format_func=lambda x: d1_name if x == d1_id else d2_name if x == d2_id else "—",
+            horizontal=True,
+        )
 
-        # winner
-        win = st.radio("Winner", options=[d1_id, d2_id, None],
-                       index=0 if m.get("winner_id")==d1_id else 1 if m.get("winner_id")==d2_id else 2,
-                       format_func=lambda x: d1_name if x==d1_id else d2_name if x==d2_id else "Undecided",
-                       horizontal=True)
+        # Winner
+        win = st.radio(
+            "Winner",
+            options=[d1_id, d2_id, None],
+            index=0 if m.get("winner_id") == d1_id else 1 if m.get("winner_id") == d2_id else 2,
+            format_func=lambda x: d1_name if x == d1_id else d2_name if x == d2_id else "Undecided",
+            horizontal=True,
+        )
 
-        notes = st.text_area("Notes", value=m.get("notes",""))
+        notes = st.text_area("Notes", value=m.get("notes", ""))
 
-        colx, coly = st.columns([1,1])
-        with colx:
+        st.divider()
+
+        # ---------- Button Row ----------
+        btn_left, spacer, btn_right = st.columns([3, 7, 4])
+
+        with btn_left:
             if st.button("Cancel"):
-                st.session_state.pop("__edit_match__", None); st.rerun()
-        with coly:
-            if st.button("Save changes", type="primary"):
+                st.session_state.pop("__edit_match__", None)
+                st.rerun()
+
+        with btn_right:
+            if st.button("Save changes", type="primary", key="save_btn"):
                 try:
                     payload = {
-                        "date_played": dt_val.strip(),
-                        "format": (None if fmt_val=="—" else fmt_val),
+                        "format": (None if fmt_val == "—" else fmt_val),
                         "first_player_id": fp,
                         "winner_id": win,
                         "notes": notes,
@@ -167,5 +180,4 @@ if "__edit_match__" in st.session_state:
                     st.rerun()
                 except Exception as e:
                     st.error(str(e))
-
     _edit_dialog()
