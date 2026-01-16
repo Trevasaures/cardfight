@@ -1,7 +1,7 @@
 # Cardfight!! Deck Battle Simulator 🎴
 
 A fun little side project to randomly generate matchups between some of my Vanguard decks.
-If you decide to use this repo for yurself for giggles, feel free to edit your own decks in the `decks.py` file!
+If you decide to use this repo for yourself for giggles, feel free to edit your own decks in the `decks.py` file!
 
 The project is growing into a full app with:
 
