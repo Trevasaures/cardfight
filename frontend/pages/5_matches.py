@@ -72,7 +72,7 @@ def _row_key(m): return f"row_{m['id']}"
 for m in rows:
     box = st.container(border=True)
     with box:
-        hdr = st.columns([3, 3, 2, 2, 2])
+        hdr = st.columns([3, 3, 2, 9, 2])
         with hdr[0]:
             st.markdown(f"**{m['deck1_name']}** vs **{m['deck2_name']}**")
         with hdr[1]:
@@ -106,7 +106,7 @@ if "__delete_match__" in st.session_state:
     @st.dialog("Confirm delete")
     def _del_dialog():
         st.error(f"Delete match {target['deck1_name']} vs {target['deck2_name']}?")
-        colx, coly = st.columns([1,1])
+        colx, coly = st.columns([4,1])
         with colx:
             if st.button("Cancel"):
                 st.session_state.pop("__delete_match__", None); st.rerun()
