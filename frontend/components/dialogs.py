@@ -35,7 +35,7 @@ def show_saved_dialog():
         with col_right:
             if st.button("View stats", key="dlg_view_stats", help="Open the Stats page", width="content"):
                 st.session_state.pop("__saved_match__", None)
-                st.switch_page("pages/3_Stats.py")
+                st.switch_page("pages/3_stats.py")
 
     _dialog()
     return True
