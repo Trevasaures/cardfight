@@ -1,4 +1,5 @@
 export type DeckType = "Standard" | "Stride";
+export type MatchFormat = DeckType | "Any";
 
 export type Deck = {
   id: number;
@@ -21,7 +22,7 @@ export type Match = {
   deck2_id: number;
   winner_id: number | null;
   first_player_id: number | null;
-  format: DeckType | "Any" | null;
+  format: MatchFormat | null;
   date_played: string | null;
   date_played_iso: string | null;
   notes: string;
@@ -39,6 +40,22 @@ export type Match = {
   result_status: MatchResultStatus;
   is_decided: boolean;
   is_undecided: boolean;
+};
+
+export type CreateMatchPayload = {
+  deck1_id: number;
+  deck2_id: number;
+  winner_id?: number | null;
+  first_player_id?: number | null;
+  format?: MatchFormat | null;
+  notes?: string;
+};
+
+export type RandomMatchupResponse = {
+  deck1: Deck;
+  deck2: Deck;
+  first_player: Deck;
+  format: MatchFormat;
 };
 
 export type StatsRow = {
@@ -79,4 +96,16 @@ export type DashboardResponse = {
   best_win_rate_deck: DashboardDeckSummary | null;
   most_played_deck: DashboardDeckSummary | null;
   recent_matches: Match[];
+};
+
+export type PaginatedMatchesResponse = {
+  items: Match[];
+  pagination: {
+    page: number;
+    page_size: number;
+    total_items: number;
+    total_pages: number;
+    has_next: boolean;
+    has_prev: boolean;
+  };
 };

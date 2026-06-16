@@ -63,6 +63,8 @@ def list_matches(
     until: str | None = None,
     q: str | None = None,
     limit: int | None = None,
+    page: int | None = None,
+    page_size: int | None = None,
 ):
     query = Match.query
 
@@ -94,8 +96,9 @@ def list_matches(
         query = query.filter(Match.date_played >= _parse_date_required(since, "since"))
 
     if until:
-        # Treat date-only until as inclusive by adding one day.
         until_dt = _parse_date_required(until, "until")
+
+        # Treat date-only until as inclusive by adding one day.
         if "T" not in until and " " not in until:
             until_dt = until_dt + timedelta(days=1)
 
@@ -105,6 +108,35 @@ def list_matches(
         query = query.filter(Match.notes.ilike(f"%{q}%"))
 
     query = query.order_by(Match.date_played.desc())
+
+    if page is not None or page_size is not None:
+        page = max(1, int(page or 1))
+        page_size = max(1, min(int(page_size or 12), 100))
+
+        total_items = query.count()
+        total_pages = (total_items + page_size - 1) // page_size if total_items else 1
+
+        if page > total_pages:
+            page = total_pages
+
+        rows = (
+            query
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+
+        return {
+            "items": [serialize_match(match) for match in rows],
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_items": total_items,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1,
+            },
+        }
 
     if limit:
         query = query.limit(limit)

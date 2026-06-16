@@ -21,6 +21,8 @@ def list_matches_route():
     until = request.args.get("until")
     q = request.args.get("q")
     limit = request.args.get("limit", type=int)
+    page = request.args.get("page", type=int)
+    page_size = request.args.get("page_size", type=int)
 
     try:
         rows = svc_list_matches(
@@ -31,6 +33,8 @@ def list_matches_route():
             until=until,
             q=q,
             limit=limit,
+            page=page,
+            page_size=page_size,
         )
         return jsonify(rows)
     except ValueError as e:
