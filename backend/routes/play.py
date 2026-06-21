@@ -1,40 +1,46 @@
 from flask import Blueprint, jsonify, request
-from backend.services.matchups import random_matchup as svc_random, fixed_matchup as svc_fixed
 
-bp_play = Blueprint("play", __name__, url_prefix="/api")
+from backend.models import Deck
+from backend.services.serializers import serialize_deck
+
+
+bp_play = Blueprint("play", __name__, url_prefix="/api/play")
 
 
 @bp_play.get("/random")
-def random_route():
-    mode = request.args.get("mode", "any")
-    try:
-        d1, d2, first = svc_random(mode)
-        return jsonify({
-            "mode": mode,
-            "deck1": d1.to_dict(),
-            "deck2": d2.to_dict(),
-            "first_player_id": first.id
-        })
-    except ValueError as e:
-        return jsonify(error=str(e)), 400
+def random_matchup():
+    """
+    Return two random active decks.
 
+    Optional query params:
+    - format=Standard
+    - format=Stride
+    - format=Any
+    """
+    fmt = request.args.get("format", "Any")
 
-@bp_play.post("/fixed")
-def fixed_route():
-    data = request.get_json(force=True, silent=True) or {}
-    try:
-        d1_id = int(data.get("deck1_id"))
-        d2_id = int(data.get("deck2_id"))
-    except (TypeError, ValueError):
-        return jsonify(error="deck1_id and deck2_id are required integers."), 400
-    try:
-        d1, d2, first = svc_fixed(d1_id, d2_id)
-        return jsonify({
-            "deck1": d1.to_dict(),
-            "deck2": d2.to_dict(),
-            "first_player_id": first.id
-        })
-    except ValueError as e:
-        return jsonify(error=str(e)), 400
-    except LookupError as e:
-        return jsonify(error=str(e)), 404
+    query = Deck.query.filter_by(active=True)
+
+    if fmt in ("Standard", "Stride"):
+        query = query.filter(Deck.type == fmt)
+    elif fmt not in ("Any", "", None):
+        return jsonify(error="format must be Standard, Stride, or Any."), 400
+
+    decks = query.all()
+
+    if len(decks) < 2:
+        return jsonify(error="At least two active decks are required for a random matchup."), 400
+
+    import random
+
+    deck1, deck2 = random.sample(decks, 2)
+    first_player = random.choice([deck1, deck2])
+
+    return jsonify(
+        {
+            "deck1": serialize_deck(deck1),
+            "deck2": serialize_deck(deck2),
+            "first_player": serialize_deck(first_player),
+            "format": fmt,
+        }
+    )

@@ -1,153 +1,321 @@
 """
-Service helpers for listing, updating, and deleting matches.
+Service helpers for creating, listing, updating, and deleting matches.
 """
-from datetime import datetime
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from sqlalchemy import or_, and_
+
+from sqlalchemy import and_, or_
+
 from backend.database import db
-from backend.models import Match, Deck
+from backend.models import Deck, Match
+from backend.services.serializers import serialize_match
+
 
 CT = ZoneInfo("America/Chicago")
+VALID_MATCH_FORMATS = {None, "Standard", "Stride", "Any"}
 
-def _validate_participants(d1: int, d2: int):
-    if d1 == d2:
-        raise ValueError("deck1_id and deck2_id must be different.")
-    if not Deck.query.get(d1) or not Deck.query.get(d2):
-        raise LookupError("One or both deck IDs do not exist.")
+
+def create_match(payload: dict) -> dict:
+    deck1_id = _required_int(payload.get("deck1_id"), "deck1_id")
+    deck2_id = _required_int(payload.get("deck2_id"), "deck2_id")
+
+    _validate_participants(deck1_id, deck2_id)
+
+    winner_id = _optional_int(payload.get("winner_id"), "winner_id")
+    first_player_id = _optional_int(payload.get("first_player_id"), "first_player_id")
+    match_format = _normalize_format(payload.get("format"))
+    date_played = _parse_date(payload.get("date_played"))
+    notes = (payload.get("notes") or "").strip()
+
+    _validate_optional_participant(winner_id, deck1_id, deck2_id, "winner_id")
+    _validate_optional_participant(first_player_id, deck1_id, deck2_id, "first_player_id")
+
+    match = Match(
+        deck1_id=deck1_id,
+        deck2_id=deck2_id,
+        winner_id=winner_id,
+        first_player_id=first_player_id,
+        format=match_format,
+        notes=notes,
+    )
+
+    if date_played is not None:
+        match.date_played = date_played
+
+    db.session.add(match)
+
+    if winner_id is not None:
+        _apply_winner_counter(deck1_id, deck2_id, winner_id)
+
+    db.session.commit()
+
+    return get_match(match.id)
+
 
 def list_matches(
     deck_id: int | None = None,
-    fmt: str | None = None,        # 'Standard' | 'Stride' | 'Any'
-    result: str | None = None,     # 'W' | 'L' | '-' (undecided), relative to deck_id if provided
-    since: str | None = None,      # "YYYY-MM-DD"
-    until: str | None = None,      # "YYYY-MM-DD"
-    q: str | None = None           # substring search in notes
+    fmt: str | None = None,
+    result: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
+    q: str | None = None,
+    limit: int | None = None,
+    page: int | None = None,
+    page_size: int | None = None,
 ):
-    qset = Match.query
+    query = Match.query
 
     if fmt in ("Standard", "Stride", "Any"):
-        qset = qset.filter(Match.format == fmt)
+        query = query.filter(Match.format == fmt)
 
     if deck_id:
-        qset = qset.filter(or_(Match.deck1_id == deck_id, Match.deck2_id == deck_id))
+        query = query.filter(
+            or_(
+                Match.deck1_id == deck_id,
+                Match.deck2_id == deck_id,
+            )
+        )
+
         if result in ("W", "L", "-"):
             if result == "-":
-                qset = qset.filter(Match.winner_id.is_(None))
+                query = query.filter(Match.winner_id.is_(None))
             elif result == "W":
-                qset = qset.filter(Match.winner_id == deck_id)
-            else:  # 'L'
-                qset = qset.filter(and_(Match.winner_id.isnot(None), Match.winner_id != deck_id))
+                query = query.filter(Match.winner_id == deck_id)
+            else:
+                query = query.filter(
+                    and_(
+                        Match.winner_id.isnot(None),
+                        Match.winner_id != deck_id,
+                    )
+                )
 
     if since:
-        dt = datetime.fromisoformat(since).replace(tzinfo=CT)
-        qset = qset.filter(Match.date_played >= dt)
+        query = query.filter(Match.date_played >= _parse_date_required(since, "since"))
+
     if until:
-        dt = datetime.fromisoformat(until).replace(tzinfo=CT)
-        qset = qset.filter(Match.date_played < dt)
+        until_dt = _parse_date_required(until, "until")
+
+        # Treat date-only until as inclusive by adding one day.
+        if "T" not in until and " " not in until:
+            until_dt = until_dt + timedelta(days=1)
+
+        query = query.filter(Match.date_played < until_dt)
 
     if q:
-        qset = qset.filter(Match.notes.ilike(f"%{q}%"))
+        query = query.filter(Match.notes.ilike(f"%{q}%"))
 
-    qset = qset.order_by(Match.date_played.desc())
+    query = query.order_by(Match.date_played.desc())
 
-    rows = []
-    for m in qset.all():
-        d1 = Deck.query.get(m.deck1_id)
-        d2 = Deck.query.get(m.deck2_id)
-        rows.append({
-            **m.to_dict(),
-            "deck1_name": d1.name if d1 else f"#{m.deck1_id}",
-            "deck2_name": d2.name if d2 else f"#{m.deck2_id}",
-        })
-    return rows
+    if page is not None or page_size is not None:
+        page = max(1, int(page or 1))
+        page_size = max(1, min(int(page_size or 12), 100))
+
+        total_items = query.count()
+        total_pages = (total_items + page_size - 1) // page_size if total_items else 1
+
+        if page > total_pages:
+            page = total_pages
+
+        rows = (
+            query
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+
+        return {
+            "items": [serialize_match(match) for match in rows],
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_items": total_items,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1,
+            },
+        }
+
+    if limit:
+        query = query.limit(limit)
+
+    return [serialize_match(match) for match in query.all()]
+
 
 def get_match(match_id: int) -> dict:
-    m = Match.query.get_or_404(match_id)
-    d1 = Deck.query.get(m.deck1_id)
-    d2 = Deck.query.get(m.deck2_id)
-    return {
-        **m.to_dict(),
-        "deck1_name": d1.name if d1 else f"#{m.deck1_id}",
-        "deck2_name": d2.name if d2 else f"#{m.deck2_id}",
-    }
+    match = Match.query.get_or_404(match_id)
+    return serialize_match(match)
+
 
 def update_match(match_id: int, payload: dict) -> dict:
-    m = Match.query.get_or_404(match_id)
+    match = Match.query.get_or_404(match_id)
 
-    # optional edits
-    d1 = payload.get("deck1_id", m.deck1_id)
-    d2 = payload.get("deck2_id", m.deck2_id)
-    if d1 != m.deck1_id or d2 != m.deck2_id:
-        _validate_participants(int(d1), int(d2))
-        m.deck1_id, m.deck2_id = int(d1), int(d2)
+    new_deck1_id = _optional_int(payload.get("deck1_id"), "deck1_id") if "deck1_id" in payload else match.deck1_id
+    new_deck2_id = _optional_int(payload.get("deck2_id"), "deck2_id") if "deck2_id" in payload else match.deck2_id
 
-    if "first_player_id" in payload:
-        fp = payload["first_player_id"]
-        if fp is not None and fp not in (m.deck1_id, m.deck2_id):
-            raise ValueError("first_player_id must be one of the participants.")
-        m.first_player_id = fp
+    if new_deck1_id is None or new_deck2_id is None:
+        raise ValueError("deck1_id and deck2_id cannot be null.")
 
-    if "winner_id" in payload:
-        w = payload["winner_id"]
-        if w is not None and w not in (m.deck1_id, m.deck2_id):
-            raise ValueError("winner_id must be one of the participants or null.")
-        # adjust deck counters if winner changed
-        _adjust_counters_on_edit(m, w)
-        m.winner_id = w
+    _validate_participants(new_deck1_id, new_deck2_id)
 
-    if "format" in payload:
-        f = payload["format"]
-        if f not in (None, "Standard", "Stride", "Any"):
-            raise ValueError("format must be Standard | Stride | Any or omitted.")
-        m.format = f
+    new_winner_id = (
+        _optional_int(payload.get("winner_id"), "winner_id")
+        if "winner_id" in payload
+        else match.winner_id
+    )
+
+    new_first_player_id = (
+        _optional_int(payload.get("first_player_id"), "first_player_id")
+        if "first_player_id" in payload
+        else match.first_player_id
+    )
+
+    new_format = (
+        _normalize_format(payload.get("format"))
+        if "format" in payload
+        else match.format
+    )
+
+    _validate_optional_participant(new_winner_id, new_deck1_id, new_deck2_id, "winner_id")
+    _validate_optional_participant(new_first_player_id, new_deck1_id, new_deck2_id, "first_player_id")
+
+    # Revert the old winner from the old participants, then apply the new winner
+    # against the new participants. This handles edits to participants and winner.
+    _revert_winner_counter(match.deck1_id, match.deck2_id, match.winner_id)
+
+    match.deck1_id = new_deck1_id
+    match.deck2_id = new_deck2_id
+    match.winner_id = new_winner_id
+    match.first_player_id = new_first_player_id
+    match.format = new_format
 
     if "notes" in payload:
-        m.notes = (payload["notes"] or "").strip()
+        match.notes = (payload.get("notes") or "").strip()
 
-    if "date_played" in payload and payload["date_played"]:
-        # Accept "YYYY-MM-DD HH:MM" or ISO; assume CT
-        try:
-            dt = datetime.fromisoformat(payload["date_played"])
-        except Exception:
-            raise ValueError("date_played must be ISO-like, e.g. 2025-10-31 19:30")
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=CT)
-        m.date_played = dt
+    if "date_played" in payload:
+        parsed_date = _parse_date(payload.get("date_played"))
+        if parsed_date is not None:
+            match.date_played = parsed_date
+
+    _apply_winner_counter(match.deck1_id, match.deck2_id, match.winner_id)
 
     db.session.commit()
-    return get_match(match_id)
 
-def _adjust_counters_on_edit(m: Match, new_winner_id: int | None):
-    """When winner changes, fix wins/losses on Decks."""
-    old_winner = m.winner_id
-    if old_winner == new_winner_id:
-        return
-    # revert old
-    if old_winner is not None:
-        if old_winner == m.deck1_id:
-            Deck.query.get(m.deck1_id).wins -= 1
-            Deck.query.get(m.deck2_id).losses -= 1
-        else:
-            Deck.query.get(m.deck2_id).wins -= 1
-            Deck.query.get(m.deck1_id).losses -= 1
-    # apply new
-    if new_winner_id is not None:
-        if new_winner_id == m.deck1_id:
-            Deck.query.get(m.deck1_id).wins += 1
-            Deck.query.get(m.deck2_id).losses += 1
-        else:
-            Deck.query.get(m.deck2_id).wins += 1
-            Deck.query.get(m.deck1_id).losses += 1
+    return get_match(match.id)
+
 
 def delete_match(match_id: int):
-    m = Match.query.get_or_404(match_id)
-    # revert counters if this match had a winner
-    if m.winner_id is not None:
-        if m.winner_id == m.deck1_id:
-            Deck.query.get(m.deck1_id).wins -= 1
-            Deck.query.get(m.deck2_id).losses -= 1
-        else:
-            Deck.query.get(m.deck2_id).wins -= 1
-            Deck.query.get(m.deck1_id).losses -= 1
-    db.session.delete(m)
+    match = Match.query.get_or_404(match_id)
+
+    _revert_winner_counter(match.deck1_id, match.deck2_id, match.winner_id)
+
+    db.session.delete(match)
     db.session.commit()
+
+
+def _required_int(value, field_name: str) -> int:
+    if value is None or value == "":
+        raise ValueError(f"{field_name} is required.")
+
+    try:
+        return int(value)
+    except Exception as exc:
+        raise ValueError(f"{field_name} must be an integer.") from exc
+
+
+def _optional_int(value, field_name: str) -> int | None:
+    if value is None or value == "":
+        return None
+
+    try:
+        return int(value)
+    except Exception as exc:
+        raise ValueError(f"{field_name} must be an integer or null.") from exc
+
+
+def _normalize_format(value) -> str | None:
+    if value is None or value == "":
+        return None
+
+    normalized = str(value).strip()
+
+    if normalized not in VALID_MATCH_FORMATS:
+        raise ValueError("format must be Standard, Stride, Any, or null.")
+
+    return normalized
+
+
+def _parse_date(value) -> datetime | None:
+    if value is None or value == "":
+        return None
+
+    return _parse_date_required(value, "date_played")
+
+
+def _parse_date_required(value, field_name: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except Exception as exc:
+        raise ValueError(f"{field_name} must be ISO-like, e.g. 2026-06-09 or 2026-06-09T19:30:00.") from exc
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=CT)
+
+    return parsed
+
+
+def _validate_participants(deck1_id: int, deck2_id: int):
+    if deck1_id == deck2_id:
+        raise ValueError("deck1_id and deck2_id must be different.")
+
+    deck1_exists = Deck.query.get(deck1_id) is not None
+    deck2_exists = Deck.query.get(deck2_id) is not None
+
+    if not deck1_exists or not deck2_exists:
+        raise LookupError("One or both deck IDs do not exist.")
+
+
+def _validate_optional_participant(value: int | None, deck1_id: int, deck2_id: int, field_name: str):
+    if value is None:
+        return
+
+    if value not in (deck1_id, deck2_id):
+        raise ValueError(f"{field_name} must be either deck1_id or deck2_id.")
+
+
+def _apply_winner_counter(deck1_id: int, deck2_id: int, winner_id: int | None):
+    if winner_id is None:
+        return
+
+    deck1 = Deck.query.get(deck1_id)
+    deck2 = Deck.query.get(deck2_id)
+
+    if not deck1 or not deck2:
+        return
+
+    if winner_id == deck1_id:
+        deck1.wins += 1
+        deck2.losses += 1
+    elif winner_id == deck2_id:
+        deck2.wins += 1
+        deck1.losses += 1
+
+
+def _revert_winner_counter(deck1_id: int, deck2_id: int, winner_id: int | None):
+    if winner_id is None:
+        return
+
+    deck1 = Deck.query.get(deck1_id)
+    deck2 = Deck.query.get(deck2_id)
+
+    if not deck1 or not deck2:
+        return
+
+    if winner_id == deck1_id:
+        deck1.wins = max(0, deck1.wins - 1)
+        deck2.losses = max(0, deck2.losses - 1)
+    elif winner_id == deck2_id:
+        deck2.wins = max(0, deck2.wins - 1)
+        deck1.losses = max(0, deck1.losses - 1)

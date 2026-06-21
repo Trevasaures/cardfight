@@ -1,17 +1,19 @@
 import random
-import requests  # NEW: to talk to the backend API
+import requests
+
 from deck import decks, DeckType
 
-API_BASE = "http://127.0.0.1:5000"  # change if needed
+
+API_BASE = "http://127.0.0.1:5000"
 
 
 def pick_decks(mode: str):
-    """Pick two random decks depending on the chosen mode (local fallback)."""
+    """Pick two random decks depending on the chosen mode as a local fallback."""
     if mode == "standard":
         pool = [d for d in decks if d.deck_type == DeckType.STANDARD]
     elif mode == "stride":
         pool = [d for d in decks if d.deck_type == DeckType.STRIDE]
-    else:  # "any"
+    else:
         pool = decks
 
     if len(pool) < 2:
@@ -40,47 +42,73 @@ def main():
         format_played = "Any"
 
     try:
-        r = requests.get(f"{API_BASE}/api/random", params={"mode": mode}, timeout=5)
-        r.raise_for_status()
-        data = r.json()
+        response = requests.get(
+            f"{API_BASE}/api/play/random",
+            params={"format": format_played},
+            timeout=5,
+        )
+        response.raise_for_status()
+
+        data = response.json()
+
         d1 = data["deck1"]
         d2 = data["deck2"]
-        first_id = data["first_player_id"]
-        print(f"\nMatchup (API): {d1['name']} ({d1['type']}) VS {d2['name']} ({d2['type']})")
-        first_name = d1["name"] if d1["id"] == first_id else d2["name"]
-        print(f"→ {first_name} goes first! (format: {format_played})\n")
+        first = data["first_player"]
+        first_id = first["id"]
 
-        # Ask user if they want to log the result now
-        winner = input(f"Who won? [1] {d1['name']}  [2] {d2['name']}  [Enter to skip]: ").strip()
+        print(
+            f"\nMatchup (API): "
+            f"{d1['name']} ({d1['type']}) VS {d2['name']} ({d2['type']})"
+        )
+        print(f"→ {first['name']} goes first! (format: {format_played})\n")
+
+        winner = input(
+            f"Who won? [1] {d1['name']}  [2] {d2['name']}  [Enter for undecided]: "
+        ).strip()
         notes = input("Notes (optional): ").strip()
-        if winner in ("1", "2"):
-            winner_id = d1["id"] if winner == "1" else d2["id"]
-            payload = {
-                "deck1_id": d1["id"],
-                "deck2_id": d2["id"],
-                "winner_id": winner_id,
-                "first_player_id": first_id,
-                "format": format_played,
-                "notes": notes,
-            }
-            pr = requests.post(f"{API_BASE}/api/matches", json=payload, timeout=5)
-            if pr.status_code >= 400:
-                print(f"Failed to save match: {pr.text}")
-            else:
-                print("✅ Match saved!")
+
+        winner_id = None
+        if winner == "1":
+            winner_id = d1["id"]
+        elif winner == "2":
+            winner_id = d2["id"]
+
+        payload = {
+            "deck1_id": d1["id"],
+            "deck2_id": d2["id"],
+            "winner_id": winner_id,
+            "first_player_id": first_id,
+            "format": format_played,
+            "notes": notes,
+        }
+
+        save_response = requests.post(
+            f"{API_BASE}/api/matches",
+            json=payload,
+            timeout=5,
+        )
+
+        if save_response.status_code >= 400:
+            print(f"Failed to save match: {save_response.text}")
+        else:
+            print("✅ Match saved!")
 
         return
 
-    except Exception:
-        deck1, deck2 = pick_decks(mode)
-        if deck1 and deck2:
-            print(f"\nMatchup (local): {deck1.name} ({deck1.deck_type.value}) "
-                  f"VS {deck2.name} ({deck2.deck_type.value})")
+    except Exception as exc:
+        print(f"API not available or request failed: {exc}")
+        print("Falling back to local random picker.\n")
 
-            # Randomly decide who goes first
+        deck1, deck2 = pick_decks(mode)
+
+        if deck1 and deck2:
+            print(
+                f"Matchup (local): {deck1.name} ({deck1.deck_type.value}) "
+                f"VS {deck2.name} ({deck2.deck_type.value})"
+            )
+
             first_player = random.choice([deck1, deck2])
             print(f"→ {first_player.name} goes first! (format: {format_played})\n")
-
             print("API not available; result not recorded.")
 
 
