@@ -1,9 +1,12 @@
 """
 Database models for Deck and Match using SQLAlchemy.
 """
+
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
 from backend.database import db
+
 
 # --- Deck ---
 class Deck(db.Model):
@@ -12,17 +15,33 @@ class Deck(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), unique=True, nullable=False)
     type = db.Column(db.String(20), nullable=False)
+
+    # New visual/profile metadata.
+    nation = db.Column(db.String(50), nullable=True)
+    nation_icon = db.Column(db.String(100), nullable=True)
+
     wins = db.Column(db.Integer, default=0, nullable=False)
     losses = db.Column(db.Integer, default=0, nullable=False)
     active = db.Column(db.Boolean, default=True, nullable=False)
+
     created_at = db.Column(
         db.DateTime,
         default=lambda: datetime.now(ZoneInfo("America/Chicago")),
-        nullable=False
+        nullable=False,
     )
 
-    matches_as_1 = db.relationship("Match", foreign_keys="Match.deck1_id", backref="deck1", lazy="dynamic")
-    matches_as_2 = db.relationship("Match", foreign_keys="Match.deck2_id", backref="deck2", lazy="dynamic")
+    matches_as_1 = db.relationship(
+        "Match",
+        foreign_keys="Match.deck1_id",
+        backref="deck1",
+        lazy="dynamic",
+    )
+    matches_as_2 = db.relationship(
+        "Match",
+        foreign_keys="Match.deck2_id",
+        backref="deck2",
+        lazy="dynamic",
+    )
 
     __table_args__ = (
         db.CheckConstraint("type IN ('Standard','Stride')", name="ck_deck_type"),
@@ -32,15 +51,20 @@ class Deck(db.Model):
     def to_dict(self):
         games = self.wins + self.losses
         win_pct = (self.wins / games) if games else 0.0
+
         return {
             "id": self.id,
             "name": self.name,
             "type": self.type,
+            "nation": self.nation,
+            "nation_icon": self.nation_icon,
             "wins": self.wins,
             "losses": self.losses,
             "games": games,
+            "decided_games": games,
             "win_pct": round(win_pct, 3),
             "active": self.active,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
     def __repr__(self):
@@ -56,11 +80,15 @@ class Match(db.Model):
     deck1_id = db.Column(db.Integer, db.ForeignKey("deck.id"), nullable=False)
     deck2_id = db.Column(db.Integer, db.ForeignKey("deck.id"), nullable=False)
 
-    winner_id = db.Column(db.Integer, db.ForeignKey("deck.id"))  # nullable => undecided/log-only
-    first_player_id = db.Column(db.Integer, db.ForeignKey("deck.id"))  # who went first
+    winner_id = db.Column(db.Integer, db.ForeignKey("deck.id"))
+    first_player_id = db.Column(db.Integer, db.ForeignKey("deck.id"))
     format = db.Column(db.String(20), nullable=True)
 
-    date_played = db.Column(db.DateTime, default=lambda: datetime.now(ZoneInfo("America/Chicago")), nullable=False)
+    date_played = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(ZoneInfo("America/Chicago")),
+        nullable=False,
+    )
     notes = db.Column(db.Text, default="", nullable=False)
 
     __table_args__ = (
@@ -80,6 +108,7 @@ class Match(db.Model):
             "first_player_id": self.first_player_id,
             "format": self.format,
             "date_played": self.date_played.strftime("%m/%d/%Y %I:%M %p"),
+            "date_played_iso": self.date_played.isoformat(),
             "notes": self.notes,
         }
 

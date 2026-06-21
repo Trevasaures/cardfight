@@ -23,6 +23,8 @@ def serialize_deck(deck: Deck | None) -> dict | None:
         "id": deck.id,
         "name": deck.name,
         "type": deck.type,
+        "nation": deck.nation,
+        "nation_icon": deck.nation_icon,
         "wins": wins,
         "losses": losses,
         "games": decided_games,
@@ -66,19 +68,14 @@ def serialize_match(match: Match) -> dict:
         "date_played": match.date_played.strftime("%m/%d/%Y %I:%M %p") if match.date_played else None,
         "date_played_iso": match.date_played.isoformat() if match.date_played else None,
         "notes": match.notes or "",
-
         "deck1": serialize_deck(deck1),
         "deck2": serialize_deck(deck2),
         "winner": serialize_deck(winner),
         "first_player": serialize_deck(first_player),
-
-        # Compatibility fields for current Streamlit pages.
         "deck1_name": deck1.name if deck1 else f"#{match.deck1_id}",
         "deck2_name": deck2.name if deck2 else f"#{match.deck2_id}",
         "winner_name": winner.name if winner else None,
         "first_player_name": first_player.name if first_player else None,
-
-        # Frontend-friendly status.
         "result_status": result_status,
         "is_decided": match.winner_id is not None,
         "is_undecided": match.winner_id is None,

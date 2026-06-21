@@ -7,6 +7,7 @@ from sqlalchemy.engine import Engine
 
 from backend.database import db
 from backend.routes import all_blueprints
+from backend.schema import ensure_schema_upgrades
 
 
 def create_app():
@@ -37,6 +38,7 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        ensure_schema_upgrades()
 
     @app.get("/health")
     @app.get("/api/health")

@@ -10,6 +10,29 @@ bp_decks = Blueprint("decks", __name__, url_prefix="/api/decks")
 
 VALID_DECK_TYPES = {"Standard", "Stride"}
 
+NATION_OPTIONS = {
+    None: None,
+    "": None,
+    "Dragon Empire": "dragon_empire.png",
+    "Dark States": "dark_states.png",
+    "Brandt Gate": "brandt_gate.png",
+    "Keter Sanctuary": "keter_sanctuary.png",
+    "Stoicheia": "stoicheia.png",
+}
+
+
+def _normalize_nation(value):
+    if value is None or value == "":
+        return None, None
+
+    nation = str(value).strip()
+
+    if nation not in NATION_OPTIONS:
+        valid = ", ".join([item for item in NATION_OPTIONS.keys() if item])
+        raise ValueError(f"nation must be one of: {valid}")
+
+    return nation, NATION_OPTIONS[nation]
+
 
 @bp_decks.get("")
 def list_decks():
@@ -29,6 +52,24 @@ def list_decks():
     return jsonify([serialize_deck(deck) for deck in decks])
 
 
+@bp_decks.get("/options")
+def deck_options():
+    return jsonify(
+        {
+            "types": sorted(VALID_DECK_TYPES),
+            "nations": [
+                {
+                    "name": nation,
+                    "icon": icon,
+                    "icon_path": f"/nations/{icon}" if icon else None,
+                }
+                for nation, icon in NATION_OPTIONS.items()
+                if nation
+            ],
+        }
+    )
+
+
 @bp_decks.get("/<int:deck_id>")
 def get_deck(deck_id: int):
     deck = Deck.query.get_or_404(deck_id)
@@ -43,6 +84,11 @@ def create_deck():
     deck_type = (data.get("type") or "").strip()
     active = bool(data.get("active", True))
 
+    try:
+        nation, nation_icon = _normalize_nation(data.get("nation"))
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+
     if not name:
         return jsonify(error="name is required."), 400
 
@@ -56,6 +102,8 @@ def create_deck():
     deck = Deck(
         name=name,
         type=deck_type,
+        nation=nation,
+        nation_icon=nation_icon,
         active=active,
     )
 
@@ -93,6 +141,15 @@ def update_deck(deck_id: int):
             return jsonify(error="type must be Standard or Stride."), 400
 
         deck.type = deck_type
+
+    if "nation" in data:
+        try:
+            nation, nation_icon = _normalize_nation(data.get("nation"))
+        except ValueError as e:
+            return jsonify(error=str(e)), 400
+
+        deck.nation = nation
+        deck.nation_icon = nation_icon
 
     if "active" in data:
         deck.active = bool(data["active"])

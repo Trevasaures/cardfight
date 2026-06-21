@@ -5,6 +5,8 @@ export type Deck = {
   id: number;
   name: string;
   type: DeckType;
+  nation: string | null;
+  nation_icon: string | null;
   wins: number;
   losses: number;
   games: number;
@@ -108,4 +110,20 @@ export type PaginatedMatchesResponse = {
     has_next: boolean;
     has_prev: boolean;
   };
+};
+
+export type DeckUpdatePayload = {
+  name?: string;
+  type?: DeckType;
+  nation?: string | null;
+  active?: boolean;
+};
+
+export type DeckOptionsResponse = {
+  types: DeckType[];
+  nations: {
+    name: string;
+    icon: string;
+    icon_path: string;
+  }[];
 };
