@@ -16,7 +16,10 @@ export function MatchCard({ match, onDelete }: MatchCardProps) {
     : `${match.winner_name ?? "Unknown"} won`;
 
   return (
-    <article className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-xl shadow-black/10 transition hover:border-cyan-300/20 hover:bg-white/[0.06]">
+    <article
+      data-anime="motion-card"
+      className="rounded-3xl border border-white/10 bg-slate-950/45 p-5 shadow-xl shadow-black/20 transition will-change-transform hover:-translate-y-0.5 hover:border-cyan-300/30 hover:bg-slate-900/70"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-base font-bold text-slate-50">
@@ -53,7 +56,9 @@ export function MatchCard({ match, onDelete }: MatchCardProps) {
             First player: {match.first_player_name}
           </p>
         ) : (
-          <p className="mt-1 text-xs text-slate-600">First player not recorded</p>
+          <p className="mt-1 text-xs text-slate-600">
+            First player not recorded
+          </p>
         )}
       </div>
 

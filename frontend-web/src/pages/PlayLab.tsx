@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Dices, RefreshCcw, Save, Shuffle, Swords } from "lucide-react";
 
 import { getDecks } from "../api/decks";
 import { createMatch } from "../api/matches";
 import { getRandomMatchup } from "../api/play";
+import { usePlayLabReveal } from "../animations/usePlayLabReveal";
 import { FormatBadge } from "../components/badges/FormatBadge";
 import { PageHeader } from "../components/layout/PageHeader";
 import type { Deck, MatchFormat, RandomMatchupResponse } from "../types/api";
@@ -43,7 +44,10 @@ function MatchupDeckPanel({
 
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-4">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
+          <div
+            data-anime="nation-icon"
+            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] will-change-transform"
+          >
             {iconPath ? (
               <img
                 src={iconPath}
@@ -108,6 +112,11 @@ export function PlayLab() {
   const [rolling, setRolling] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const matchupStageRef = useRef<HTMLElement | null>(null);
+  const [revealTrigger, setRevealTrigger] = useState(0);
+
+  usePlayLabReveal(matchupStageRef, revealTrigger);
+
   useEffect(() => {
     getDecks(false)
       .then(setDecks)
@@ -157,10 +166,12 @@ export function PlayLab() {
 
     try {
       const result = await getRandomMatchup(format);
+
       setMatchup(result);
       setWinnerId(null);
       setFirstPlayerId(result.first_player.id);
       setNotes("");
+      setRevealTrigger((value) => value + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to roll matchup");
     } finally {
@@ -192,6 +203,7 @@ export function PlayLab() {
     setWinnerId(null);
     setFirstPlayerId(customDeck1.id);
     setNotes("");
+    setRevealTrigger((value) => value + 1);
   }
 
   async function saveMatch() {
@@ -405,7 +417,7 @@ export function PlayLab() {
       ) : null}
 
       {matchup ? (
-        <section className="mt-8">
+        <section ref={matchupStageRef} className="mt-8">
           <div className="mb-5 flex items-center justify-center gap-3 text-slate-400">
             <Swords className="h-5 w-5 text-cyan-200" />
             <span className="text-sm font-bold uppercase tracking-[0.24em]">
@@ -414,29 +426,39 @@ export function PlayLab() {
           </div>
 
           <div className="grid items-stretch gap-5 lg:grid-cols-[1fr_auto_1fr]">
-            <MatchupDeckPanel
-              deck={matchup.deck1}
-              selected={winnerId === matchup.deck1.id}
-              label={firstPlayerId === matchup.deck1.id ? "Goes first" : undefined}
-              onClick={() => setWinnerId(matchup.deck1.id)}
-            />
+            <div data-anime="deck-left" className="will-change-transform">
+              <MatchupDeckPanel
+                deck={matchup.deck1}
+                selected={winnerId === matchup.deck1.id}
+                label={firstPlayerId === matchup.deck1.id ? "Goes first" : undefined}
+                onClick={() => setWinnerId(matchup.deck1.id)}
+              />
+            </div>
 
-            <div className="flex items-center justify-center">
+            <div
+              data-anime="vs-badge"
+              className="flex items-center justify-center will-change-transform"
+            >
               <div className="rounded-full border border-white/10 bg-white/[0.05] px-5 py-3 text-sm font-black text-slate-300">
                 VS
               </div>
             </div>
 
-            <MatchupDeckPanel
-              deck={matchup.deck2}
-              selected={winnerId === matchup.deck2.id}
-              label={firstPlayerId === matchup.deck2.id ? "Goes first" : undefined}
-              onClick={() => setWinnerId(matchup.deck2.id)}
-            />
+            <div data-anime="deck-right" className="will-change-transform">
+              <MatchupDeckPanel
+                deck={matchup.deck2}
+                selected={winnerId === matchup.deck2.id}
+                label={firstPlayerId === matchup.deck2.id ? "Goes first" : undefined}
+                onClick={() => setWinnerId(matchup.deck2.id)}
+              />
+            </div>
           </div>
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
+            <div
+              data-anime="match-control-panel"
+              className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5"
+            >
               <p className="text-sm font-semibold text-slate-300">First player</p>
 
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -458,7 +480,10 @@ export function PlayLab() {
               </div>
             </div>
 
-            <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
+            <div
+              data-anime="match-control-panel"
+              className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5"
+            >
               <p className="text-sm font-semibold text-slate-300">Winner</p>
 
               <div className="mt-3 grid gap-2 sm:grid-cols-3">
@@ -494,7 +519,10 @@ export function PlayLab() {
             </div>
           </div>
 
-          <div className="mt-6 rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
+          <div
+            data-anime="notes-panel"
+            className="mt-6 rounded-[2rem] border border-white/10 bg-white/[0.04] p-5"
+          >
             <label className="text-sm font-semibold text-slate-300" htmlFor="notes">
               Match notes
             </label>
