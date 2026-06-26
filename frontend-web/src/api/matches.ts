@@ -20,8 +20,6 @@ export async function getMatchesPage(page = 1, pageSize = 12) {
     `/api/matches?${params.toString()}`,
   );
 
-  // Backwards compatibility guard:
-  // If the backend still returns the old array format, normalize it.
   if (Array.isArray(response)) {
     return {
       items: response,
@@ -52,7 +50,7 @@ export async function getMatchesPage(page = 1, pageSize = 12) {
 export function createMatch(payload: CreateMatchPayload) {
   return apiRequest<Match>("/api/matches", {
     method: "POST",
-    json: payload,
+    body: JSON.stringify(payload),
   });
 }
 

@@ -55,3 +55,13 @@ export function addCardPrinting(
     body: JSON.stringify(payload),
   });
 }
+
+export function updateCardPrinting(
+  printingId: number,
+  payload: CreateCardPrintingPayload,
+) {
+  return apiRequest<CardPrinting>(`/api/cards/printings/${printingId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}

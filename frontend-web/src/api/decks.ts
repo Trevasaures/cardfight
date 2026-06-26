@@ -1,14 +1,19 @@
 import { apiRequest } from "./client";
-import type { Deck, DeckOptionsResponse, DeckType, DeckUpdatePayload } from "../types/api";
+import type {
+  Deck,
+  DeckOptionsResponse,
+  DeckType,
+  DeckUpdatePayload,
+} from "../types/api";
 
-export type CreateDeckPayload = {
+type CreateDeckPayload = {
   name: string;
   type: DeckType;
   nation?: string | null;
   active?: boolean;
 };
 
-export function getDecks(includeInactive = true) {
+export function getDecks(includeInactive = false) {
   const query = includeInactive ? "?include_inactive=true" : "";
   return apiRequest<Deck[]>(`/api/decks${query}`);
 }
@@ -17,22 +22,20 @@ export function getDeckOptions() {
   return apiRequest<DeckOptionsResponse>("/api/decks/options");
 }
 
+export function getDeck(deckId: number) {
+  return apiRequest<Deck>(`/api/decks/${deckId}`);
+}
+
 export function createDeck(payload: CreateDeckPayload) {
   return apiRequest<Deck>("/api/decks", {
     method: "POST",
-    json: payload,
+    body: JSON.stringify(payload),
   });
 }
 
 export function updateDeck(deckId: number, payload: DeckUpdatePayload) {
   return apiRequest<Deck>(`/api/decks/${deckId}`, {
     method: "PATCH",
-    json: payload,
-  });
-}
-
-export function deleteDeck(deckId: number) {
-  return apiRequest<void>(`/api/decks/${deckId}`, {
-    method: "DELETE",
+    body: JSON.stringify(payload),
   });
 }
