@@ -6,6 +6,7 @@ from backend.services.cards import (
     get_card_or_raise,
     search_cards,
     update_card,
+    update_card_printing,
 )
 from backend.services.serializers import serialize_card, serialize_card_printing
 
@@ -75,3 +76,15 @@ def add_card_printing_route(card_id):
         return _json_error(str(exc), 400)
 
     return jsonify(serialize_card_printing(printing)), 201
+
+
+@bp_cards.patch("/printings/<int:printing_id>")
+def update_card_printing_route(printing_id):
+    try:
+        printing = update_card_printing(printing_id, request.get_json(silent=True) or {})
+    except LookupError as exc:
+        return _json_error(str(exc), 404)
+    except ValueError as exc:
+        return _json_error(str(exc), 400)
+
+    return jsonify(serialize_card_printing(printing))

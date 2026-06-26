@@ -127,6 +127,18 @@ def search_cards(
 
     q = _clean_string(q)
 
+    has_filters = any(
+        [
+            q and len(q) >= 2,
+            _clean_string(nation),
+            grade not in (None, ""),
+            _clean_string(card_type),
+        ]
+    )
+
+    if not has_filters:
+        return []
+
     if q:
         like = f"%{q}%"
         query = query.filter(
@@ -216,4 +228,32 @@ def add_card_printing(card_id, payload):
     db.session.add(printing)
     db.session.commit()
 
+    return printing
+
+
+def get_card_printing_or_raise(printing_id):
+    printing = db.session.get(CardPrinting, printing_id)
+
+    if not printing:
+        raise LookupError("Card printing not found")
+
+    return printing
+
+
+def update_card_printing(printing_id, payload):
+    if not isinstance(payload, dict):
+        raise ValueError("Request body must be a JSON object")
+
+    printing = get_card_printing_or_raise(printing_id)
+
+    for field_name in PRINTING_FIELDS:
+        if field_name not in payload:
+            continue
+
+        if field_name == "source":
+            setattr(printing, field_name, _clean_string(payload.get(field_name)) or "manual")
+        else:
+            setattr(printing, field_name, _clean_string(payload.get(field_name)))
+
+    db.session.commit()
     return printing
