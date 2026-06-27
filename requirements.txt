@@ -27,6 +27,7 @@ mdurl==0.1.2
 mypy_extensions==1.1.0
 narwhals==2.4.0
 numpy==2.3.2
+openai==2.44.0
 packaging==25.0
 pandas==2.3.2
 pathspec==0.12.1

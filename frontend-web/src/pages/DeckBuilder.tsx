@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDeckBuilderMotion } from "../animations/useDeckBuilderMotion";
 import {
   addCardPrinting,
+  analyzeCardImage,
   createCard,
   getCard,
   searchCards,
@@ -25,6 +26,7 @@ import { EMPTY_MANUAL_CARD_FORM } from "../components/deck-builder/manualCardFor
 import { PageHeader } from "../components/layout/PageHeader";
 import type {
   Card,
+  CardImageAnalysisResult,
   CreateCardPayload,
   Deck,
   DeckCardEntry,
@@ -60,6 +62,9 @@ export function DeckBuilder() {
   const [cardResults, setCardResults] = useState<Card[]>([]);
   const [selectedCardId, setSelectedCardId] = useState("");
   const [cardFormMode, setCardFormMode] = useState<CardFormMode>("create");
+  const [cardAnalysis, setCardAnalysis] =
+    useState<CardImageAnalysisResult | null>(null);
+  const [analyzingCardImage, setAnalyzingCardImage] = useState(false);
 
   const [addQuantity, setAddQuantity] = useState(4);
   const [addZone, setAddZone] = useState<DeckCardZone>("main");
@@ -233,6 +238,7 @@ export function DeckBuilder() {
     setCardSearch("");
     setCardResults([]);
     setSelectedCardId("");
+    setCardAnalysis(null);
     setError(null);
 
     if (cardFormMode === "edit") {
@@ -257,6 +263,7 @@ export function DeckBuilder() {
       rarity: printing?.rarity ?? "",
     });
 
+    setCardAnalysis(null);
     setCardFormMode("edit");
     setError(null);
   }
@@ -264,7 +271,45 @@ export function DeckBuilder() {
   function handleCancelCardEdit() {
     setCardFormMode("create");
     setNewCard(EMPTY_MANUAL_CARD_FORM);
+    setCardAnalysis(null);
     setError(null);
+  }
+
+  function applyCardAnalysisToForm(result: CardImageAnalysisResult) {
+    setNewCard({
+      name: result.fields.name,
+      grade: result.fields.grade,
+      nation: result.fields.nation,
+      card_type: result.fields.card_type || "Normal Unit",
+      set_code: result.fields.set_code,
+      set_name: result.fields.set_name,
+      card_number: result.fields.card_number,
+      rarity: result.fields.rarity,
+    });
+
+    setCardFormMode("create");
+    setError(null);
+  }
+
+  async function handleAnalyzeCardImage(file: File) {
+    setAnalyzingCardImage(true);
+    setCardAnalysis(null);
+    setError(null);
+
+    try {
+      const result = await analyzeCardImage(file);
+      setCardAnalysis(result);
+      applyCardAnalysisToForm(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to analyze card image");
+    } finally {
+      setAnalyzingCardImage(false);
+    }
+  }
+
+  function handleApplyCardAnalysis() {
+    if (!cardAnalysis) return;
+    applyCardAnalysisToForm(cardAnalysis);
   }
 
   async function handleCreateVersion() {
@@ -358,6 +403,7 @@ export function DeckBuilder() {
       setSelectedCardId(String(created.id));
       setNewCard(EMPTY_MANUAL_CARD_FORM);
       setCardFormMode("create");
+      setCardAnalysis(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save card");
     } finally {
@@ -469,6 +515,8 @@ export function DeckBuilder() {
             selectedCardId={selectedCardId}
             newCard={newCard}
             cardFormMode={cardFormMode}
+            analysisResult={cardAnalysis}
+            analyzingImage={analyzingCardImage}
             loadingCards={loadingCards}
             saving={saving}
             manualCardIsComplete={manualCardIsComplete}
@@ -480,6 +528,8 @@ export function DeckBuilder() {
             onSaveCardForm={handleSaveCardForm}
             onEditSelectedCard={handleEditSelectedCard}
             onCancelCardEdit={handleCancelCardEdit}
+            onAnalyzeCardImage={handleAnalyzeCardImage}
+            onApplyCardAnalysis={handleApplyCardAnalysis}
           />
 
           <DeckVersionContents

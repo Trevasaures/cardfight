@@ -9,6 +9,12 @@ from backend.database import db
 from backend.routes import all_blueprints
 from backend.schema import ensure_schema_upgrades
 
+from pathlib import Path
+from dotenv import load_dotenv
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(PROJECT_ROOT / ".env")
+
 
 def create_app():
     app = Flask(__name__, instance_relative_config=True)

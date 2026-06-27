@@ -278,3 +278,27 @@ export type UpdateDeckCardPayload = {
   zone?: DeckCardZone;
   sort_order?: number;
 };
+
+export type CardImageAnalysisFields = {
+  name: string;
+  grade: string;
+  nation: string;
+  card_type: string;
+  set_code: string;
+  set_name: string;
+  card_number: string;
+  rarity: string;
+};
+
+export type CardImageAnalysisConfidence = Record<
+  keyof CardImageAnalysisFields,
+  number
+>;
+
+export type CardImageAnalysisResult = {
+  provider: "mock" | "openai";
+  fields: CardImageAnalysisFields;
+  confidence: CardImageAnalysisConfidence;
+  warnings: string[];
+  raw_text?: string | null;
+};

@@ -1,6 +1,7 @@
 import { apiRequest } from "./client";
 import type {
   Card,
+  CardImageAnalysisResult,
   CardPrinting,
   CardSearchParams,
   CreateCardPayload,
@@ -63,5 +64,15 @@ export function updateCardPrinting(
   return apiRequest<CardPrinting>(`/api/cards/printings/${printingId}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
+  });
+}
+
+export function analyzeCardImage(file: File) {
+  const formData = new FormData();
+  formData.set("image", file);
+
+  return apiRequest<CardImageAnalysisResult>("/api/cards/analyze-image", {
+    method: "POST",
+    body: formData,
   });
 }
