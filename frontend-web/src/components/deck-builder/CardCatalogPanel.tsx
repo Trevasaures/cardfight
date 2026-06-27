@@ -1,8 +1,9 @@
 import { Pencil, Search, X } from "lucide-react";
 
+import { CardImageImportAssistant } from "./CardImageImportAssistant";
 import { ManualCardForm } from "./ManualCardForm";
 import type { ManualCardFormState } from "./manualCardFormState";
-import type { Card } from "../../types/api";
+import type { Card, CardImageAnalysisResult } from "../../types/api";
 
 type CardFormMode = "create" | "edit";
 
@@ -13,6 +14,8 @@ type CardCatalogPanelProps = {
   selectedCardId: string;
   newCard: ManualCardFormState;
   cardFormMode: CardFormMode;
+  analysisResult: CardImageAnalysisResult | null;
+  analyzingImage: boolean;
   loadingCards: boolean;
   saving: boolean;
   manualCardIsComplete: boolean;
@@ -24,6 +27,8 @@ type CardCatalogPanelProps = {
   onSaveCardForm: () => void;
   onEditSelectedCard: () => void;
   onCancelCardEdit: () => void;
+  onAnalyzeCardImage: (file: File) => void;
+  onApplyCardAnalysis: () => void;
 };
 
 function getPrimaryPrintingLabel(card: Card) {
@@ -53,6 +58,8 @@ export function CardCatalogPanel({
   selectedCardId,
   newCard,
   cardFormMode,
+  analysisResult,
+  analyzingImage,
   loadingCards,
   saving,
   manualCardIsComplete,
@@ -64,6 +71,8 @@ export function CardCatalogPanel({
   onSaveCardForm,
   onEditSelectedCard,
   onCancelCardEdit,
+  onAnalyzeCardImage,
+  onApplyCardAnalysis,
 }: CardCatalogPanelProps) {
   const hasSearchState = cardSearch.trim().length > 0 || cardResults.length > 0;
   const isEditing = cardFormMode === "edit";
@@ -179,8 +188,15 @@ export function CardCatalogPanel({
         Edit selected card
       </button>
 
+      <CardImageImportAssistant
+        analysisResult={analysisResult}
+        analyzing={analyzingImage}
+        onAnalyzeImage={onAnalyzeCardImage}
+        onApplyAnalysis={onApplyCardAnalysis}
+      />
+
       <details
-        open={isEditing}
+        open={isEditing || Boolean(analysisResult)}
         className="mt-5 rounded-3xl border border-white/10 bg-black/20 p-4"
       >
         <summary className="cursor-pointer select-none text-sm font-black text-slate-100">

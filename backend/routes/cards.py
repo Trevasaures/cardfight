@@ -1,6 +1,8 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
+from openai import APIError, AuthenticationError, RateLimitError
 
 from backend.services.cards import (
+    DuplicateCardPrintingError,
     add_card_printing,
     create_card,
     get_card_or_raise,
@@ -9,6 +11,7 @@ from backend.services.cards import (
     update_card_printing,
 )
 from backend.services.serializers import serialize_card, serialize_card_printing
+from backend.services.card_image_analyzer import analyze_card_image
 
 
 bp_cards = Blueprint("cards", __name__, url_prefix="/api/cards")
@@ -38,6 +41,13 @@ def search_cards_route():
 def create_card_route():
     try:
         card = create_card(request.get_json(silent=True) or {})
+    except DuplicateCardPrintingError as exc:
+        return jsonify(
+            {
+                "error": str(exc),
+                "duplicate_card": serialize_card(exc.card, include_printings=True),
+            }
+        ), 409
     except ValueError as exc:
         return _json_error(str(exc), 400)
 
@@ -88,3 +98,51 @@ def update_card_printing_route(printing_id):
         return _json_error(str(exc), 400)
 
     return jsonify(serialize_card_printing(printing))
+
+
+@bp_cards.post("/analyze-image")
+def analyze_card_image_route():
+    try:
+        result = analyze_card_image(request.files.get("image"))
+    except ValueError as exc:
+        return _json_error(str(exc), 400)
+    except AuthenticationError:
+        current_app.logger.exception("Card image analysis authentication failed")
+        return _json_error(
+            "OpenAI authentication failed. Check OPENAI_API_KEY in your .env file.",
+            401,
+        )
+    except RateLimitError as exc:
+        current_app.logger.exception("Card image analysis quota/rate limit failed")
+
+        error_code = None
+        try:
+            error_code = exc.body.get("code") if isinstance(exc.body, dict) else None
+        except AttributeError:
+            error_code = None
+
+        if error_code == "insufficient_quota":
+            return _json_error(
+                (
+                    "OpenAI says this project has insufficient quota. "
+                    "If you just added credits, wait a few minutes, confirm the credits "
+                    "are attached to the same project as this API key, then try again."
+                ),
+                429,
+            )
+
+        return _json_error(
+            (
+                "OpenAI rate limit reached. Wait a minute, then try again. "
+                "Avoid clicking Analyze repeatedly while a request is already running."
+            ),
+            429,
+        )
+    except APIError as exc:
+        current_app.logger.exception("Card image analysis API failed")
+        return _json_error(f"OpenAI API error: {exc}", 502)
+    except Exception as exc:
+        current_app.logger.exception("Card image analysis failed")
+        return _json_error(f"Card image analysis failed: {exc}", 500)
+
+    return jsonify(result)

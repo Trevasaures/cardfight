@@ -3,15 +3,17 @@ __pycache__/
 *.py[cod]
 *.pyo
 
-# Virtual environments
-venv/
-.env/
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
 
-# SQLite database
+# Local SQLite/runtime data
+instance/
+backend/instance/
 *.db
-
-# Logs
-*.log
+*.sqlite
+*.sqlite3
 
 # Editor / OS files
 .vscode/
