@@ -35,19 +35,8 @@ export function ManualCardForm({
 
   return (
     <div className="mt-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h4 className="font-black text-slate-100">
-            {isEditing ? "Edit selected card" : "Create manual card"}
-          </h4>
-          <p className="mt-1 text-sm leading-6 text-slate-500">
-            {isEditing
-              ? "Changes here update the shared card record and will appear anywhere this card is used."
-              : "Add enough information to identify the exact card printing."}
-          </p>
-        </div>
-
-        {isEditing ? (
+      {isEditing ? (
+        <div className="flex justify-end">
           <button
             type="button"
             onClick={onCancelEdit}
@@ -57,10 +46,10 @@ export function ManualCardForm({
             <RotateCcw className="h-3.5 w-3.5" />
             Cancel
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className={`${isEditing ? "mt-4" : ""} grid gap-3 sm:grid-cols-2`}>
         <FormTextInput
           label="Card name"
           help="The printed name of the card, exactly as you want it to appear in the deck list."

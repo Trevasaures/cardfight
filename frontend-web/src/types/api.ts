@@ -302,3 +302,20 @@ export type CardImageAnalysisResult = {
   warnings: string[];
   raw_text?: string | null;
 };
+
+export type PaginatedCardsResponse = {
+  items: Card[];
+  pagination: {
+    page: number;
+    page_size: number;
+    total_items: number;
+    total_pages: number;
+    has_next: boolean;
+    has_prev: boolean;
+  };
+};
+
+export type CardLibraryParams = CardSearchParams & {
+  page?: number;
+  page_size?: number;
+};

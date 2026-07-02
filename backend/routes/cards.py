@@ -6,6 +6,7 @@ from backend.services.cards import (
     add_card_printing,
     create_card,
     get_card_or_raise,
+    list_cards_page,
     search_cards,
     update_card,
     update_card_printing,
@@ -54,6 +55,28 @@ def create_card_route():
     return jsonify(serialize_card(card)), 201
 
 
+@bp_cards.get("/library")
+def card_library_route():
+    result = list_cards_page(
+        q=request.args.get("q"),
+        nation=request.args.get("nation"),
+        grade=request.args.get("grade"),
+        card_type=request.args.get("card_type"),
+        page=request.args.get("page", 1),
+        page_size=request.args.get("page_size", 250),
+    )
+
+    return jsonify(
+        {
+            "items": [
+                serialize_card(card, include_printings=True)
+                for card in result["items"]
+            ],
+            "pagination": result["pagination"],
+        }
+    )
+
+
 @bp_cards.get("/<int:card_id>")
 def get_card_route(card_id):
     try:
@@ -68,6 +91,13 @@ def get_card_route(card_id):
 def update_card_route(card_id):
     try:
         card = update_card(card_id, request.get_json(silent=True) or {})
+    except DuplicateCardPrintingError as exc:
+        return jsonify(
+            {
+                "error": str(exc),
+                "duplicate_card": serialize_card(exc.card, include_printings=True),
+            }
+        ), 409
     except LookupError as exc:
         return _json_error(str(exc), 404)
     except ValueError as exc:
@@ -80,6 +110,13 @@ def update_card_route(card_id):
 def add_card_printing_route(card_id):
     try:
         printing = add_card_printing(card_id, request.get_json(silent=True) or {})
+    except DuplicateCardPrintingError as exc:
+        return jsonify(
+            {
+                "error": str(exc),
+                "duplicate_card": serialize_card(exc.card, include_printings=True),
+            }
+        ), 409
     except LookupError as exc:
         return _json_error(str(exc), 404)
     except ValueError as exc:
@@ -92,6 +129,13 @@ def add_card_printing_route(card_id):
 def update_card_printing_route(printing_id):
     try:
         printing = update_card_printing(printing_id, request.get_json(silent=True) or {})
+    except DuplicateCardPrintingError as exc:
+        return jsonify(
+            {
+                "error": str(exc),
+                "duplicate_card": serialize_card(exc.card, include_printings=True),
+            }
+        ), 409
     except LookupError as exc:
         return _json_error(str(exc), 404)
     except ValueError as exc:

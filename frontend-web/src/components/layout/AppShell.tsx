@@ -9,6 +9,7 @@ import {
   Home,
   Swords,
   Trophy,
+  LibraryBig,
 } from "lucide-react";
 
 import { useRoutePageReveal } from "../../animations/useRoutePageReveal";
@@ -17,6 +18,7 @@ const navItems = [
   { to: "/", label: "Dashboard", icon: Home },
   { to: "/play", label: "Play Lab", icon: Gamepad2 },
   { to: "/decks", label: "Deck Library", icon: BookOpen },
+  { to: "/cards", label: "Card Library", icon: LibraryBig },
   { to: "/deck-builder", label: "Deck Builder", icon: Hammer },
   { to: "/matches", label: "Match History", icon: History },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
