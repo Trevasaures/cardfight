@@ -200,6 +200,81 @@ def get_card_printing_or_raise(printing_id):
     return printing
 
 
+def list_cards_page(
+    q=None,
+    nation=None,
+    grade=None,
+    card_type=None,
+    page=1,
+    page_size=100,
+):
+    query = Card.query
+
+    q = _clean_string(q)
+
+    if q and len(q) >= 2:
+        like = f"%{q}%"
+        query = query.filter(
+            or_(
+                Card.name.ilike(like),
+                Card.skill_text.ilike(like),
+                Card.nation.ilike(like),
+                Card.card_type.ilike(like),
+            )
+        )
+
+    nation = _clean_string(nation)
+    if nation:
+        query = query.filter(Card.nation == nation)
+
+    if grade not in (None, ""):
+        query = query.filter(Card.grade == _int_or_none(grade, "grade"))
+
+    card_type = _clean_string(card_type)
+    if card_type:
+        query = query.filter(Card.card_type == card_type)
+
+    try:
+        safe_page = int(page)
+    except (TypeError, ValueError):
+        safe_page = 1
+
+    try:
+        safe_page_size = int(page_size)
+    except (TypeError, ValueError):
+        safe_page_size = 100
+
+    safe_page = max(safe_page, 1)
+    safe_page_size = min(max(safe_page_size, 1), 500)
+
+    total_items = query.count()
+    total_pages = max((total_items + safe_page_size - 1) // safe_page_size, 1)
+    offset = (safe_page - 1) * safe_page_size
+
+    cards = (
+        query.order_by(
+            Card.name.asc(),
+            Card.grade.asc(),
+            Card.nation.asc(),
+        )
+        .offset(offset)
+        .limit(safe_page_size)
+        .all()
+    )
+
+    return {
+        "items": cards,
+        "pagination": {
+            "page": safe_page,
+            "page_size": safe_page_size,
+            "total_items": total_items,
+            "total_pages": total_pages,
+            "has_next": safe_page < total_pages,
+            "has_prev": safe_page > 1,
+        },
+    }
+
+
 def search_cards(
     q=None,
     nation=None,

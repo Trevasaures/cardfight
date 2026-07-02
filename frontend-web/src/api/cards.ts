@@ -2,10 +2,12 @@ import { apiRequest } from "./client";
 import type {
   Card,
   CardImageAnalysisResult,
+  CardLibraryParams,
   CardPrinting,
   CardSearchParams,
   CreateCardPayload,
   CreateCardPrintingPayload,
+  PaginatedCardsResponse,
   UpdateCardPayload,
 } from "../types/api";
 
@@ -75,4 +77,10 @@ export function analyzeCardImage(file: File) {
     method: "POST",
     body: formData,
   });
+}
+
+export function getCardLibraryPage(params: CardLibraryParams = {}) {
+  return apiRequest<PaginatedCardsResponse>(
+    `/api/cards/library${toQueryString(params)}`,
+  );
 }
