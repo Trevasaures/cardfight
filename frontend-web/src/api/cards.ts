@@ -1,6 +1,7 @@
 import { apiRequest } from "./client";
 import type {
   Card,
+  CardFormOptions,
   CardImageAnalysisResult,
   CardLibraryParams,
   CardPrinting,
@@ -10,6 +11,10 @@ import type {
   PaginatedCardsResponse,
   UpdateCardPayload,
 } from "../types/api";
+
+export function getCardFormOptions() {
+  return apiRequest<CardFormOptions>("/api/cards/options");
+}
 
 function toQueryString(params: CardSearchParams = {}) {
   const searchParams = new URLSearchParams();

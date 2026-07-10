@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Plus, Trash2 } from "lucide-react";
 
 import type {
   Card,
@@ -183,6 +183,38 @@ export function DeckVersionContents({
   onQuantityChange,
   onRemoveCard,
 }: DeckVersionContentsProps) {
+  const rules = currentVersion?.deck_rules ?? null;
+  const selectedGrade = selectedCard?.grade ?? null;
+  const rideEntries = groupedCards.get("ride") ?? [];
+  const rideHasSelectedGrade = rideEntries.some(
+    (entry) => entry.card?.grade === selectedGrade,
+  );
+
+  let addRuleIssue: string | null = null;
+  if (
+    rules &&
+    selectedCard &&
+    (selectedGrade === null || selectedGrade < 0 || selectedGrade > 4)
+  ) {
+    addRuleIssue = "Deck cards must have a grade between 0 and 4.";
+  }
+
+  if (!addRuleIssue && rules && selectedCard && addZone === "main") {
+    if (rules.main_deck_count + addQuantity > rules.main_deck_limit) {
+      addRuleIssue = `Only ${rules.main_deck_limit - rules.main_deck_count} main-deck slots remain.`;
+    }
+  }
+
+  if (!addRuleIssue && rules && selectedCard && addZone === "ride") {
+    if (selectedGrade === null || selectedGrade < 0 || selectedGrade > 3) {
+      addRuleIssue = "The ride deck only accepts grade 0, 1, 2, or 3 cards.";
+    } else if (rideHasSelectedGrade) {
+      addRuleIssue = `The ride deck already has a grade ${selectedGrade} card.`;
+    } else if (rules.ride_deck_count >= rules.ride_deck_limit) {
+      addRuleIssue = "The ride deck already has four cards.";
+    }
+  }
+
   return (
     <section
       data-anime="motion-panel"
@@ -205,15 +237,84 @@ export function DeckVersionContents({
           </p>
         </div>
 
-        {currentVersion ? (
-          <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-right">
-            <p className="text-xs text-slate-500">Current total</p>
-            <p className="text-xl font-black text-slate-50">
-              {currentVersion.card_count}
-            </p>
+        {rules ? (
+          <div
+            className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black ${
+              rules.is_complete
+                ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-100"
+                : "border-amber-300/20 bg-amber-300/10 text-amber-100"
+            }`}
+          >
+            {rules.is_complete ? (
+              <CheckCircle2 className="h-4 w-4" />
+            ) : (
+              <AlertTriangle className="h-4 w-4" />
+            )}
+            {rules.is_complete ? "Deck complete" : "Deck needs work"}
           </div>
         ) : null}
       </div>
+
+      {rules ? (
+        <div className="mt-5 rounded-3xl border border-white/10 bg-black/20 p-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[
+              {
+                label: "Main deck",
+                value: rules.main_deck_count,
+                limit: rules.main_deck_limit,
+              },
+              {
+                label: "Ride deck",
+                value: rules.ride_deck_count,
+                limit: rules.ride_deck_limit,
+              },
+              {
+                label: "Core total",
+                value: rules.core_card_count,
+                limit: rules.required_total,
+              },
+            ].map((item) => {
+              const complete = item.value === item.limit;
+
+              return (
+                <div
+                  key={item.label}
+                  className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                      {item.label}
+                    </p>
+                    {complete ? (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-300" />
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-2xl font-black text-slate-50">
+                    {item.value}
+                    <span className="text-base text-slate-500">
+                      /{item.limit}
+                    </span>
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+
+          {!rules.is_complete && rules.issues.length ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {rules.issues.map((issue) => (
+                <span
+                  key={issue}
+                  className="rounded-full border border-amber-300/15 bg-amber-300/[0.07] px-3 py-1 text-xs font-bold text-amber-100/80"
+                >
+                  {issue}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="mt-5 rounded-3xl border border-white/10 bg-black/20 p-4">
         <div className="grid gap-3 lg:grid-cols-[1fr_6rem_10rem]">
@@ -236,8 +337,10 @@ export function DeckVersionContents({
           <input
             type="number"
             min={1}
+            max={addZone === "ride" ? 1 : undefined}
             value={addQuantity}
             onChange={(event) => onAddQuantityChange(Number(event.target.value))}
+            readOnly={addZone === "ride"}
             title="Quantity of this card to add to the selected zone."
             className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none focus:border-cyan-300/50"
           />
@@ -261,13 +364,19 @@ export function DeckVersionContents({
         <button
           type="button"
           onClick={onAddCardToVersion}
-          disabled={!currentVersion || !selectedCard || saving}
+          disabled={!currentVersion || !selectedCard || saving || Boolean(addRuleIssue)}
           className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
-          title="Add the selected card to the current deck version"
+          title={addRuleIssue ?? "Add the selected card to the current deck version"}
         >
           <Plus className="h-4 w-4" />
           Add selected card
         </button>
+
+        {addRuleIssue ? (
+          <p className="mt-2 text-center text-xs font-bold text-amber-200/80">
+            {addRuleIssue}
+          </p>
+        ) : null}
       </div>
 
       <div className="mt-5 max-h-[34rem] space-y-4 overflow-auto pr-1">
@@ -296,7 +405,11 @@ export function DeckVersionContents({
                   </div>
 
                   <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-bold text-slate-500">
-                    {zoneTotal} cards
+                    {zone.value === "main"
+                      ? `${zoneTotal}/50 cards`
+                      : zone.value === "ride"
+                        ? `${zoneTotal}/4 cards`
+                        : `${zoneTotal} cards`}
                   </span>
                 </div>
 
@@ -372,7 +485,14 @@ export function DeckVersionContents({
                                         entry.quantity + 1,
                                       )
                                     }
-                                    disabled={saving}
+                                    disabled={
+                                      saving ||
+                                      entry.zone === "ride" ||
+                                      (entry.zone === "main" &&
+                                        rules !== null &&
+                                        rules.main_deck_count >=
+                                          rules.main_deck_limit)
+                                    }
                                     className="h-8 w-8 rounded-xl border border-white/10 bg-white/[0.04] text-base font-black text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
                                     title="Increase quantity"
                                   >

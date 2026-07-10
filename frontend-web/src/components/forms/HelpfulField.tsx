@@ -59,6 +59,7 @@ type FormTextInputProps = {
   required?: boolean;
   type?: string;
   min?: number;
+  readOnly?: boolean;
 };
 
 export function FormTextInput({
@@ -70,6 +71,7 @@ export function FormTextInput({
   required = false,
   type = "text",
   min,
+  readOnly = false,
 }: FormTextInputProps) {
   const inputId = useId();
 
@@ -88,11 +90,66 @@ export function FormTextInput({
         min={min}
         value={value}
         required={required}
+        readOnly={readOnly}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         title={help}
-        className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-300/50"
+        className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-300/50 read-only:cursor-default read-only:text-slate-400"
       />
+    </div>
+  );
+}
+
+type FormSelectOption = {
+  value: string;
+  label: string;
+};
+
+type FormSelectProps = {
+  label: string;
+  help: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: FormSelectOption[];
+  placeholder: string;
+  required?: boolean;
+};
+
+export function FormSelect({
+  label,
+  help,
+  value,
+  onChange,
+  options,
+  placeholder,
+  required = false,
+}: FormSelectProps) {
+  const selectId = useId();
+
+  return (
+    <div>
+      <FieldLabel
+        htmlFor={selectId}
+        label={label}
+        help={help}
+        required={required}
+      />
+
+      <select
+        id={selectId}
+        value={value}
+        required={required}
+        onChange={(event) => onChange(event.target.value)}
+        title={help}
+        className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none focus:border-cyan-300/50"
+      >
+        <option value="">{placeholder}</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

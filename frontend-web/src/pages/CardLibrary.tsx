@@ -4,6 +4,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 
 import {
   addCardPrinting,
+  getCardFormOptions,
   getCardLibraryPage,
   updateCard,
   updateCardPrinting,
@@ -11,10 +12,12 @@ import {
 import { ManualCardForm } from "../components/deck-builder/ManualCardForm";
 import {
   EMPTY_MANUAL_CARD_FORM,
+  DEFAULT_CARD_FORM_OPTIONS,
+  manualCardFormIsComplete,
   type ManualCardFormState,
 } from "../components/deck-builder/manualCardFormState";
 import { PageHeader } from "../components/layout/PageHeader";
-import type { Card } from "../types/api";
+import type { Card, CardFormOptions } from "../types/api";
 
 const NATION_OPTIONS = [
   "",
@@ -66,6 +69,7 @@ function cardToManualForm(card: Card): ManualCardFormState {
     grade: card.grade !== null ? String(card.grade) : "",
     nation: card.nation ?? "",
     card_type: card.card_type,
+    set_selection: printing?.set_code ?? "",
     set_code: printing?.set_code ?? "",
     set_name: printing?.set_name ?? "",
     card_number: printing?.card_number ?? "",
@@ -85,6 +89,9 @@ export function CardLibrary() {
   const [editingCard, setEditingCard] = useState<Card | null>(null);
   const [editForm, setEditForm] = useState<ManualCardFormState>(
     EMPTY_MANUAL_CARD_FORM,
+  );
+  const [cardFormOptions, setCardFormOptions] = useState<CardFormOptions>(
+    DEFAULT_CARD_FORM_OPTIONS,
   );
 
   const [totalItems, setTotalItems] = useState(0);
@@ -107,8 +114,18 @@ export function CardLibrary() {
   }, [query, nation, grade, cardType]);
 
   const editFormIsComplete = useMemo(() => {
-    return Object.values(editForm).every((value) => value.trim().length > 0);
+    return manualCardFormIsComplete(editForm);
   }, [editForm]);
+
+  useEffect(() => {
+    getCardFormOptions()
+      .then(setCardFormOptions)
+      .catch((err) => {
+        setError(
+          err instanceof Error ? err.message : "Failed to load card form options",
+        );
+      });
+  }, []);
 
   const loadCards = useCallback(async () => {
     setLoading(true);
@@ -352,6 +369,7 @@ export function CardLibrary() {
               onCancelEdit={cancelEditingCard}
               disabled={savingEdit}
               canSubmit={editFormIsComplete}
+              options={cardFormOptions}
             />
           </div>
         ) : null}

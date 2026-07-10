@@ -5,6 +5,7 @@ from backend.services.cards import (
     DuplicateCardPrintingError,
     add_card_printing,
     create_card,
+    get_card_form_options,
     get_card_or_raise,
     list_cards_page,
     search_cards,
@@ -20,6 +21,11 @@ bp_cards = Blueprint("cards", __name__, url_prefix="/api/cards")
 
 def _json_error(message, status_code):
     return jsonify({"error": message}), status_code
+
+
+@bp_cards.get("/options")
+def card_form_options_route():
+    return jsonify(get_card_form_options())
 
 
 @bp_cards.get("")

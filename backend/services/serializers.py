@@ -9,6 +9,68 @@ from backend.database import db
 from backend.models import CardPrinting, Deck, DeckCard
 
 
+def _deck_rule_summary(cards, totals_by_zone):
+    main_count = totals_by_zone.get("main", 0)
+    ride_count = totals_by_zone.get("ride", 0)
+    core_count = main_count + ride_count
+    ride_grades = []
+    ride_nations = []
+
+    for entry in cards:
+        if entry["zone"] != "ride":
+            continue
+
+        grade = entry["card"]["grade"] if entry.get("card") else None
+        ride_grades.extend([grade] * entry["quantity"])
+
+        nation = entry["card"].get("nation") if entry.get("card") else None
+        for declared_nation in (nation or "").split(" / "):
+            cleaned_nation = declared_nation.strip()
+            if cleaned_nation and cleaned_nation not in ride_nations:
+                ride_nations.append(cleaned_nation)
+
+    issues = []
+
+    if main_count < 50:
+        issues.append(f"Add {50 - main_count} cards to the main deck")
+    elif main_count > 50:
+        issues.append(f"Remove {main_count - 50} cards from the main deck")
+
+    if ride_count < 4:
+        issues.append(f"Add {4 - ride_count} cards to the ride deck")
+    elif ride_count > 4:
+        issues.append(f"Remove {ride_count - 4} cards from the ride deck")
+
+    missing_ride_grades = sorted({0, 1, 2, 3}.difference(ride_grades))
+    if missing_ride_grades:
+        grade_labels = ", ".join(str(grade) for grade in missing_ride_grades)
+        issues.append(f"Ride deck is missing grade {grade_labels}")
+
+    invalid_ride_grades = sorted(
+        {grade for grade in ride_grades if grade not in {0, 1, 2, 3}},
+        key=lambda grade: (grade is None, grade if grade is not None else 0),
+    )
+    if invalid_ride_grades:
+        issues.append("Ride deck contains a card outside grades 0 through 3")
+
+    return {
+        "required_total": 54,
+        "main_deck_limit": 50,
+        "ride_deck_limit": 4,
+        "core_card_count": core_count,
+        "main_deck_count": main_count,
+        "ride_deck_count": ride_count,
+        "ride_grades": ride_grades,
+        "ride_nations": ride_nations,
+        "is_complete": (
+            main_count == 50
+            and ride_count == 4
+            and set(ride_grades) == {0, 1, 2, 3}
+        ),
+        "issues": issues,
+    }
+
+
 def serialize_deck(deck):
     if not deck:
         return None
@@ -203,6 +265,7 @@ def serialize_deck_version(version, include_cards=True):
         "card_count": sum(entry["quantity"] for entry in cards),
         "unique_card_count": len(cards),
         "totals_by_zone": totals_by_zone,
+        "deck_rules": _deck_rule_summary(cards, totals_by_zone),
         "created_at": version.created_at.isoformat() if version.created_at else None,
         "updated_at": version.updated_at.isoformat() if version.updated_at else None,
     }

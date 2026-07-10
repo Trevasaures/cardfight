@@ -5,6 +5,7 @@ import {
   addCardPrinting,
   analyzeCardImage,
   createCard,
+  getCardFormOptions,
   getCard,
   searchCards,
   updateCard,
@@ -17,15 +18,21 @@ import {
   getDeckVersions,
   removeDeckCard,
   updateDeckCard,
+  updateDeckVersion,
 } from "../api/deckBuilder";
 import { getDecks } from "../api/decks";
 import { CardCatalogPanel } from "../components/deck-builder/CardCatalogPanel";
 import { DeckBuilderSetup } from "../components/deck-builder/DeckBuilderSetup";
 import { DeckVersionContents } from "../components/deck-builder/DeckVersionContents";
-import { EMPTY_MANUAL_CARD_FORM } from "../components/deck-builder/manualCardFormState";
+import {
+  DEFAULT_CARD_FORM_OPTIONS,
+  EMPTY_MANUAL_CARD_FORM,
+  manualCardFormIsComplete,
+} from "../components/deck-builder/manualCardFormState";
 import { PageHeader } from "../components/layout/PageHeader";
 import type {
   Card,
+  CardFormOptions,
   CardImageAnalysisResult,
   CreateCardPayload,
   Deck,
@@ -57,6 +64,9 @@ export function DeckBuilder() {
 
   const [newVersionName, setNewVersionName] = useState("");
   const [newVersionNotes, setNewVersionNotes] = useState("");
+  const [newVersionSourceId, setNewVersionSourceId] = useState("");
+  const [editVersionName, setEditVersionName] = useState("");
+  const [editVersionNotes, setEditVersionNotes] = useState("");
 
   const [cardSearch, setCardSearch] = useState("");
   const [cardResults, setCardResults] = useState<Card[]>([]);
@@ -70,6 +80,9 @@ export function DeckBuilder() {
   const [addZone, setAddZone] = useState<DeckCardZone>("main");
 
   const [newCard, setNewCard] = useState(EMPTY_MANUAL_CARD_FORM);
+  const [cardFormOptions, setCardFormOptions] = useState<CardFormOptions>(
+    DEFAULT_CARD_FORM_OPTIONS,
+  );
 
   const [loadingDecks, setLoadingDecks] = useState(true);
   const [loadingVersions, setLoadingVersions] = useState(false);
@@ -88,8 +101,17 @@ export function DeckBuilder() {
   );
 
   const manualCardIsComplete = useMemo(() => {
-    return Object.values(newCard).every((value) => value.trim().length > 0);
+    return manualCardFormIsComplete(newCard);
   }, [newCard]);
+
+  const versionEditIsDirty = useMemo(() => {
+    if (!currentVersion) return false;
+
+    return (
+      editVersionName.trim() !== currentVersion.version_name ||
+      editVersionNotes.trim() !== currentVersion.notes
+    );
+  }, [currentVersion, editVersionName, editVersionNotes]);
 
   const groupedCards = useMemo(() => {
     const groups = new Map<DeckCardZone, DeckCardEntry[]>();
@@ -215,6 +237,16 @@ export function DeckBuilder() {
   }, [loadDecks]);
 
   useEffect(() => {
+    getCardFormOptions()
+      .then(setCardFormOptions)
+      .catch((err) => {
+        setError(
+          err instanceof Error ? err.message : "Failed to load card form options",
+        );
+      });
+  }, []);
+
+  useEffect(() => {
     if (!selectedDeckId) {
       setVersions([]);
       setCurrentVersion(null);
@@ -222,6 +254,7 @@ export function DeckBuilder() {
       return;
     }
 
+    setNewVersionSourceId("");
     void loadDeckVersions(Number(selectedDeckId));
   }, [selectedDeckId, loadDeckVersions]);
 
@@ -233,6 +266,11 @@ export function DeckBuilder() {
 
     void loadCurrentVersion(Number(selectedVersionId));
   }, [selectedVersionId, loadCurrentVersion]);
+
+  useEffect(() => {
+    setEditVersionName(currentVersion?.version_name ?? "");
+    setEditVersionNotes(currentVersion?.notes ?? "");
+  }, [currentVersion?.id, currentVersion?.notes, currentVersion?.version_name]);
 
   function handleClearCardSearch() {
     setCardSearch("");
@@ -257,6 +295,7 @@ export function DeckBuilder() {
       grade: selectedCard.grade !== null ? String(selectedCard.grade) : "",
       nation: selectedCard.nation ?? "",
       card_type: selectedCard.card_type,
+      set_selection: printing?.set_code ?? "",
       set_code: printing?.set_code ?? "",
       set_name: printing?.set_name ?? "",
       card_number: printing?.card_number ?? "",
@@ -281,6 +320,7 @@ export function DeckBuilder() {
       grade: result.fields.grade,
       nation: result.fields.nation,
       card_type: result.fields.card_type || "Normal Unit",
+      set_selection: result.fields.set_code,
       set_code: result.fields.set_code,
       set_name: result.fields.set_name,
       card_number: result.fields.card_number,
@@ -323,15 +363,51 @@ export function DeckBuilder() {
         version_name: newVersionName || undefined,
         notes: newVersionNotes,
         is_active: true,
+        source_version_id: newVersionSourceId
+          ? Number(newVersionSourceId)
+          : undefined,
       });
 
       setNewVersionName("");
       setNewVersionNotes("");
+      setNewVersionSourceId("");
       setCurrentVersion(version);
       setSelectedVersionId(String(version.id));
       await loadDeckVersions(selectedDeck.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create deck version");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleAddZoneChange(zone: DeckCardZone) {
+    setAddZone(zone);
+    setAddQuantity((current) => {
+      if (zone === "ride") return 1;
+      if (addZone === "ride" && current === 1) return 4;
+      return current;
+    });
+  }
+
+  async function handleSaveVersionDetails() {
+    if (!currentVersion || !editVersionName.trim()) return;
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      const updated = await updateDeckVersion(currentVersion.id, {
+        version_name: editVersionName.trim(),
+        notes: editVersionNotes.trim(),
+      });
+
+      setCurrentVersion(updated);
+      await loadDeckVersions(updated.deck_id);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to update deck version",
+      );
     } finally {
       setSaving(false);
     }
@@ -493,6 +569,10 @@ export function DeckBuilder() {
           selectedVersionId={selectedVersionId}
           newVersionName={newVersionName}
           newVersionNotes={newVersionNotes}
+          newVersionSourceId={newVersionSourceId}
+          editVersionName={editVersionName}
+          editVersionNotes={editVersionNotes}
+          versionEditIsDirty={versionEditIsDirty}
           loadingDecks={loadingDecks}
           loadingVersions={loadingVersions}
           saving={saving}
@@ -500,11 +580,15 @@ export function DeckBuilder() {
           onSelectedVersionIdChange={setSelectedVersionId}
           onNewVersionNameChange={setNewVersionName}
           onNewVersionNotesChange={setNewVersionNotes}
+          onNewVersionSourceIdChange={setNewVersionSourceId}
+          onEditVersionNameChange={setEditVersionName}
+          onEditVersionNotesChange={setEditVersionNotes}
           onRefreshDecks={loadDecks}
           onRefreshVersions={() =>
             selectedDeck ? void loadDeckVersions(selectedDeck.id) : undefined
           }
           onCreateVersion={handleCreateVersion}
+          onSaveVersionDetails={handleSaveVersionDetails}
         />
 
         <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr] xl:items-start">
@@ -520,6 +604,7 @@ export function DeckBuilder() {
             loadingCards={loadingCards}
             saving={saving}
             manualCardIsComplete={manualCardIsComplete}
+            cardFormOptions={cardFormOptions}
             onCardSearchChange={setCardSearch}
             onSearch={loadCardResults}
             onClearCardSearch={handleClearCardSearch}
@@ -543,7 +628,7 @@ export function DeckBuilder() {
             selectedCard={selectedCard}
             onSelectedCardIdChange={setSelectedCardId}
             onAddQuantityChange={setAddQuantity}
-            onAddZoneChange={setAddZone}
+            onAddZoneChange={handleAddZoneChange}
             onAddCardToVersion={handleAddCardToVersion}
             onQuantityChange={handleQuantityChange}
             onRemoveCard={handleRemoveCard}

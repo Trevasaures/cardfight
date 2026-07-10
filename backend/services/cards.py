@@ -5,10 +5,33 @@ These helpers handle card/card-printing creation, search, updates, and duplicate
 protection. Routes should stay thin and call into this service layer.
 """
 
+from itertools import combinations
+
 from sqlalchemy import or_
 
 from backend.database import db
-from backend.models import Card, CardPrinting
+from backend.models import Card, CardPrinting, DeckCard
+from backend.services.card_set_names import SET_CODE_NAMES, lookup_set_name
+
+
+CARD_NATION_OPTIONS = [
+    "Dragon Empire",
+    "Dark States",
+    "Brandt Gate",
+    "Keter Sanctuary",
+    "Stoicheia",
+    "Lyrical Monasterio",
+]
+
+CARD_TYPE_OPTIONS = [
+    "Normal Unit",
+    "Trigger Unit",
+    "Normal Order",
+    "Blitz Order",
+    "Set Order",
+]
+
+CARD_GRADE_OPTIONS = [0, 1, 2, 3, 4]
 
 
 CARD_FIELDS = {
@@ -70,6 +93,43 @@ def _int_or_none(value, field_name):
         raise ValueError(f"{field_name} must be a number") from exc
 
 
+def _grade_or_none(value):
+    grade = _int_or_none(value, "grade")
+
+    if grade is not None and grade not in CARD_GRADE_OPTIONS:
+        raise ValueError("grade must be between 0 and 4")
+
+    return grade
+
+
+def _validate_grade_change_for_ride_decks(card, next_grade):
+    ride_entries = card.deck_entries.filter(DeckCard.zone == "ride").all()
+    if not ride_entries:
+        return
+
+    if next_grade not in {0, 1, 2, 3}:
+        raise ValueError(
+            "A card used in a ride deck must remain grade 0, 1, 2, or 3"
+        )
+
+    for ride_entry in ride_entries:
+        duplicate_grade = (
+            DeckCard.query.join(Card)
+            .filter(
+                DeckCard.deck_version_id == ride_entry.deck_version_id,
+                DeckCard.zone == "ride",
+                DeckCard.card_id != card.id,
+                Card.grade == next_grade,
+            )
+            .first()
+        )
+
+        if duplicate_grade:
+            raise ValueError(
+                f"This change would duplicate grade {next_grade} in a ride deck"
+            )
+
+
 def _required_string(payload, field_name):
     value = _clean_string(payload.get(field_name))
 
@@ -82,7 +142,7 @@ def _required_string(payload, field_name):
 def _card_payload(payload):
     return {
         "name": _required_string(payload, "name"),
-        "grade": _int_or_none(payload.get("grade"), "grade"),
+        "grade": _grade_or_none(payload.get("grade")),
         "nation": _clean_string(payload.get("nation")),
         "card_type": _required_string(payload, "card_type"),
         "clan": _clean_string(payload.get("clan")),
@@ -99,15 +159,55 @@ def _card_payload(payload):
 
 
 def _printing_payload(payload):
+    set_code = _normalize_printing_value(payload.get("set_code")) or None
+
     return {
-        "set_code": _normalize_printing_value(payload.get("set_code")) or None,
-        "set_name": _clean_string(payload.get("set_name")),
+        "set_code": set_code,
+        "set_name": lookup_set_name(set_code) or _clean_string(payload.get("set_name")),
         "card_number": _normalize_printing_value(payload.get("card_number")) or None,
         "rarity": _normalize_printing_value(payload.get("rarity")) or None,
         "image_url": _clean_string(payload.get("image_url")),
         "product_url": _clean_string(payload.get("product_url")),
         "source": _clean_string(payload.get("source")) or "manual",
         "external_id": _clean_string(payload.get("external_id")),
+    }
+
+
+def get_card_form_options():
+    """Return shared choices for manual card creation and editing."""
+    dual_nations = [
+        f"{primary} / {secondary}"
+        for primary, secondary in combinations(CARD_NATION_OPTIONS, 2)
+    ]
+
+    stored_nations = {
+        cleaned
+        for (value,) in db.session.query(Card.nation).distinct().all()
+        if (cleaned := _clean_string(value)) and cleaned.lower() != "none"
+    }
+    stored_card_types = {
+        cleaned
+        for (value,) in db.session.query(Card.card_type).distinct().all()
+        if (cleaned := _clean_string(value))
+    }
+    stored_grades = {
+        value
+        for (value,) in db.session.query(Card.grade).distinct().all()
+        if value is not None
+    }
+
+    standard_nations = CARD_NATION_OPTIONS + dual_nations
+    extra_nations = sorted(stored_nations.difference(standard_nations))
+    extra_card_types = sorted(stored_card_types.difference(CARD_TYPE_OPTIONS))
+
+    return {
+        "grades": sorted(set(CARD_GRADE_OPTIONS).union(stored_grades)),
+        "nations": standard_nations + extra_nations,
+        "card_types": CARD_TYPE_OPTIONS + extra_card_types,
+        "sets": [
+            {"code": code, "name": name}
+            for code, name in sorted(SET_CODE_NAMES.items())
+        ],
     }
 
 
@@ -369,7 +469,9 @@ def update_card(card_id, payload):
         if field_name not in payload:
             continue
 
-        if field_name in {"grade", "power", "shield", "critical"}:
+        if field_name == "grade":
+            next_values[field_name] = _grade_or_none(payload.get(field_name))
+        elif field_name in {"power", "shield", "critical"}:
             next_values[field_name] = _int_or_none(payload.get(field_name), field_name)
         elif field_name in {"skill_text", "flavor_text"}:
             next_values[field_name] = _clean_string(payload.get(field_name)) or ""
@@ -379,6 +481,9 @@ def update_card(card_id, payload):
             next_values[field_name] = _clean_string(payload.get(field_name))
 
     next_name = next_values.get("name", card.name)
+
+    if "grade" in next_values:
+        _validate_grade_change_for_ride_decks(card, next_values["grade"])
 
     printings = CardPrinting.query.filter_by(card_id=card.id).all()
 
@@ -448,6 +553,10 @@ def update_card_printing(printing_id, payload):
             next_values[field_name] = _clean_string(payload.get(field_name)) or "manual"
         else:
             next_values[field_name] = _clean_string(payload.get(field_name))
+
+    mapped_set_name = lookup_set_name(next_values.get("set_code"))
+    if mapped_set_name:
+        next_values["set_name"] = mapped_set_name
 
     _raise_if_duplicate_printing(
         name=card.name,
