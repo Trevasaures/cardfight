@@ -1,9 +1,25 @@
-import { Layers3, Plus, RefreshCcw } from "lucide-react";
+import { Copy, Layers3, Plus, RefreshCcw, Save } from "lucide-react";
 
 import { FormatBadge } from "../badges/FormatBadge";
-import { FormTextInput } from "../forms/HelpfulField";
+import { FormSelect, FormTextInput } from "../forms/HelpfulField";
 import type { Deck, DeckVersion, DeckVersionSummary } from "../../types/api";
-import { formatDateTime } from "../../utils/format";
+import { formatDateTime, formatPercent } from "../../utils/format";
+
+const NATION_ICON_FILES: Record<string, string> = {
+  "Dragon Empire": "dragon_empire.png",
+  "Dark States": "dark_states.png",
+  "Brandt Gate": "brandt_gate.png",
+  "Keter Sanctuary": "keter_sanctuary.png",
+  Stoicheia: "stoicheia.png",
+  "Lyrical Monasterio": "lyrical_monasterio.png",
+};
+
+function splitDeclaredNations(value: string | null | undefined) {
+  return (value ?? "")
+    .split(" / ")
+    .map((nation) => nation.trim())
+    .filter(Boolean);
+}
 
 type DeckBuilderSetupProps = {
   decks: Deck[];
@@ -14,6 +30,10 @@ type DeckBuilderSetupProps = {
   selectedVersionId: string;
   newVersionName: string;
   newVersionNotes: string;
+  newVersionSourceId: string;
+  editVersionName: string;
+  editVersionNotes: string;
+  versionEditIsDirty: boolean;
   loadingDecks: boolean;
   loadingVersions: boolean;
   saving: boolean;
@@ -21,9 +41,13 @@ type DeckBuilderSetupProps = {
   onSelectedVersionIdChange: (value: string) => void;
   onNewVersionNameChange: (value: string) => void;
   onNewVersionNotesChange: (value: string) => void;
+  onNewVersionSourceIdChange: (value: string) => void;
+  onEditVersionNameChange: (value: string) => void;
+  onEditVersionNotesChange: (value: string) => void;
   onRefreshDecks: () => void;
   onRefreshVersions: () => void;
   onCreateVersion: () => void;
+  onSaveVersionDetails: () => void;
 };
 
 export function DeckBuilderSetup({
@@ -35,6 +59,10 @@ export function DeckBuilderSetup({
   selectedVersionId,
   newVersionName,
   newVersionNotes,
+  newVersionSourceId,
+  editVersionName,
+  editVersionNotes,
+  versionEditIsDirty,
   loadingDecks,
   loadingVersions,
   saving,
@@ -42,10 +70,23 @@ export function DeckBuilderSetup({
   onSelectedVersionIdChange,
   onNewVersionNameChange,
   onNewVersionNotesChange,
+  onNewVersionSourceIdChange,
+  onEditVersionNameChange,
+  onEditVersionNotesChange,
   onRefreshDecks,
   onRefreshVersions,
   onCreateVersion,
+  onSaveVersionDetails,
 }: DeckBuilderSetupProps) {
+  const rideLineNations = currentVersion?.deck_rules.ride_nations.length
+    ? currentVersion.deck_rules.ride_nations
+    : splitDeclaredNations(selectedDeck?.nation);
+  const nationIcons = rideLineNations.flatMap((nation) => {
+    const fileName = NATION_ICON_FILES[nation];
+    return fileName ? [{ nation, path: `/nations/${fileName}` }] : [];
+  });
+  const nationLabel = rideLineNations.join(" / ") || "No ride line nation";
+
   return (
     <section
       data-anime="motion-panel"
@@ -56,13 +97,9 @@ export function DeckBuilderSetup({
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-200/80">
             Step 1
           </p>
-          <h3 className="mt-2 text-2xl font-black text-slate-50">
+          <h3 className="mt-1 text-2xl font-black text-slate-50">
             Choose a deck and version
           </h3>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-            Pick the deck you want to build, then create or select the specific
-            version of that deck list you are editing.
-          </p>
         </div>
 
         <button
@@ -76,53 +113,91 @@ export function DeckBuilderSetup({
         </button>
       </div>
 
-      <div className="mt-6 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-        <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
-            Deck
-          </p>
-
-          <select
-            value={selectedDeckId}
-            onChange={(event) => onSelectedDeckIdChange(event.target.value)}
-            title="Choose which saved deck you want to build or version."
-            className="mt-3 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50"
-          >
-            {loadingDecks ? <option value="">Loading decks...</option> : null}
-            {!loadingDecks && decks.length === 0 ? (
-              <option value="">No decks found</option>
-            ) : null}
-            {decks.map((deck) => (
-              <option key={deck.id} value={deck.id}>
-                {deck.name}
-              </option>
-            ))}
-          </select>
+      <div className="mt-4 rounded-3xl border border-white/10 bg-black/20 p-4">
+        <div className="grid gap-4 lg:grid-cols-[minmax(16rem,0.55fr)_minmax(0,1.45fr)] lg:items-stretch">
+          <div className="flex">
+            <select
+              value={selectedDeckId}
+              onChange={(event) => onSelectedDeckIdChange(event.target.value)}
+              title="Choose which saved deck you want to build or version."
+              className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50"
+            >
+              {loadingDecks ? <option value="">Loading decks...</option> : null}
+              {!loadingDecks && decks.length === 0 ? (
+                <option value="">No decks found</option>
+              ) : null}
+              {decks.map((deck) => (
+                <option key={deck.id} value={deck.id}>
+                  {deck.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {selectedDeck ? (
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h4 className="truncate text-lg font-black text-slate-50">
-                    {selectedDeck.name}
-                  </h4>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {selectedDeck.nation ?? "No nation selected"}
+            <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+              <div className="flex flex-wrap items-center gap-4 xl:flex-nowrap">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-black/20">
+                  {nationIcons.length ? (
+                    <div className="flex -space-x-3">
+                      {nationIcons.slice(0, 2).map((icon) => (
+                        <img
+                          key={icon.path}
+                          src={icon.path}
+                          alt={icon.nation}
+                          className="h-11 w-11 rounded-full bg-slate-950/80 object-contain ring-2 ring-slate-900"
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-xl font-black text-slate-600">?</span>
+                  )}
+                </div>
+
+                <div className="min-w-[10rem] flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="truncate text-lg font-black text-slate-50">
+                      {selectedDeck.name}
+                    </h4>
+                    <FormatBadge type={selectedDeck.type} />
+                  </div>
+                  <p className="mt-1 truncate text-sm text-slate-500">
+                    {nationLabel}
                   </p>
                 </div>
 
-                <FormatBadge type={selectedDeck.type} />
+                <div className="grid min-w-[18rem] flex-1 grid-cols-3 overflow-hidden rounded-xl border border-white/10 bg-black/15">
+                  <div className="px-3 py-2.5">
+                    <p className="text-[0.65rem] font-bold uppercase tracking-[0.12em] text-slate-600">
+                      Record
+                    </p>
+                    <p className="mt-1 font-black text-slate-200">
+                      {selectedDeck.wins}-{selectedDeck.losses}
+                    </p>
+                  </div>
+                  <div className="border-x border-white/10 px-3 py-2.5">
+                    <p className="text-[0.65rem] font-bold uppercase tracking-[0.12em] text-slate-600">
+                      Win rate
+                    </p>
+                    <p className="mt-1 font-black text-slate-200">
+                      {formatPercent(selectedDeck.win_pct)}
+                    </p>
+                  </div>
+                  <div className="px-3 py-2.5">
+                    <p className="text-[0.65rem] font-bold uppercase tracking-[0.12em] text-slate-600">
+                      Games
+                    </p>
+                    <p className="mt-1 font-black text-slate-200">
+                      {selectedDeck.decided_games}
+                    </p>
+                  </div>
+                </div>
               </div>
-
-              <p className="mt-3 text-sm text-slate-400">
-                {selectedDeck.wins}-{selectedDeck.losses} record ·{" "}
-                {selectedDeck.decided_games} decided games
-              </p>
             </div>
           ) : null}
         </div>
 
-        <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
+        <div className="mt-5 border-t border-white/10 pt-5">
           <div className="flex items-center gap-3">
             <Layers3 className="h-5 w-5 text-cyan-200" />
             <div>
@@ -166,67 +241,139 @@ export function DeckBuilderSetup({
             </button>
           </div>
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
-            <FormTextInput
-              label="Version name"
-              help="A label for this deck list version, such as Version 1, Post Set 5, or Testing Build."
-              value={newVersionName}
-              onChange={onNewVersionNameChange}
-              placeholder="Version name"
-            />
+          <div className="mt-5 border-t border-white/10 pt-5">
+            <div className="flex items-center gap-2">
+              <Copy className="h-4 w-4 text-cyan-200" />
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                Create a new version
+              </p>
+            </div>
 
-            <FormTextInput
-              label="Version notes"
-              help="Optional notes explaining what changed in this version or what you are testing."
-              value={newVersionNotes}
-              onChange={onNewVersionNotesChange}
-              placeholder="Version notes"
-            />
+            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+              <FormTextInput
+                label="Version name"
+                help="A label for this deck list version, such as Version 1, Post Set 5, or Testing Build."
+                value={newVersionName}
+                onChange={onNewVersionNameChange}
+                placeholder="Version name"
+              />
 
-            <button
-              type="button"
-              onClick={onCreateVersion}
-              disabled={!selectedDeck || saving}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Create a new active deck version for the selected deck"
-            >
-              <Plus className="h-4 w-4" />
-              Create
-            </button>
+              <FormTextInput
+                label="Version notes"
+                help="Optional notes explaining what changed in this version or what you are testing."
+                value={newVersionNotes}
+                onChange={onNewVersionNotesChange}
+                placeholder="Version notes"
+              />
+
+              <FormSelect
+                label="Starting deck list"
+                help="Start empty or copy every card, quantity, printing, zone, and sort order from an older version of this deck."
+                value={newVersionSourceId}
+                onChange={onNewVersionSourceIdChange}
+                placeholder="Start with an empty version"
+                options={versions.map((version) => ({
+                  value: String(version.id),
+                  label: `Copy ${version.version_name}`,
+                }))}
+              />
+
+              <button
+                type="button"
+                onClick={onCreateVersion}
+                disabled={!selectedDeck || saving}
+                className="inline-flex items-center justify-center gap-2 self-end rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+                title={
+                  newVersionSourceId
+                    ? "Create an active version by copying the selected deck list"
+                    : "Create a new empty active deck version"
+                }
+              >
+                <Plus className="h-4 w-4" />
+                {newVersionSourceId
+                  ? "Create from copy"
+                  : "Create empty version"}
+              </button>
+            </div>
           </div>
 
           {currentVersion ? (
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              <div
-                data-builder-anime="stat"
-                className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"
-              >
-                <p className="text-xs text-slate-500">Total cards</p>
-                <p className="mt-1 text-2xl font-black text-slate-50">
-                  {currentVersion.card_count}
-                </p>
+            <>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div
+                  data-builder-anime="stat"
+                  className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"
+                >
+                  <p className="text-xs text-slate-500">Core deck</p>
+                  <p className="mt-1 text-2xl font-black text-slate-50">
+                    {currentVersion.deck_rules.core_card_count}
+                    <span className="text-base text-slate-500">/54</span>
+                  </p>
+                </div>
+
+                <div
+                  data-builder-anime="stat"
+                  className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"
+                >
+                  <p className="text-xs text-slate-500">Unique cards</p>
+                  <p className="mt-1 text-2xl font-black text-slate-50">
+                    {currentVersion.unique_card_count}
+                  </p>
+                </div>
+
+                <div
+                  data-builder-anime="stat"
+                  className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"
+                >
+                  <p className="text-xs text-slate-500">Updated</p>
+                  <p className="mt-1 truncate text-sm font-bold text-slate-200">
+                    {formatDateTime(currentVersion.updated_at)}
+                  </p>
+                </div>
               </div>
 
-              <div
-                data-builder-anime="stat"
-                className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"
-              >
-                <p className="text-xs text-slate-500">Unique cards</p>
-                <p className="mt-1 text-2xl font-black text-slate-50">
-                  {currentVersion.unique_card_count}
+              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                  Edit selected version
                 </p>
-              </div>
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  Rename this version or update its notes, then save the changes
+                  explicitly.
+                </p>
 
-              <div
-                data-builder-anime="stat"
-                className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"
-              >
-                <p className="text-xs text-slate-500">Updated</p>
-                <p className="mt-1 truncate text-sm font-bold text-slate-200">
-                  {formatDateTime(currentVersion.updated_at)}
-                </p>
+                <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+                  <FormTextInput
+                    label="Version name"
+                    help="The saved label shown anywhere this deck version is selected."
+                    value={editVersionName}
+                    onChange={onEditVersionNameChange}
+                    placeholder="Version name"
+                    required
+                  />
+
+                  <FormTextInput
+                    label="Version notes"
+                    help="Optional notes describing this deck list or the changes being tested."
+                    value={editVersionNotes}
+                    onChange={onEditVersionNotesChange}
+                    placeholder="Version notes"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={onSaveVersionDetails}
+                    disabled={
+                      saving || !versionEditIsDirty || !editVersionName.trim()
+                    }
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Save the selected version name and notes"
+                  >
+                    <Save className="h-4 w-4" />
+                    Save changes
+                  </button>
+                </div>
               </div>
-            </div>
+            </>
           ) : null}
         </div>
       </div>

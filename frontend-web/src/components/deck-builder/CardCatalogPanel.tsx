@@ -3,7 +3,11 @@ import { Pencil, Search, X } from "lucide-react";
 import { CardImageImportAssistant } from "./CardImageImportAssistant";
 import { ManualCardForm } from "./ManualCardForm";
 import type { ManualCardFormState } from "./manualCardFormState";
-import type { Card, CardImageAnalysisResult } from "../../types/api";
+import type {
+  Card,
+  CardFormOptions,
+  CardImageAnalysisResult,
+} from "../../types/api";
 
 type CardFormMode = "create" | "edit";
 
@@ -19,6 +23,7 @@ type CardCatalogPanelProps = {
   loadingCards: boolean;
   saving: boolean;
   manualCardIsComplete: boolean;
+  cardFormOptions: CardFormOptions;
   onCardSearchChange: (value: string) => void;
   onSearch: () => void;
   onClearCardSearch: () => void;
@@ -63,6 +68,7 @@ export function CardCatalogPanel({
   loadingCards,
   saving,
   manualCardIsComplete,
+  cardFormOptions,
   onCardSearchChange,
   onSearch,
   onClearCardSearch,
@@ -211,6 +217,7 @@ export function CardCatalogPanel({
           onCancelEdit={onCancelCardEdit}
           disabled={saving}
           canSubmit={manualCardIsComplete}
+          options={cardFormOptions}
         />
       </details>
     </section>

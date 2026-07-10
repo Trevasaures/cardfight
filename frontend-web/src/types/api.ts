@@ -252,6 +252,18 @@ export type DeckVersion = {
   card_count: number;
   unique_card_count: number;
   totals_by_zone: Partial<Record<DeckCardZone, number>>;
+  deck_rules: {
+    required_total: number;
+    main_deck_limit: number;
+    ride_deck_limit: number;
+    core_card_count: number;
+    main_deck_count: number;
+    ride_deck_count: number;
+    ride_grades: Array<number | null>;
+    ride_nations: string[];
+    is_complete: boolean;
+    issues: string[];
+  };
   created_at: string | null;
   updated_at: string | null;
 };
@@ -260,6 +272,7 @@ export type CreateDeckVersionPayload = {
   version_name?: string;
   notes?: string;
   is_active?: boolean;
+  source_version_id?: number;
 };
 
 export type UpdateDeckVersionPayload = Partial<CreateDeckVersionPayload>;
@@ -318,4 +331,14 @@ export type PaginatedCardsResponse = {
 export type CardLibraryParams = CardSearchParams & {
   page?: number;
   page_size?: number;
+};
+
+export type CardFormOptions = {
+  grades: number[];
+  nations: string[];
+  card_types: string[];
+  sets: {
+    code: string;
+    name: string;
+  }[];
 };
