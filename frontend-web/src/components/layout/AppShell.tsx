@@ -7,22 +7,42 @@ import {
   Hammer,
   History,
   Home,
+  LibraryBig,
+  Sparkles,
   Swords,
   Trophy,
-  LibraryBig,
 } from "lucide-react";
 
 import { useRoutePageReveal } from "../../animations/useRoutePageReveal";
 
-const navItems = [
-  { to: "/", label: "Dashboard", icon: Home },
-  { to: "/play", label: "Play Lab", icon: Gamepad2 },
-  { to: "/decks", label: "Deck Library", icon: BookOpen },
-  { to: "/cards", label: "Card Library", icon: LibraryBig },
-  { to: "/deck-builder", label: "Deck Builder", icon: Hammer },
-  { to: "/matches", label: "Match History", icon: History },
-  { to: "/analytics", label: "Analytics", icon: BarChart3 },
-  { to: "/rivalries", label: "Rivalries", icon: Swords },
+const navGroups = [
+  {
+    label: "Overview",
+    items: [{ to: "/", label: "Dashboard", icon: Home }],
+  },
+  {
+    label: "Cards & Decks",
+    items: [
+      { to: "/decks", label: "Deck Library", icon: BookOpen },
+      { to: "/cards", label: "Card Library", icon: LibraryBig },
+      { to: "/deck-builder", label: "Deck Builder", icon: Hammer },
+    ],
+  },
+  {
+    label: "Play Tools",
+    items: [
+      { to: "/play", label: "Play Lab", icon: Gamepad2 },
+      { to: "/nation-quiz", label: "Nation Quiz", icon: Sparkles },
+    ],
+  },
+  {
+    label: "History & Stats",
+    items: [
+      { to: "/matches", label: "Match History", icon: History },
+      { to: "/analytics", label: "Analytics", icon: BarChart3 },
+      { to: "/rivalries", label: "Rivalries", icon: Swords },
+    ],
+  },
 ];
 
 export function AppShell() {
@@ -33,7 +53,7 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen">
-      <aside className="fixed left-0 top-0 hidden h-screen w-72 border-r border-white/10 bg-slate-950/70 px-5 py-6 backdrop-blur-xl lg:block">
+      <aside className="fixed left-0 top-0 hidden h-screen w-72 overflow-auto border-r border-white/10 bg-slate-950/70 px-5 py-6 backdrop-blur-xl lg:block">
         <div className="mb-8">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-300/30 bg-cyan-300/10">
             <Trophy className="h-6 w-6 text-cyan-200" />
@@ -48,29 +68,39 @@ export function AppShell() {
           </p>
         </div>
 
-        <nav className="space-y-2">
-          {navItems.map((item) => {
-            const Icon = item.icon;
+        <nav className="space-y-6">
+          {navGroups.map((group) => (
+            <div key={group.label}>
+              <p className="mb-2 px-3 text-[0.65rem] font-black uppercase tracking-[0.22em] text-slate-600">
+                {group.label}
+              </p>
 
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === "/"}
-                className={({ isActive }) =>
-                  [
-                    "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition",
-                    isActive
-                      ? "bg-cyan-300/15 text-cyan-100 ring-1 ring-cyan-300/20"
-                      : "text-slate-400 hover:bg-white/5 hover:text-slate-100",
-                  ].join(" ")
-                }
-              >
-                <Icon className="h-4 w-4" />
-                {item.label}
-              </NavLink>
-            );
-          })}
+              <div className="space-y-1">
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+
+                  return (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end={item.to === "/"}
+                      className={({ isActive }) =>
+                        [
+                          "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition",
+                          isActive
+                            ? "bg-cyan-300/15 text-cyan-100 ring-1 ring-cyan-300/20"
+                            : "text-slate-400 hover:bg-white/5 hover:text-slate-100",
+                        ].join(" ")
+                      }
+                    >
+                      <Icon className="h-4 w-4" />
+                      {item.label}
+                    </NavLink>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
       </aside>
 
