@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { getDashboard } from "../api/dashboard";
 import { MatchCard } from "../components/cards/MatchCard";
 import { StatCard } from "../components/cards/StatCard";
+import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
 import type { DashboardResponse } from "../types/api";
 import { formatPercent, formatRecord } from "../utils/format";
@@ -11,6 +12,7 @@ export function Dashboard() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const toast = useToast();
 
   useEffect(() => {
     getDashboard()
@@ -18,6 +20,10 @@ export function Dashboard() {
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load dashboard"))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error, toast]);
 
   if (loading) {
     return (
@@ -39,11 +45,11 @@ export function Dashboard() {
       <>
         <PageHeader
           eyebrow="Dashboard"
-          title="API connection issue"
-          description="The frontend loaded, but it could not reach the backend."
+          title="Dashboard unavailable"
+          description="The application could not load dashboard data. The notification includes the failure details."
         />
-        <div className="rounded-3xl border border-rose-300/20 bg-rose-300/10 p-5 text-rose-100">
-          {error ?? "Unknown dashboard error"}
+        <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.025] p-8 text-slate-400">
+          Check that the Flask API is running, then refresh this page.
         </div>
       </>
     );

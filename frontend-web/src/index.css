@@ -53,3 +53,25 @@ a {
   color: inherit;
   text-decoration: none;
 }
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate3d(1rem, 0.75rem, 0) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.toast-enter {
+  animation: toast-in 180ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-enter {
+    animation: none;
+  }
+}

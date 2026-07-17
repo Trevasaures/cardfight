@@ -13,6 +13,7 @@ import { getStatsTable } from "../api/stats";
 import { FormatBadge } from "../components/badges/FormatBadge";
 import { StatusBadge } from "../components/badges/StatusBadge";
 import { StatCard } from "../components/cards/StatCard";
+import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
 import type { DeckType, StatsRow } from "../types/api";
 import { formatPercent, formatRecord } from "../utils/format";
@@ -25,6 +26,13 @@ export function Analytics() {
   const [activeOnly, setActiveOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const toast = useToast();
+
+  useEffect(() => {
+    if (!error) return;
+    toast.error(error);
+    setError(null);
+  }, [error, toast]);
 
   useEffect(() => {
     getStatsTable()
@@ -126,12 +134,6 @@ export function Analytics() {
           </div>
         </div>
       </section>
-
-      {error ? (
-        <div className="mt-6 rounded-3xl border border-rose-300/20 bg-rose-300/10 p-5 text-rose-100">
-          {error}
-        </div>
-      ) : null}
 
       {loading ? (
         <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-slate-400">

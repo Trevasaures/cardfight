@@ -23,7 +23,9 @@ import {
 import { getDecks } from "../api/decks";
 import { CardCatalogPanel } from "../components/deck-builder/CardCatalogPanel";
 import { DeckBuilderSetup } from "../components/deck-builder/DeckBuilderSetup";
+import { DeckVersionComparison } from "../components/deck-builder/DeckVersionComparison";
 import { DeckVersionContents } from "../components/deck-builder/DeckVersionContents";
+import { useToast } from "../components/feedback/useToast";
 import {
   DEFAULT_CARD_FORM_OPTIONS,
   EMPTY_MANUAL_CARD_FORM,
@@ -67,6 +69,11 @@ export function DeckBuilder() {
   const [newVersionSourceId, setNewVersionSourceId] = useState("");
   const [editVersionName, setEditVersionName] = useState("");
   const [editVersionNotes, setEditVersionNotes] = useState("");
+  const [showCreateVersion, setShowCreateVersion] = useState(false);
+  const [showEditVersion, setShowEditVersion] = useState(false);
+  const [comparisonBaselineId, setComparisonBaselineId] = useState("");
+  const [comparisonBaseline, setComparisonBaseline] =
+    useState<DeckVersion | null>(null);
 
   const [cardSearch, setCardSearch] = useState("");
   const [cardResults, setCardResults] = useState<Card[]>([]);
@@ -87,8 +94,16 @@ export function DeckBuilder() {
   const [loadingDecks, setLoadingDecks] = useState(true);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [loadingCards, setLoadingCards] = useState(false);
+  const [loadingComparison, setLoadingComparison] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
+
+  useEffect(() => {
+    if (!error) return;
+    toast.error(error);
+    setError(null);
+  }, [error, toast]);
 
   const selectedDeck = useMemo(
     () => decks.find((deck) => deck.id === Number(selectedDeckId)) ?? null,
@@ -133,6 +148,7 @@ export function DeckBuilder() {
     currentVersion?.id ?? "no-version",
     currentVersion?.card_count ?? 0,
     currentVersion?.unique_card_count ?? 0,
+    comparisonBaseline?.id ?? "no-comparison",
     cardResults.length,
   ].join(":");
 
@@ -255,6 +271,8 @@ export function DeckBuilder() {
     }
 
     setNewVersionSourceId("");
+    setShowCreateVersion(false);
+    setShowEditVersion(false);
     void loadDeckVersions(Number(selectedDeckId));
   }, [selectedDeckId, loadDeckVersions]);
 
@@ -264,8 +282,65 @@ export function DeckBuilder() {
       return;
     }
 
+    setShowCreateVersion(false);
+    setShowEditVersion(false);
     void loadCurrentVersion(Number(selectedVersionId));
   }, [selectedVersionId, loadCurrentVersion]);
+
+  useEffect(() => {
+    const currentId = Number(selectedVersionId) || currentVersion?.id;
+    const availableBaselines = versions.filter(
+      (version) => version.id !== currentId,
+    );
+
+    setComparisonBaselineId((current) => {
+      if (
+        current &&
+        availableBaselines.some((version) => String(version.id) === current)
+      ) {
+        return current;
+      }
+
+      return availableBaselines[0] ? String(availableBaselines[0].id) : "";
+    });
+
+    if (availableBaselines.length === 0) {
+      setComparisonBaseline(null);
+    }
+  }, [currentVersion?.id, selectedVersionId, versions]);
+
+  useEffect(() => {
+    if (!comparisonBaselineId) {
+      setComparisonBaseline(null);
+      setLoadingComparison(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingComparison(true);
+
+    getDeckVersion(Number(comparisonBaselineId))
+      .then((version) => {
+        if (!cancelled) setComparisonBaseline(version);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setComparisonBaseline(null);
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Failed to load comparison version",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingComparison(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [comparisonBaselineId]);
 
   useEffect(() => {
     setEditVersionName(currentVersion?.version_name ?? "");
@@ -340,6 +415,7 @@ export function DeckBuilder() {
       const result = await analyzeCardImage(file);
       setCardAnalysis(result);
       applyCardAnalysisToForm(result);
+      toast.success("Card image analyzed and its suggested fields were applied.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to analyze card image");
     } finally {
@@ -353,15 +429,16 @@ export function DeckBuilder() {
   }
 
   async function handleCreateVersion() {
-    if (!selectedDeck) return;
+    const versionName = newVersionName.trim();
+    if (!selectedDeck || !versionName) return;
 
     setSaving(true);
     setError(null);
 
     try {
       const version = await createDeckVersion(selectedDeck.id, {
-        version_name: newVersionName || undefined,
-        notes: newVersionNotes,
+        version_name: versionName,
+        notes: newVersionNotes.trim(),
         is_active: true,
         source_version_id: newVersionSourceId
           ? Number(newVersionSourceId)
@@ -371,9 +448,11 @@ export function DeckBuilder() {
       setNewVersionName("");
       setNewVersionNotes("");
       setNewVersionSourceId("");
+      setShowCreateVersion(false);
       setCurrentVersion(version);
       setSelectedVersionId(String(version.id));
       await loadDeckVersions(selectedDeck.id);
+      toast.success(`Created ${version.version_name} as the active deck version.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create deck version");
     } finally {
@@ -403,7 +482,9 @@ export function DeckBuilder() {
       });
 
       setCurrentVersion(updated);
+      setShowEditVersion(false);
       await loadDeckVersions(updated.deck_id);
+      toast.success(`Saved details for ${updated.version_name}.`);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to update deck version",
@@ -464,6 +545,7 @@ export function DeckBuilder() {
 
         setNewCard(EMPTY_MANUAL_CARD_FORM);
         setCardFormMode("create");
+        toast.success(`Updated ${refreshedCard.name}.`);
         return;
       }
 
@@ -480,6 +562,7 @@ export function DeckBuilder() {
       setNewCard(EMPTY_MANUAL_CARD_FORM);
       setCardFormMode("create");
       setCardAnalysis(null);
+      toast.success(`Created ${created.name} and added it to the card catalog.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save card");
     } finally {
@@ -502,6 +585,9 @@ export function DeckBuilder() {
       });
 
       await loadCurrentVersion(currentVersion.id);
+      toast.success(
+        `Added ${addQuantity} cop${addQuantity === 1 ? "y" : "ies"} of ${selectedCard.name} to the ${addZone} deck zone.`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add card to deck");
     } finally {
@@ -535,6 +621,7 @@ export function DeckBuilder() {
     try {
       await removeDeckCard(entry.id);
       await loadCurrentVersion(entry.deck_version_id);
+      toast.success(`Removed ${entry.card?.name ?? "the card"} from this version.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove card");
     } finally {
@@ -550,15 +637,6 @@ export function DeckBuilder() {
         description="Create deck versions, add card entries, and start turning match history into real deck testing data."
       />
 
-      {error ? (
-        <div
-          data-anime="motion-panel"
-          className="mb-6 rounded-3xl border border-rose-300/20 bg-rose-300/10 p-5 text-rose-100"
-        >
-          {error}
-        </div>
-      ) : null}
-
       <div className="space-y-6">
         <DeckBuilderSetup
           decks={decks}
@@ -573,6 +651,8 @@ export function DeckBuilder() {
           editVersionName={editVersionName}
           editVersionNotes={editVersionNotes}
           versionEditIsDirty={versionEditIsDirty}
+          showCreateVersion={showCreateVersion}
+          showEditVersion={showEditVersion}
           loadingDecks={loadingDecks}
           loadingVersions={loadingVersions}
           saving={saving}
@@ -583,12 +663,40 @@ export function DeckBuilder() {
           onNewVersionSourceIdChange={setNewVersionSourceId}
           onEditVersionNameChange={setEditVersionName}
           onEditVersionNotesChange={setEditVersionNotes}
+          onShowCreateVersion={() => {
+            setShowEditVersion(false);
+            setShowCreateVersion(true);
+          }}
+          onCancelCreateVersion={() => {
+            setShowCreateVersion(false);
+            setNewVersionName("");
+            setNewVersionNotes("");
+            setNewVersionSourceId("");
+          }}
+          onShowEditVersion={() => {
+            setShowCreateVersion(false);
+            setShowEditVersion(true);
+          }}
+          onCancelEditVersion={() => {
+            setShowEditVersion(false);
+            setEditVersionName(currentVersion?.version_name ?? "");
+            setEditVersionNotes(currentVersion?.notes ?? "");
+          }}
           onRefreshDecks={loadDecks}
           onRefreshVersions={() =>
             selectedDeck ? void loadDeckVersions(selectedDeck.id) : undefined
           }
           onCreateVersion={handleCreateVersion}
           onSaveVersionDetails={handleSaveVersionDetails}
+        />
+
+        <DeckVersionComparison
+          versions={versions}
+          currentVersion={currentVersion}
+          baselineVersion={comparisonBaseline}
+          selectedBaselineId={comparisonBaselineId}
+          loading={loadingComparison}
+          onSelectedBaselineIdChange={setComparisonBaselineId}
         />
 
         <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr] xl:items-start">

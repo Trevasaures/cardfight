@@ -128,7 +128,7 @@ export function ManualCardForm({
 
         <FormSelect
           label="Card type"
-          help="The card category, such as Normal Unit, Trigger Unit, Order, Blitz Order, or Set Order."
+          help="The card category, such as Normal Unit, Trigger Unit, G Unit, Normal Order, Blitz Order, or Set Order."
           value={value.card_type}
           onChange={(fieldValue) => updateField("card_type", fieldValue)}
           placeholder="Choose a card type"

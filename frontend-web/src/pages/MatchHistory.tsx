@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, RefreshCcw, Search } from "lucide-react";
 
 import { deleteMatch, getMatchesPage } from "../api/matches";
 import { MatchCard } from "../components/cards/MatchCard";
+import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
 import type { Match, MatchFormat } from "../types/api";
 
@@ -37,6 +38,13 @@ export function MatchHistory() {
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const toast = useToast();
+
+  useEffect(() => {
+    if (!error) return;
+    toast.error(error);
+    setError(null);
+  }, [error, toast]);
 
   async function loadMatches(page = pagination.page, size = pageSize) {
     setError(null);
@@ -96,6 +104,7 @@ export function MatchHistory() {
           : pagination.page;
 
       await loadMatches(nextPage, pageSize);
+      toast.success("Match deleted and deck records updated.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete match");
     }
@@ -197,12 +206,6 @@ export function MatchHistory() {
           )}
         </div>
       </section>
-
-      {error ? (
-        <div className="mt-6 rounded-3xl border border-rose-300/20 bg-rose-300/10 p-5 text-rose-100">
-          {error}
-        </div>
-      ) : null}
 
       {loading ? (
         <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-slate-400">

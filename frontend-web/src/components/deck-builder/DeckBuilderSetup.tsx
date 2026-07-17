@@ -1,4 +1,12 @@
-import { Copy, Layers3, Plus, RefreshCcw, Save } from "lucide-react";
+import {
+  Copy,
+  Layers3,
+  Pencil,
+  Plus,
+  RefreshCcw,
+  Save,
+  X,
+} from "lucide-react";
 
 import { FormatBadge } from "../badges/FormatBadge";
 import { FormSelect, FormTextInput } from "../forms/HelpfulField";
@@ -34,6 +42,8 @@ type DeckBuilderSetupProps = {
   editVersionName: string;
   editVersionNotes: string;
   versionEditIsDirty: boolean;
+  showCreateVersion: boolean;
+  showEditVersion: boolean;
   loadingDecks: boolean;
   loadingVersions: boolean;
   saving: boolean;
@@ -44,6 +54,10 @@ type DeckBuilderSetupProps = {
   onNewVersionSourceIdChange: (value: string) => void;
   onEditVersionNameChange: (value: string) => void;
   onEditVersionNotesChange: (value: string) => void;
+  onShowCreateVersion: () => void;
+  onCancelCreateVersion: () => void;
+  onShowEditVersion: () => void;
+  onCancelEditVersion: () => void;
   onRefreshDecks: () => void;
   onRefreshVersions: () => void;
   onCreateVersion: () => void;
@@ -63,6 +77,8 @@ export function DeckBuilderSetup({
   editVersionName,
   editVersionNotes,
   versionEditIsDirty,
+  showCreateVersion,
+  showEditVersion,
   loadingDecks,
   loadingVersions,
   saving,
@@ -73,6 +89,10 @@ export function DeckBuilderSetup({
   onNewVersionSourceIdChange,
   onEditVersionNameChange,
   onEditVersionNotesChange,
+  onShowCreateVersion,
+  onCancelCreateVersion,
+  onShowEditVersion,
+  onCancelEditVersion,
   onRefreshDecks,
   onRefreshVersions,
   onCreateVersion,
@@ -86,6 +106,8 @@ export function DeckBuilderSetup({
     return fileName ? [{ nation, path: `/nations/${fileName}` }] : [];
   });
   const nationLabel = rideLineNations.join(" / ") || "No ride line nation";
+  const createVersionIsVisible =
+    showCreateVersion || (!loadingVersions && versions.length === 0);
 
   return (
     <section
@@ -241,62 +263,6 @@ export function DeckBuilderSetup({
             </button>
           </div>
 
-          <div className="mt-5 border-t border-white/10 pt-5">
-            <div className="flex items-center gap-2">
-              <Copy className="h-4 w-4 text-cyan-200" />
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
-                Create a new version
-              </p>
-            </div>
-
-            <div className="mt-3 grid gap-3 lg:grid-cols-2">
-              <FormTextInput
-                label="Version name"
-                help="A label for this deck list version, such as Version 1, Post Set 5, or Testing Build."
-                value={newVersionName}
-                onChange={onNewVersionNameChange}
-                placeholder="Version name"
-              />
-
-              <FormTextInput
-                label="Version notes"
-                help="Optional notes explaining what changed in this version or what you are testing."
-                value={newVersionNotes}
-                onChange={onNewVersionNotesChange}
-                placeholder="Version notes"
-              />
-
-              <FormSelect
-                label="Starting deck list"
-                help="Start empty or copy every card, quantity, printing, zone, and sort order from an older version of this deck."
-                value={newVersionSourceId}
-                onChange={onNewVersionSourceIdChange}
-                placeholder="Start with an empty version"
-                options={versions.map((version) => ({
-                  value: String(version.id),
-                  label: `Copy ${version.version_name}`,
-                }))}
-              />
-
-              <button
-                type="button"
-                onClick={onCreateVersion}
-                disabled={!selectedDeck || saving}
-                className="inline-flex items-center justify-center gap-2 self-end rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
-                title={
-                  newVersionSourceId
-                    ? "Create an active version by copying the selected deck list"
-                    : "Create a new empty active deck version"
-                }
-              >
-                <Plus className="h-4 w-4" />
-                {newVersionSourceId
-                  ? "Create from copy"
-                  : "Create empty version"}
-              </button>
-            </div>
-          </div>
-
           {currentVersion ? (
             <>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -332,48 +298,179 @@ export function DeckBuilderSetup({
                 </div>
               </div>
 
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
-                  Edit selected version
-                </p>
-                <p className="mt-2 text-sm leading-6 text-slate-500">
-                  Rename this version or update its notes, then save the changes
-                  explicitly.
-                </p>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-200/70">
+                    Current build
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Card changes below apply to {currentVersion.version_name}.
+                  </p>
+                </div>
 
-                <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
-                  <FormTextInput
-                    label="Version name"
-                    help="The saved label shown anywhere this deck version is selected."
-                    value={editVersionName}
-                    onChange={onEditVersionNameChange}
-                    placeholder="Version name"
-                    required
-                  />
-
-                  <FormTextInput
-                    label="Version notes"
-                    help="Optional notes describing this deck list or the changes being tested."
-                    value={editVersionNotes}
-                    onChange={onEditVersionNotesChange}
-                    placeholder="Version notes"
-                  />
-
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={onSaveVersionDetails}
-                    disabled={
-                      saving || !versionEditIsDirty || !editVersionName.trim()
-                    }
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Save the selected version name and notes"
+                    onClick={onShowEditVersion}
+                    disabled={showEditVersion}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-bold text-slate-200 transition hover:bg-white/[0.09] disabled:opacity-50"
                   >
-                    <Save className="h-4 w-4" />
-                    Save changes
+                    <Pencil className="h-4 w-4" />
+                    Edit details
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onShowCreateVersion}
+                    disabled={showCreateVersion}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-violet-300/20 bg-violet-300/10 px-4 py-2.5 text-sm font-bold text-violet-100 transition hover:bg-violet-300/15 disabled:opacity-50"
+                  >
+                    <Copy className="h-4 w-4" />
+                    Create another version
                   </button>
                 </div>
               </div>
             </>
+          ) : null}
+
+          {showEditVersion && currentVersion ? (
+            <div className="mt-4 rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.035] p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-200/70">
+                    Edit current version details
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    This renames {currentVersion.version_name}; it does not create
+                    a separate build.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onCancelEditVersion}
+                  className="rounded-xl border border-white/10 bg-black/20 p-2 text-slate-500 transition hover:text-slate-200"
+                  aria-label="Close version details"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+                <FormTextInput
+                  label="Version name"
+                  help="The saved label shown anywhere this deck version is selected."
+                  value={editVersionName}
+                  onChange={onEditVersionNameChange}
+                  placeholder="Version name"
+                  required
+                />
+
+                <FormTextInput
+                  label="Version notes"
+                  help="Optional notes describing this deck list or the changes being tested."
+                  value={editVersionNotes}
+                  onChange={onEditVersionNotesChange}
+                  placeholder="Version notes"
+                />
+
+                <button
+                  type="button"
+                  onClick={onSaveVersionDetails}
+                  disabled={
+                    saving || !versionEditIsDirty || !editVersionName.trim()
+                  }
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Save the selected version name and notes"
+                >
+                  <Save className="h-4 w-4" />
+                  Save changes
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {createVersionIsVisible ? (
+            <div className="mt-4 rounded-2xl border border-violet-300/20 bg-violet-300/[0.05] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex gap-3">
+                  <div className="mt-0.5 rounded-xl border border-violet-300/15 bg-violet-300/10 p-2 text-violet-100">
+                    <Plus className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-violet-200/80">
+                      {versions.length
+                        ? "New separate version"
+                        : "First deck version"}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-slate-400">
+                      {versions.length
+                        ? "This creates a new active build. Your current version will remain unchanged."
+                        : "Name the first build for this deck, then start with an empty list."}
+                    </p>
+                  </div>
+                </div>
+
+                {versions.length ? (
+                  <button
+                    type="button"
+                    onClick={onCancelCreateVersion}
+                    className="rounded-xl border border-white/10 bg-black/20 p-2 text-slate-500 transition hover:text-slate-200"
+                    aria-label="Cancel new version"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                <FormTextInput
+                  label="New version name"
+                  help="Required. Use a distinct label such as Post Set 5 or Testing Build."
+                  value={newVersionName}
+                  onChange={onNewVersionNameChange}
+                  placeholder="Required version name"
+                  required
+                />
+
+                <FormTextInput
+                  label="New version notes"
+                  help="Optional notes explaining what changed or what you plan to test."
+                  value={newVersionNotes}
+                  onChange={onNewVersionNotesChange}
+                  placeholder="What is this build for?"
+                />
+
+                <FormSelect
+                  label="Start from"
+                  help="Start empty or copy every card, quantity, printing, zone, and sort order from an older version."
+                  value={newVersionSourceId}
+                  onChange={onNewVersionSourceIdChange}
+                  placeholder="An empty deck list"
+                  options={versions.map((version) => ({
+                    value: String(version.id),
+                    label: `Copy ${version.version_name}`,
+                  }))}
+                />
+
+                <button
+                  type="button"
+                  onClick={onCreateVersion}
+                  disabled={!selectedDeck || saving || !newVersionName.trim()}
+                  className="inline-flex items-center justify-center gap-2 self-end rounded-2xl border border-violet-300/25 bg-violet-300/15 px-5 py-3 text-sm font-bold text-violet-50 transition hover:bg-violet-300/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  title={
+                    !newVersionName.trim()
+                      ? "Enter a version name before creating the build"
+                      : newVersionSourceId
+                        ? "Create a separate active version by copying the selected deck list"
+                        : "Create a separate empty active deck version"
+                  }
+                >
+                  <Plus className="h-4 w-4" />
+                  {newVersionSourceId
+                    ? "Create copied version"
+                    : "Create empty version"}
+                </button>
+              </div>
+            </div>
           ) : null}
         </div>
       </div>

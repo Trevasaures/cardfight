@@ -26,6 +26,7 @@ CARD_NATION_OPTIONS = [
 CARD_TYPE_OPTIONS = [
     "Normal Unit",
     "Trigger Unit",
+    "G Unit",
     "Normal Order",
     "Blitz Order",
     "Set Order",
