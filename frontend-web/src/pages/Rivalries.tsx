@@ -6,6 +6,7 @@ import {
   RivalryCard,
   type RivalryRow,
 } from "../components/cards/RivalryCard";
+import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
 import type { Match, MatchFormat } from "../types/api";
 
@@ -100,6 +101,13 @@ export function Rivalries() {
   const [minGames, setMinGames] = useState<MinGamesFilter>(1);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const toast = useToast();
+
+  useEffect(() => {
+    if (!error) return;
+    toast.error(error);
+    setError(null);
+  }, [error, toast]);
 
   async function loadMatches() {
     setError(null);
@@ -228,12 +236,6 @@ export function Rivalries() {
           <span>{rivalryRows.length} total pairings</span>
         </div>
       </section>
-
-      {error ? (
-        <div className="mt-6 rounded-3xl border border-rose-300/20 bg-rose-300/10 p-5 text-rose-100">
-          {error}
-        </div>
-      ) : null}
 
       {loading ? (
         <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-slate-400">

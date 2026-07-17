@@ -6,6 +6,7 @@ import { createMatch } from "../api/matches";
 import { getRandomMatchup } from "../api/play";
 import { usePlayLabReveal } from "../animations/usePlayLabReveal";
 import { FormatBadge } from "../components/badges/FormatBadge";
+import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
 import type { Deck, MatchFormat, RandomMatchupResponse } from "../types/api";
 import { formatPercent, formatRecord } from "../utils/format";
@@ -111,11 +112,24 @@ export function PlayLab() {
   const [loadingDecks, setLoadingDecks] = useState(true);
   const [rolling, setRolling] = useState(false);
   const [saving, setSaving] = useState(false);
+  const toast = useToast();
 
   const matchupStageRef = useRef<HTMLElement | null>(null);
   const [revealTrigger, setRevealTrigger] = useState(0);
 
   usePlayLabReveal(matchupStageRef, revealTrigger);
+
+  useEffect(() => {
+    if (error) {
+      toast.error(error);
+      setError(null);
+    }
+
+    if (message) {
+      toast.success(message);
+      setMessage(null);
+    }
+  }, [error, message, toast]);
 
   useEffect(() => {
     getDecks(false)
@@ -403,18 +417,6 @@ export function PlayLab() {
           </p>
         </div>
       </section>
-
-      {error ? (
-        <div className="mt-6 rounded-3xl border border-rose-300/20 bg-rose-300/10 p-5 text-rose-100">
-          {error}
-        </div>
-      ) : null}
-
-      {message ? (
-        <div className="mt-6 rounded-3xl border border-emerald-300/20 bg-emerald-300/10 p-5 text-emerald-100">
-          {message}
-        </div>
-      ) : null}
 
       {matchup ? (
         <section ref={matchupStageRef} className="mt-8">

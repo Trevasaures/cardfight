@@ -10,6 +10,7 @@ def test_card_options_include_known_sets_and_dual_nations(client):
     payload = response.get_json()
 
     assert payload["grades"] == [0, 1, 2, 3, 4]
+    assert "G Unit" in payload["card_types"]
     assert "Lyrical Monasterio" in payload["nations"]
     assert "Brandt Gate / Keter Sanctuary" in payload["nations"]
     assert {"code": "DZ-BT01", "name": "Fated Clash"} in payload["sets"]

@@ -37,6 +37,7 @@ export const DEFAULT_CARD_FORM_OPTIONS: CardFormOptions = {
   card_types: [
     "Normal Unit",
     "Trigger Unit",
+    "G Unit",
     "Normal Order",
     "Blitz Order",
     "Set Order",

@@ -352,6 +352,7 @@ Important:
 
 Card type guidance:
 - Most unit cards are "Normal Unit" unless a trigger icon/type is clearly visible.
+- Cards printed as G units should use "G Unit".
 - If the card is an order, return the printed order type if visible.
 - If uncertain, use "Normal Unit" with low or medium confidence.
 

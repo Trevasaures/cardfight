@@ -16,6 +16,7 @@ import {
   manualCardFormIsComplete,
   type ManualCardFormState,
 } from "../components/deck-builder/manualCardFormState";
+import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
 import type { Card, CardFormOptions } from "../types/api";
 
@@ -32,6 +33,7 @@ const CARD_TYPE_OPTIONS = [
   "",
   "Normal Unit",
   "Trigger Unit",
+  "G Unit",
   "Normal Order",
   "Blitz Order",
   "Set Order",
@@ -98,6 +100,13 @@ export function CardLibrary() {
   const [loading, setLoading] = useState(true);
   const [savingEdit, setSavingEdit] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
+
+  useEffect(() => {
+    if (!error) return;
+    toast.error(error);
+    setError(null);
+  }, [error, toast]);
 
   // TanStack Virtual intentionally returns function refs that React Compiler cannot memoize.
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -210,6 +219,7 @@ export function CardLibrary() {
 
       await loadCards();
       cancelEditingCard();
+      toast.success(`Saved changes to ${editForm.name.trim()}.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save card");
     } finally {
@@ -224,15 +234,6 @@ export function CardLibrary() {
         title="Browse your card catalog"
         description="Search, filter, inspect, and correct the shared card records used by your deck versions."
       />
-
-      {error ? (
-        <div
-          data-anime="motion-panel"
-          className="mb-6 rounded-3xl border border-rose-300/20 bg-rose-300/10 p-5 text-rose-100"
-        >
-          {error}
-        </div>
-      ) : null}
 
       <section
         data-anime="motion-panel"

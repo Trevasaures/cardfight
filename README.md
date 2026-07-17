@@ -15,6 +15,7 @@ The project is designed primarily as a personal testing lab. Everything runs loc
 - Maintains a shared card catalog with individual card printings.
 - Builds and versions deck lists without overwriting earlier builds.
 - Creates a new deck version from an empty list or an exact copy of an older version.
+- Compares two versions to surface card, quantity, zone, printing, and grade-curve changes.
 - Enforces the current 54-card core deck rules: 50 main-deck cards and one grade 0, 1, 2, and 3 ride-deck card.
 - Derives deck nation identity from the selected version's ride line, with saved deck metadata as a fallback.
 - Supports manual card entry and optional card-image analysis.

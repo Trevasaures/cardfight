@@ -3,6 +3,7 @@ import { Plus, Save, Search, X } from "lucide-react";
 
 import { createDeck, getDeckOptions, getDecks, updateDeck } from "../api/decks";
 import { DeckCard } from "../components/cards/DeckCard";
+import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
 import type { Deck, DeckOptionsResponse, DeckType } from "../types/api";
 
@@ -49,6 +50,19 @@ export function DeckLibrary() {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const toast = useToast();
+
+  useEffect(() => {
+    if (error) {
+      toast.error(error);
+      setError(null);
+    }
+
+    if (message) {
+      toast.success(message);
+      setMessage(null);
+    }
+  }, [error, message, toast]);
 
   async function loadDecks() {
     setError(null);
@@ -239,18 +253,6 @@ export function DeckLibrary() {
           </button>
         </div>
       </section>
-
-      {error ? (
-        <div className="mt-6 rounded-3xl border border-rose-300/20 bg-rose-300/10 p-5 text-rose-100">
-          {error}
-        </div>
-      ) : null}
-
-      {message ? (
-        <div className="mt-6 rounded-3xl border border-emerald-300/20 bg-emerald-300/10 p-5 text-emerald-100">
-          {message}
-        </div>
-      ) : null}
 
       {loading ? (
         <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-slate-400">
