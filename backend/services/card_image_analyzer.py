@@ -346,6 +346,7 @@ Important:
 - The grade is usually in the top-left circle.
 - The card name is usually in the lower nameplate.
 - Nation may be shown by text, icon, or card frame. If uncertain, leave it blank.
+- If the card is explicitly nationless, return "Nationless" for nation.
 - Use confidence from 0 to 100 for each field.
 - Add warnings for fields that were hard to read.
 - Conservative extraction is better than confident guessing.

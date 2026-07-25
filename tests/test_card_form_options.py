@@ -13,6 +13,8 @@ def test_card_options_include_known_sets_and_dual_nations(client):
     assert "G Unit" in payload["card_types"]
     assert "Lyrical Monasterio" in payload["nations"]
     assert "Brandt Gate / Keter Sanctuary" in payload["nations"]
+    assert "Nationless" in payload["nations"]
+    assert not any("Nationless /" in nation for nation in payload["nations"])
     assert {"code": "DZ-BT01", "name": "Fated Clash"} in payload["sets"]
 
 
@@ -32,6 +34,59 @@ def test_known_set_code_uses_authoritative_set_name(app_context):
 
     assert card.printings.first().set_code == "DZ-BT01"
     assert card.printings.first().set_name == "Fated Clash"
+
+
+def test_nationless_card_input_is_stored_as_null(app_context):
+    card = create_card(
+        {
+            "name": "Nationless Promo",
+            "grade": 0,
+            "nation": "Nationless",
+            "card_type": "Trigger Unit",
+        }
+    )
+
+    assert card.nation is None
+
+
+def test_card_can_be_updated_to_nationless(app_context):
+    card = create_card(
+        {
+            "name": "Regalis Piece",
+            "grade": 3,
+            "nation": "Keter Sanctuary",
+            "card_type": "Normal Order",
+        }
+    )
+
+    updated = update_card(card.id, {"nation": "Nationless"})
+
+    assert updated.nation is None
+
+
+def test_card_library_can_filter_for_nationless_cards(client):
+    create_card(
+        {
+            "name": "Nationless Trigger",
+            "grade": 0,
+            "nation": None,
+            "card_type": "Trigger Unit",
+        }
+    )
+    create_card(
+        {
+            "name": "Nationed Trigger",
+            "grade": 0,
+            "nation": "Dragon Empire",
+            "card_type": "Trigger Unit",
+        }
+    )
+
+    response = client.get("/api/cards/library?nation=Nationless")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert [card["name"] for card in payload["items"]] == ["Nationless Trigger"]
 
 
 @pytest.mark.parametrize("grade", [-1, 5])

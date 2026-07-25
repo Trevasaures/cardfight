@@ -43,6 +43,10 @@ import type {
   DeckVersion,
   DeckVersionSummary,
 } from "../types/api";
+import {
+  cardNationToApiValue,
+  cardNationToFormValue,
+} from "../utils/cards";
 
 type CardFormMode = "create" | "edit";
 
@@ -368,7 +372,7 @@ export function DeckBuilder() {
     setNewCard({
       name: selectedCard.name,
       grade: selectedCard.grade !== null ? String(selectedCard.grade) : "",
-      nation: selectedCard.nation ?? "",
+      nation: cardNationToFormValue(selectedCard.nation),
       card_type: selectedCard.card_type,
       set_selection: printing?.set_code ?? "",
       set_code: printing?.set_code ?? "",
@@ -507,7 +511,7 @@ export function DeckBuilder() {
       const cardPayload: CreateCardPayload = {
         name: newCard.name,
         grade: newCard.grade,
-        nation: newCard.nation,
+        nation: cardNationToApiValue(newCard.nation),
         card_type: newCard.card_type,
       };
 

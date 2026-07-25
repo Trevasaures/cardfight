@@ -1,4 +1,5 @@
 import type { CardFormOptions } from "../../types/api";
+import { NATIONLESS_CARD_OPTION } from "../../utils/cards";
 
 export type ManualCardFormState = {
   name: string;
@@ -33,6 +34,7 @@ export const DEFAULT_CARD_FORM_OPTIONS: CardFormOptions = {
     "Keter Sanctuary",
     "Stoicheia",
     "Lyrical Monasterio",
+    NATIONLESS_CARD_OPTION,
   ],
   card_types: [
     "Normal Unit",

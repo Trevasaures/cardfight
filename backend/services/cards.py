@@ -23,6 +23,8 @@ CARD_NATION_OPTIONS = [
     "Lyrical Monasterio",
 ]
 
+NATIONLESS_CARD_OPTION = "Nationless"
+
 CARD_TYPE_OPTIONS = [
     "Normal Unit",
     "Trigger Unit",
@@ -140,11 +142,38 @@ def _required_string(payload, field_name):
     return value
 
 
+def _card_nation_or_none(value):
+    nation = _clean_string(value)
+
+    if nation and nation.lower() in {"nationless", "none"}:
+        return None
+
+    return nation
+
+
+def _filter_card_nation(query, value):
+    nation = _clean_string(value)
+
+    if not nation:
+        return query
+
+    if nation.lower() in {"nationless", "none"}:
+        return query.filter(
+            or_(
+                Card.nation.is_(None),
+                Card.nation == "",
+                Card.nation.ilike("none"),
+            )
+        )
+
+    return query.filter(Card.nation == nation)
+
+
 def _card_payload(payload):
     return {
         "name": _required_string(payload, "name"),
         "grade": _grade_or_none(payload.get("grade")),
-        "nation": _clean_string(payload.get("nation")),
+        "nation": _card_nation_or_none(payload.get("nation")),
         "card_type": _required_string(payload, "card_type"),
         "clan": _clean_string(payload.get("clan")),
         "race": _clean_string(payload.get("race")),
@@ -197,7 +226,9 @@ def get_card_form_options():
         if value is not None
     }
 
-    standard_nations = CARD_NATION_OPTIONS + dual_nations
+    standard_nations = (
+        CARD_NATION_OPTIONS + dual_nations + [NATIONLESS_CARD_OPTION]
+    )
     extra_nations = sorted(stored_nations.difference(standard_nations))
     extra_card_types = sorted(stored_card_types.difference(CARD_TYPE_OPTIONS))
 
@@ -324,9 +355,7 @@ def list_cards_page(
             )
         )
 
-    nation = _clean_string(nation)
-    if nation:
-        query = query.filter(Card.nation == nation)
+    query = _filter_card_nation(query, nation)
 
     if grade not in (None, ""):
         query = query.filter(Card.grade == _int_or_none(grade, "grade"))
@@ -410,9 +439,7 @@ def search_cards(
             )
         )
 
-    nation = _clean_string(nation)
-    if nation:
-        query = query.filter(Card.nation == nation)
+    query = _filter_card_nation(query, nation)
 
     if grade not in (None, ""):
         query = query.filter(Card.grade == _int_or_none(grade, "grade"))
@@ -478,6 +505,10 @@ def update_card(card_id, payload):
             next_values[field_name] = _clean_string(payload.get(field_name)) or ""
         elif field_name in {"name", "card_type"}:
             next_values[field_name] = _required_string(payload, field_name)
+        elif field_name == "nation":
+            next_values[field_name] = _card_nation_or_none(
+                payload.get(field_name)
+            )
         else:
             next_values[field_name] = _clean_string(payload.get(field_name))
 

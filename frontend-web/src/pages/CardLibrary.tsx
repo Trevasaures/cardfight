@@ -19,6 +19,12 @@ import {
 import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
 import type { Card, CardFormOptions } from "../types/api";
+import {
+  cardNationToApiValue,
+  cardNationToFormValue,
+  formatCardNation,
+  NATIONLESS_CARD_OPTION,
+} from "../utils/cards";
 
 const NATION_OPTIONS = [
   "",
@@ -27,6 +33,8 @@ const NATION_OPTIONS = [
   "Brandt Gate",
   "Keter Sanctuary",
   "Stoicheia",
+  "Lyrical Monasterio",
+  NATIONLESS_CARD_OPTION,
 ];
 
 const CARD_TYPE_OPTIONS = [
@@ -52,7 +60,7 @@ function primaryPrintingLabel(card: Card) {
 function cardMeta(card: Card) {
   const chunks = [
     card.grade !== null ? `Grade ${card.grade}` : null,
-    card.nation,
+    formatCardNation(card.nation),
     card.card_type,
   ].filter(Boolean);
 
@@ -69,7 +77,7 @@ function cardToManualForm(card: Card): ManualCardFormState {
   return {
     name: card.name,
     grade: card.grade !== null ? String(card.grade) : "",
-    nation: card.nation ?? "",
+    nation: cardNationToFormValue(card.nation),
     card_type: card.card_type,
     set_selection: printing?.set_code ?? "",
     set_code: printing?.set_code ?? "",
@@ -197,7 +205,7 @@ export function CardLibrary() {
       await updateCard(editingCard.id, {
         name: editForm.name,
         grade: editForm.grade,
-        nation: editForm.nation,
+        nation: cardNationToApiValue(editForm.nation),
         card_type: editForm.card_type,
       });
 
@@ -442,11 +450,9 @@ export function CardLibrary() {
                             {printingCount(card) === 1 ? "" : "s"}
                           </span>
 
-                          {card.nation ? (
-                            <span className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-bold text-slate-400">
-                              {card.nation}
-                            </span>
-                          ) : null}
+                          <span className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-bold text-slate-400">
+                            {formatCardNation(card.nation)}
+                          </span>
 
                           <button
                             type="button"
