@@ -6,6 +6,7 @@ import type {
   DeckCardZone,
   DeckVersion,
 } from "../../types/api";
+import { formatCardNation } from "../../utils/cards";
 
 const ZONES: { value: DeckCardZone; label: string }[] = [
   { value: "main", label: "Main deck" },
@@ -52,7 +53,7 @@ function cardMeta(card: Card | null) {
 
   const chunks = [
     card.grade !== null ? `Grade ${card.grade}` : null,
-    card.nation,
+    formatCardNation(card.nation),
     card.card_type,
   ].filter(Boolean);
 

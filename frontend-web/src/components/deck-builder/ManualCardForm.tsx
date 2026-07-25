@@ -3,6 +3,7 @@ import { Pencil, Plus, RotateCcw } from "lucide-react";
 import { FormSelect, FormTextInput } from "../forms/HelpfulField";
 import type { ManualCardFormState } from "./manualCardFormState";
 import type { CardFormOptions } from "../../types/api";
+import { NATIONLESS_CARD_OPTION } from "../../utils/cards";
 
 type CardFormMode = "create" | "edit";
 
@@ -115,14 +116,17 @@ export function ManualCardForm({
 
         <FormSelect
           label="Nation"
-          help="The nation or dual-nation combination printed on the card."
+          help="Choose the printed nation, a dual-nation combination, or Nationless for cards that can be used in any deck."
           value={value.nation}
           onChange={(fieldValue) => updateField("nation", fieldValue)}
           placeholder="Choose a nation"
           required
           options={nationOptions.map((nation) => ({
             value: nation,
-            label: nation,
+            label:
+              nation === NATIONLESS_CARD_OPTION
+                ? "Nationless"
+                : nation,
           }))}
         />
 

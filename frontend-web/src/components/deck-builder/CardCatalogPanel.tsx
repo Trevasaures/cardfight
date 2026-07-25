@@ -8,6 +8,7 @@ import type {
   CardFormOptions,
   CardImageAnalysisResult,
 } from "../../types/api";
+import { formatCardNation } from "../../utils/cards";
 
 type CardFormMode = "create" | "edit";
 
@@ -49,7 +50,7 @@ function cardMeta(card: Card | null) {
 
   const chunks = [
     card.grade !== null ? `Grade ${card.grade}` : null,
-    card.nation,
+    formatCardNation(card.nation),
     card.card_type,
   ].filter(Boolean);
 
