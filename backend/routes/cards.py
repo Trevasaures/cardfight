@@ -2,6 +2,7 @@ from flask import Blueprint, current_app, jsonify, request
 from openai import APIError, AuthenticationError, RateLimitError
 
 from backend.services.cards import (
+    DuplicateCardNameError,
     DuplicateCardPrintingError,
     add_card_printing,
     create_card,
@@ -48,6 +49,13 @@ def search_cards_route():
 def create_card_route():
     try:
         card = create_card(request.get_json(silent=True) or {})
+    except DuplicateCardNameError as exc:
+        return jsonify(
+            {
+                "error": str(exc),
+                "duplicate_card": serialize_card(exc.card, include_printings=True),
+            }
+        ), 409
     except DuplicateCardPrintingError as exc:
         return jsonify(
             {

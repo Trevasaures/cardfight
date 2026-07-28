@@ -74,6 +74,14 @@ class DuplicateCardPrintingError(ValueError):
         self.card = card
 
 
+class DuplicateCardNameError(ValueError):
+    def __init__(self, card):
+        super().__init__(
+            f"Card '{card.name}' already exists. Add another printing to the existing card instead."
+        )
+        self.card = card
+
+
 def _clean_string(value):
     if value is None:
         return None
@@ -464,6 +472,21 @@ def create_card(payload):
 
     card_data = _card_payload(payload)
     printing_data = _find_printing_payload(payload)
+
+    existing_card = Card.query.filter(
+        db.func.lower(Card.name) == card_data["name"].lower()
+    ).first()
+
+    if existing_card:
+        if printing_data:
+            _raise_if_duplicate_printing(
+                name=card_data["name"],
+                set_code=printing_data.get("set_code"),
+                card_number=printing_data.get("card_number"),
+                rarity=printing_data.get("rarity"),
+            )
+
+        raise DuplicateCardNameError(existing_card)
 
     if printing_data:
         _raise_if_duplicate_printing(

@@ -1,6 +1,11 @@
 import pytest
 
-from backend.services.cards import create_card, update_card
+from backend.services.cards import (
+    DuplicateCardNameError,
+    add_card_printing,
+    create_card,
+    update_card,
+)
 
 
 def test_card_options_include_known_sets_and_dual_nations(client):
@@ -112,3 +117,48 @@ def test_card_update_rejects_grade_above_four(app_context):
 
     with pytest.raises(ValueError, match="between 0 and 4"):
         update_card(card.id, {"grade": 5})
+
+
+def test_existing_card_name_requires_a_new_printing_instead(app_context):
+    card = create_card(
+        {
+            "name": "Printing Test Dragon",
+            "grade": 3,
+            "nation": "Dark States",
+            "card_type": "Normal Unit",
+            "set_code": "DZ-BT01",
+            "set_name": "Fated Clash",
+            "card_number": "001",
+            "rarity": "RRR",
+        }
+    )
+
+    with pytest.raises(
+        DuplicateCardNameError,
+        match="Add another printing",
+    ):
+        create_card(
+            {
+                "name": "printing test dragon",
+                "grade": 3,
+                "nation": "Dark States",
+                "card_type": "Normal Unit",
+                "set_code": "DZ-BT01",
+                "set_name": "Fated Clash",
+                "card_number": "001-SR",
+                "rarity": "SR",
+            }
+        )
+
+    added = add_card_printing(
+        card.id,
+        {
+            "set_code": "DZ-BT01",
+            "set_name": "Fated Clash",
+            "card_number": "001-SR",
+            "rarity": "SR",
+        },
+    )
+
+    assert added.card_id == card.id
+    assert card.printings.count() == 2

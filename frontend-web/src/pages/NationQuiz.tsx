@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ArrowRight, RefreshCcw, Sparkles } from "lucide-react";
 
 import { PageHeader } from "../components/layout/PageHeader";
+import { usePersistentState } from "../hooks/usePersistentState";
 
 const NATIONS = {
   dragon_empire: {
@@ -275,7 +276,10 @@ function percent(score: number, max: number) {
 }
 
 export function NationQuiz() {
-  const [answers, setAnswers] = useState<number[]>([]);
+  const [answers, setAnswers] = usePersistentState<number[]>(
+    "cardfight.nation-quiz.answers",
+    [],
+  );
 
   const scores = useMemo(() => getScoresFromAnswers(answers), [answers]);
   const ranked = useMemo(() => sortScores(scores), [scores]);
@@ -345,6 +349,12 @@ export function NationQuiz() {
             <h3 className="mt-2 text-2xl font-black text-slate-50">
               Nation Compass
             </h3>
+            {answers.length > 0 ? (
+              <p className="mt-2 text-xs font-bold text-emerald-200/80">
+                Progress saved locally · {answers.length}/{QUESTIONS.length}{" "}
+                answered
+              </p>
+            ) : null}
           </div>
 
           <button

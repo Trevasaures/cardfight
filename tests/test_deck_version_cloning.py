@@ -2,7 +2,11 @@ import pytest
 
 from backend.database import db
 from backend.models import Card, CardPrinting, Deck, DeckCard, DeckVersion
-from backend.services.deck_builder import create_deck_version
+from backend.services.deck_builder import (
+    add_card_to_deck_version,
+    create_deck_version,
+)
+from backend.services.serializers import serialize_deck_card
 
 
 def test_create_version_copies_every_deck_card_field(app_context):
@@ -70,3 +74,56 @@ def test_clone_source_must_belong_to_selected_deck(app_context):
             second_deck.id,
             {"source_version_id": source.id},
         )
+
+
+def test_same_card_can_use_different_printings_in_main_and_ride_decks(
+    app_context,
+):
+    deck = Deck(name="Rarity Build", type="Standard", nation="Dark States")
+    card = Card(
+        name="Rarity Vanguard",
+        grade=3,
+        nation="Dark States",
+        card_type="Normal Unit",
+    )
+    version = DeckVersion(deck=deck, version_name="Version 1")
+    db.session.add_all([deck, card, version])
+    db.session.flush()
+
+    triple_rare = CardPrinting(
+        card_id=card.id,
+        set_code="DZ-BT01",
+        card_number="001",
+        rarity="RRR",
+    )
+    silver_rare = CardPrinting(
+        card_id=card.id,
+        set_code="DZ-BT01",
+        card_number="001-SR",
+        rarity="SR",
+    )
+    db.session.add_all([triple_rare, silver_rare])
+    db.session.commit()
+
+    main_entry = add_card_to_deck_version(
+        version.id,
+        {
+            "card_id": card.id,
+            "printing_id": triple_rare.id,
+            "quantity": 4,
+            "zone": "main",
+        },
+    )
+    ride_entry = add_card_to_deck_version(
+        version.id,
+        {
+            "card_id": card.id,
+            "printing_id": silver_rare.id,
+            "quantity": 1,
+            "zone": "ride",
+        },
+    )
+
+    assert main_entry.printing_id == triple_rare.id
+    assert ride_entry.printing_id == silver_rare.id
+    assert serialize_deck_card(main_entry)["card"]["printings"]

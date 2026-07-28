@@ -8,6 +8,7 @@ import { CardLibrary } from "./pages/CardLibrary";
 import { DeckBuilder } from "./pages/DeckBuilder";
 import { NationQuiz } from "./pages/NationQuiz";
 import { MatchHistory } from "./pages/MatchHistory";
+import { OrderTracker } from "./pages/OrderTracker";
 import { Analytics } from "./pages/Analytics";
 import { Rivalries } from "./pages/Rivalries";
 
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="/decks" element={<DeckLibrary />} />
         <Route path="/cards" element={<CardLibrary />} />
         <Route path="/deck-builder" element={<DeckBuilder />} />
+        <Route path="/order-tracker" element={<OrderTracker />} />
         <Route path="/nation-quiz" element={<NationQuiz />} />
         <Route path="/matches" element={<MatchHistory />} />
         <Route path="/analytics" element={<Analytics />} />
