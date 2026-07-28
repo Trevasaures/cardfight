@@ -1,24 +1,45 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pencil, RefreshCcw, Search } from "lucide-react";
+import {
+  Layers3,
+  Pencil,
+  Plus,
+  RefreshCcw,
+  Search,
+  Sparkles,
+} from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 import {
   addCardPrinting,
+  analyzeCardImage,
+  createCard,
   getCardFormOptions,
   getCardLibraryPage,
   updateCard,
   updateCardPrinting,
 } from "../api/cards";
+import { CardCreationTools } from "../components/cards/CardCreationTools";
+import { CardPrintingForm } from "../components/cards/CardPrintingForm";
+import {
+  EMPTY_CARD_PRINTING_FORM,
+  type CardPrintingFormState,
+} from "../components/cards/cardPrintingFormState";
 import { ManualCardForm } from "../components/deck-builder/ManualCardForm";
 import {
   EMPTY_MANUAL_CARD_FORM,
   DEFAULT_CARD_FORM_OPTIONS,
+  cardAnalysisToManualForm,
   manualCardFormIsComplete,
   type ManualCardFormState,
 } from "../components/deck-builder/manualCardFormState";
 import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
-import type { Card, CardFormOptions } from "../types/api";
+import type {
+  Card,
+  CardFormOptions,
+  CardImageAnalysisResult,
+  CardPrinting,
+} from "../types/api";
 import {
   cardNationToApiValue,
   cardNationToFormValue,
@@ -52,6 +73,12 @@ function primaryPrintingLabel(card: Card) {
 
   if (!printing) return "No primary printing";
 
+  return [printing.set_code, printing.card_number, printing.rarity]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function printingLabel(printing: CardPrinting) {
   return [printing.set_code, printing.card_number, printing.rarity]
     .filter(Boolean)
     .join(" · ");
@@ -97,9 +124,20 @@ export function CardLibrary() {
   const [cardType, setCardType] = useState("");
 
   const [editingCard, setEditingCard] = useState<Card | null>(null);
+  const [addingPrintingCard, setAddingPrintingCard] = useState<Card | null>(
+    null,
+  );
   const [editForm, setEditForm] = useState<ManualCardFormState>(
     EMPTY_MANUAL_CARD_FORM,
   );
+  const [printingForm, setPrintingForm] = useState<CardPrintingFormState>(
+    EMPTY_CARD_PRINTING_FORM,
+  );
+  const [createForm, setCreateForm] = useState<ManualCardFormState>(
+    EMPTY_MANUAL_CARD_FORM,
+  );
+  const [cardAnalysis, setCardAnalysis] =
+    useState<CardImageAnalysisResult | null>(null);
   const [cardFormOptions, setCardFormOptions] = useState<CardFormOptions>(
     DEFAULT_CARD_FORM_OPTIONS,
   );
@@ -107,6 +145,9 @@ export function CardLibrary() {
   const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(true);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [savingPrinting, setSavingPrinting] = useState(false);
+  const [savingCreate, setSavingCreate] = useState(false);
+  const [analyzingImage, setAnalyzingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
 
@@ -133,6 +174,10 @@ export function CardLibrary() {
   const editFormIsComplete = useMemo(() => {
     return manualCardFormIsComplete(editForm);
   }, [editForm]);
+
+  const createFormIsComplete = useMemo(() => {
+    return manualCardFormIsComplete(createForm);
+  }, [createForm]);
 
   useEffect(() => {
     getCardFormOptions()
@@ -171,6 +216,67 @@ export function CardLibrary() {
     void loadCards();
   }, [loadCards]);
 
+  function applyCardAnalysis(result: CardImageAnalysisResult) {
+    setCreateForm(cardAnalysisToManualForm(result));
+    setError(null);
+  }
+
+  async function handleAnalyzeCardImage(file: File) {
+    setAnalyzingImage(true);
+    setCardAnalysis(null);
+    setError(null);
+
+    try {
+      const result = await analyzeCardImage(file);
+      setCardAnalysis(result);
+      applyCardAnalysis(result);
+      toast.success("Card image analyzed. Review the suggested fields before creating it.");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to analyze card image",
+      );
+    } finally {
+      setAnalyzingImage(false);
+    }
+  }
+
+  function handleApplyCardAnalysis() {
+    if (!cardAnalysis) return;
+    applyCardAnalysis(cardAnalysis);
+  }
+
+  async function createCatalogCard() {
+    if (!createFormIsComplete) {
+      setError("All card fields are required before creating this card.");
+      return;
+    }
+
+    setSavingCreate(true);
+    setError(null);
+
+    try {
+      const created = await createCard({
+        name: createForm.name,
+        grade: createForm.grade,
+        nation: cardNationToApiValue(createForm.nation),
+        card_type: createForm.card_type,
+        set_code: createForm.set_code,
+        set_name: createForm.set_name,
+        card_number: createForm.card_number,
+        rarity: createForm.rarity,
+      });
+
+      setCreateForm(EMPTY_MANUAL_CARD_FORM);
+      setCardAnalysis(null);
+      await loadCards();
+      toast.success(`${created.name} was added to the shared card catalog.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create card");
+    } finally {
+      setSavingCreate(false);
+    }
+  }
+
   function clearFilters() {
     setQuery("");
     setNation("");
@@ -179,6 +285,8 @@ export function CardLibrary() {
   }
 
   function startEditingCard(card: Card) {
+    setAddingPrintingCard(null);
+    setPrintingForm(EMPTY_CARD_PRINTING_FORM);
     setEditingCard(card);
     setEditForm(cardToManualForm(card));
     setError(null);
@@ -188,6 +296,48 @@ export function CardLibrary() {
     setEditingCard(null);
     setEditForm(EMPTY_MANUAL_CARD_FORM);
     setError(null);
+  }
+
+  function startAddingPrinting(card: Card) {
+    setEditingCard(null);
+    setEditForm(EMPTY_MANUAL_CARD_FORM);
+    setAddingPrintingCard(card);
+    setPrintingForm(EMPTY_CARD_PRINTING_FORM);
+    setError(null);
+  }
+
+  function cancelAddingPrinting() {
+    setAddingPrintingCard(null);
+    setPrintingForm(EMPTY_CARD_PRINTING_FORM);
+    setError(null);
+  }
+
+  async function saveNewPrinting() {
+    if (!addingPrintingCard) return;
+
+    setSavingPrinting(true);
+    setError(null);
+
+    try {
+      const printing = await addCardPrinting(addingPrintingCard.id, {
+        set_code: printingForm.set_code,
+        set_name: printingForm.set_name,
+        card_number: printingForm.card_number,
+        rarity: printingForm.rarity,
+      });
+
+      await loadCards();
+      cancelAddingPrinting();
+      toast.success(
+        `Added ${printing.rarity ?? "another"} printing to ${addingPrintingCard.name}.`,
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to add card printing",
+      );
+    } finally {
+      setSavingPrinting(false);
+    }
   }
 
   async function saveEditingCard() {
@@ -239,9 +389,58 @@ export function CardLibrary() {
     <div>
       <PageHeader
         eyebrow="Card Library"
-        title="Browse your card catalog"
-        description="Search, filter, inspect, and correct the shared card records used by your deck versions."
+        title="Build and browse your card catalog"
+        description="Create cards manually or from an image, then search, inspect, and correct the shared records used throughout the app."
       />
+
+      <section
+        data-anime="motion-panel"
+        className="mb-6 rounded-[2rem] border border-cyan-300/15 bg-cyan-300/[0.035] p-5"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-3xl">
+            <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-cyan-200/80">
+              <Sparkles className="h-4 w-4" />
+              Catalog tools
+            </div>
+            <h3 className="mt-2 text-2xl font-black text-slate-50">
+              Add cards to the library
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Use the image reader for a fast first pass or enter a card
+              manually. Either method creates the same shared catalog record
+              available to Deck Builder and Order Tracker.
+            </p>
+          </div>
+        </div>
+
+        <details className="mt-5 rounded-3xl border border-cyan-300/20 bg-black/20 p-4">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-2xl px-1 py-1 select-none">
+            <span className="inline-flex items-center gap-3 text-sm font-black text-cyan-100">
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-300/10">
+                <Plus className="h-4 w-4" />
+              </span>
+              Open card creator
+            </span>
+            <span className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+              Image reader + manual entry
+            </span>
+          </summary>
+
+          <CardCreationTools
+            value={createForm}
+            analysisResult={cardAnalysis}
+            analyzingImage={analyzingImage}
+            saving={savingCreate}
+            canSubmit={createFormIsComplete}
+            options={cardFormOptions}
+            onChange={setCreateForm}
+            onSubmit={createCatalogCard}
+            onAnalyzeImage={handleAnalyzeCardImage}
+            onApplyAnalysis={handleApplyCardAnalysis}
+          />
+        </details>
+      </section>
 
       <section
         data-anime="motion-panel"
@@ -349,6 +548,52 @@ export function CardLibrary() {
           </button>
         </div>
 
+        {addingPrintingCard ? (
+          <div className="mt-5 rounded-3xl border border-violet-300/20 bg-violet-300/[0.06] p-4">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-violet-200/80">
+                  New printing
+                </p>
+                <h4 className="mt-1 text-lg font-black text-slate-50">
+                  Add another printing of {addingPrintingCard.name}
+                </h4>
+                <p className="mt-1 text-sm text-slate-500">
+                  The card identity stays shared while its set, collector
+                  number, rarity, deck usage, and pricing remain distinct.
+                </p>
+              </div>
+
+              <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-slate-400">
+                {addingPrintingCard.printings.length} existing printing
+                {addingPrintingCard.printings.length === 1 ? "" : "s"}
+              </span>
+            </div>
+
+            {addingPrintingCard.printings.length ? (
+              <div className="mb-4 flex flex-wrap gap-2">
+                {addingPrintingCard.printings.map((printing) => (
+                  <span
+                    key={printing.id}
+                    className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-slate-400"
+                  >
+                    {printingLabel(printing) || `Printing ${printing.id}`}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            <CardPrintingForm
+              value={printingForm}
+              options={cardFormOptions}
+              disabled={savingPrinting}
+              onChange={setPrintingForm}
+              onSubmit={saveNewPrinting}
+              onCancel={cancelAddingPrinting}
+            />
+          </div>
+        ) : null}
+
         {editingCard ? (
           <div className="mt-5 rounded-3xl border border-cyan-300/20 bg-cyan-300/[0.06] p-4">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -398,7 +643,7 @@ export function CardLibrary() {
                   No cards found.
                 </p>
                 <p className="mt-2 text-sm text-slate-500">
-                  Try changing your filters or importing cards from Deck Builder.
+                  Try changing your filters or add a card with the creator above.
                 </p>
               </div>
             </div>
@@ -439,9 +684,23 @@ export function CardLibrary() {
                             {cardMeta(card)}
                           </p>
 
-                          <p className="mt-1 text-xs text-slate-600">
-                            {primaryPrintingLabel(card)}
-                          </p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {card.printings.length ? (
+                              card.printings.map((printing) => (
+                                <span
+                                  key={printing.id}
+                                  className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[0.7rem] font-bold text-slate-500"
+                                >
+                                  {printingLabel(printing) ||
+                                    `Printing ${printing.id}`}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-xs text-slate-600">
+                                No printings recorded
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                         <div className="flex flex-wrap justify-end gap-2 text-right">
@@ -453,6 +712,17 @@ export function CardLibrary() {
                           <span className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-bold text-slate-400">
                             {formatCardNation(card.nation)}
                           </span>
+
+                          <button
+                            type="button"
+                            onClick={() => startAddingPrinting(card)}
+                            disabled={savingPrinting}
+                            className="inline-flex items-center gap-2 rounded-full border border-violet-300/20 bg-violet-300/10 px-3 py-1 text-xs font-bold text-violet-100 transition hover:bg-violet-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+                            title="Add a different set, collector number, or rarity for this card"
+                          >
+                            <Layers3 className="h-3.5 w-3.5" />
+                            Add printing
+                          </button>
 
                           <button
                             type="button"

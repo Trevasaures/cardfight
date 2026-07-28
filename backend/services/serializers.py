@@ -6,7 +6,7 @@ Each function takes a model instance as input and returns a dictionary represent
 """
 
 from backend.database import db
-from backend.models import CardPrinting, Deck, DeckCard
+from backend.models import AcquisitionPlanItem, CardPrinting, Deck, DeckCard
 
 
 def _deck_rule_summary(cards, totals_by_zone):
@@ -225,7 +225,7 @@ def serialize_deck_card(entry):
         "quantity": entry.quantity,
         "zone": entry.zone,
         "sort_order": entry.sort_order,
-        "card": serialize_card(entry.card, include_printings=False),
+        "card": serialize_card(entry.card, include_printings=True),
         "printing": serialize_card_printing(entry.printing),
         "created_at": entry.created_at.isoformat() if entry.created_at else None,
         "updated_at": entry.updated_at.isoformat() if entry.updated_at else None,
@@ -268,4 +268,165 @@ def serialize_deck_version(version, include_cards=True):
         "deck_rules": _deck_rule_summary(cards, totals_by_zone),
         "created_at": version.created_at.isoformat() if version.created_at else None,
         "updated_at": version.updated_at.isoformat() if version.updated_at else None,
+    }
+
+
+def serialize_acquisition_item(item):
+    if not item:
+        return None
+
+    accounted_quantity = item.owned_quantity + item.ordered_quantity
+    missing_quantity = max(item.required_quantity - accounted_quantity, 0)
+    overage_quantity = max(accounted_quantity - item.required_quantity, 0)
+
+    if item.owned_quantity >= item.required_quantity:
+        item_status = "owned"
+    elif item.ordered_quantity > 0 and missing_quantity == 0:
+        item_status = "ordered"
+    elif item.ordered_quantity > 0 or item.owned_quantity > 0:
+        item_status = "partial"
+    else:
+        item_status = "needed"
+
+    return {
+        "id": item.id,
+        "plan_id": item.plan_id,
+        "card_id": item.card_id,
+        "printing_id": item.printing_id,
+        "required_quantity": item.required_quantity,
+        "owned_quantity": item.owned_quantity,
+        "ordered_quantity": item.ordered_quantity,
+        "accounted_quantity": accounted_quantity,
+        "missing_quantity": missing_quantity,
+        "overage_quantity": overage_quantity,
+        "unit_price_cents": item.unit_price_cents,
+        "remaining_cost_cents": missing_quantity * item.unit_price_cents,
+        "ordered_value_cents": item.ordered_quantity * item.unit_price_cents,
+        "status": item_status,
+        "notes": item.notes,
+        "card": serialize_card(item.card),
+        "printing": serialize_card_printing(item.printing),
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+    }
+
+
+def serialize_acquisition_plan(plan, include_items=True):
+    if not plan:
+        return None
+
+    item_rows = []
+    if include_items:
+        item_rows = [
+            serialize_acquisition_item(item)
+            for item in plan.items.join(AcquisitionPlanItem.card)
+            .order_by(
+                AcquisitionPlanItem.card_id.asc(),
+                AcquisitionPlanItem.id.asc(),
+            )
+            .all()
+        ]
+
+    summary = {
+        "line_count": len(item_rows),
+        "required_quantity": sum(item["required_quantity"] for item in item_rows),
+        "owned_quantity": sum(item["owned_quantity"] for item in item_rows),
+        "ordered_quantity": sum(item["ordered_quantity"] for item in item_rows),
+        "missing_quantity": sum(item["missing_quantity"] for item in item_rows),
+        "overage_quantity": sum(item["overage_quantity"] for item in item_rows),
+        "remaining_cost_cents": sum(
+            item["remaining_cost_cents"] for item in item_rows
+        ),
+        "ordered_value_cents": sum(
+            item["ordered_value_cents"] for item in item_rows
+        ),
+    }
+
+    if not include_items:
+        query = plan.items
+        summary = {
+            "line_count": query.count(),
+            "required_quantity": int(
+                query.with_entities(
+                    db.func.coalesce(
+                        db.func.sum(AcquisitionPlanItem.required_quantity),
+                        0,
+                    )
+                ).scalar()
+                or 0
+            ),
+            "owned_quantity": int(
+                query.with_entities(
+                    db.func.coalesce(
+                        db.func.sum(AcquisitionPlanItem.owned_quantity),
+                        0,
+                    )
+                ).scalar()
+                or 0
+            ),
+            "ordered_quantity": int(
+                query.with_entities(
+                    db.func.coalesce(
+                        db.func.sum(AcquisitionPlanItem.ordered_quantity),
+                        0,
+                    )
+                ).scalar()
+                or 0
+            ),
+        }
+        summary["missing_quantity"] = sum(
+            max(item.required_quantity - item.owned_quantity - item.ordered_quantity, 0)
+            for item in query.all()
+        )
+        summary["overage_quantity"] = sum(
+            max(item.owned_quantity + item.ordered_quantity - item.required_quantity, 0)
+            for item in query.all()
+        )
+        summary["remaining_cost_cents"] = sum(
+            max(item.required_quantity - item.owned_quantity - item.ordered_quantity, 0)
+            * item.unit_price_cents
+            for item in query.all()
+        )
+        summary["ordered_value_cents"] = sum(
+            item.ordered_quantity * item.unit_price_cents for item in query.all()
+        )
+
+    required_quantity = summary["required_quantity"]
+    accounted_quantity = summary["owned_quantity"] + summary["ordered_quantity"]
+    summary["progress"] = (
+        min(accounted_quantity / required_quantity, 1.0)
+        if required_quantity
+        else 0.0
+    )
+    summary["is_accounted_for"] = (
+        required_quantity > 0 and summary["missing_quantity"] == 0
+    )
+    summary["is_physically_complete"] = (
+        required_quantity > 0
+        and summary["owned_quantity"] >= required_quantity
+        and summary["ordered_quantity"] == 0
+    )
+
+    return {
+        "id": plan.id,
+        "name": plan.name,
+        "plan_type": plan.plan_type,
+        "list_source": plan.list_source,
+        "status": plan.status,
+        "build_mode": plan.build_mode,
+        "deck_id": plan.deck_id,
+        "deck_version_id": plan.deck_version_id,
+        "source_deck_version_id": plan.source_deck_version_id,
+        "deck_type": plan.deck_type,
+        "nation": plan.nation,
+        "notes": plan.notes,
+        "deck": serialize_deck(plan.deck),
+        "deck_version": serialize_deck_version_summary(plan.deck_version),
+        "source_deck_version": serialize_deck_version_summary(
+            plan.source_deck_version
+        ),
+        "items": item_rows,
+        "summary": summary,
+        "created_at": plan.created_at.isoformat() if plan.created_at else None,
+        "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
     }

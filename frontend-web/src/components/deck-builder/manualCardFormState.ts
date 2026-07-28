@@ -1,4 +1,7 @@
-import type { CardFormOptions } from "../../types/api";
+import type {
+  CardFormOptions,
+  CardImageAnalysisResult,
+} from "../../types/api";
 import { NATIONLESS_CARD_OPTION } from "../../utils/cards";
 
 export type ManualCardFormState = {
@@ -58,4 +61,20 @@ export function manualCardFormIsComplete(value: ManualCardFormState) {
     value.card_number,
     value.rarity,
   ].every((field) => field.trim().length > 0);
+}
+
+export function cardAnalysisToManualForm(
+  result: CardImageAnalysisResult,
+): ManualCardFormState {
+  return {
+    name: result.fields.name,
+    grade: result.fields.grade,
+    nation: result.fields.nation,
+    card_type: result.fields.card_type || "Normal Unit",
+    set_selection: result.fields.set_code,
+    set_code: result.fields.set_code,
+    set_name: result.fields.set_name,
+    card_number: result.fields.card_number,
+    rarity: result.fields.rarity,
+  };
 }

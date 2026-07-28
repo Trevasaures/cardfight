@@ -342,3 +342,119 @@ export type CardFormOptions = {
     name: string;
   }[];
 };
+
+export type AcquisitionPlanType = "new_build" | "existing_deck";
+export type AcquisitionListSource = "empty" | "deck_version";
+export type AcquisitionPlanStatus =
+  | "planning"
+  | "buying"
+  | "waiting"
+  | "complete"
+  | "paused";
+export type AcquisitionBuildMode = "physical" | "proxy" | "mixed";
+export type AcquisitionItemStatus =
+  | "needed"
+  | "partial"
+  | "ordered"
+  | "owned";
+
+export type AcquisitionPlanItem = {
+  id: number;
+  plan_id: number;
+  card_id: number;
+  printing_id: number | null;
+  required_quantity: number;
+  owned_quantity: number;
+  ordered_quantity: number;
+  accounted_quantity: number;
+  missing_quantity: number;
+  overage_quantity: number;
+  unit_price_cents: number;
+  remaining_cost_cents: number;
+  ordered_value_cents: number;
+  status: AcquisitionItemStatus;
+  notes: string;
+  card: Card;
+  printing: CardPrinting | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type AcquisitionPlanSummary = {
+  line_count: number;
+  required_quantity: number;
+  owned_quantity: number;
+  ordered_quantity: number;
+  missing_quantity: number;
+  overage_quantity: number;
+  remaining_cost_cents: number;
+  ordered_value_cents: number;
+  progress: number;
+  is_accounted_for: boolean;
+  is_physically_complete: boolean;
+};
+
+export type AcquisitionPlan = {
+  id: number;
+  name: string;
+  plan_type: AcquisitionPlanType;
+  list_source: AcquisitionListSource;
+  status: AcquisitionPlanStatus;
+  build_mode: AcquisitionBuildMode;
+  deck_id: number | null;
+  deck_version_id: number | null;
+  source_deck_version_id: number | null;
+  deck_type: DeckType | null;
+  nation: string | null;
+  notes: string;
+  deck: Deck | null;
+  deck_version: DeckVersionSummary | null;
+  source_deck_version: DeckVersionSummary | null;
+  items: AcquisitionPlanItem[];
+  summary: AcquisitionPlanSummary;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type CreateAcquisitionPlanPayload = {
+  name: string;
+  plan_type: AcquisitionPlanType;
+  list_source: AcquisitionListSource;
+  status?: AcquisitionPlanStatus;
+  build_mode?: AcquisitionBuildMode;
+  deck_id?: number | null;
+  deck_version_id?: number | null;
+  source_deck_version_id?: number | null;
+  deck_type?: DeckType | null;
+  nation?: string | null;
+  notes?: string;
+};
+
+export type UpdateAcquisitionPlanPayload = Partial<
+  Pick<
+    AcquisitionPlan,
+    "name" | "status" | "build_mode" | "deck_type" | "nation" | "notes"
+  >
+>;
+
+export type AddAcquisitionItemPayload = {
+  card_id: number;
+  printing_id?: number | null;
+  required_quantity?: number;
+  owned_quantity?: number;
+  ordered_quantity?: number;
+  unit_price_cents?: number;
+  notes?: string;
+};
+
+export type UpdateAcquisitionItemPayload = Partial<
+  Pick<
+    AcquisitionPlanItem,
+    | "printing_id"
+    | "required_quantity"
+    | "owned_quantity"
+    | "ordered_quantity"
+    | "unit_price_cents"
+    | "notes"
+  >
+>;

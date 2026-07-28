@@ -1,4 +1,5 @@
 from .admin import bp_admin
+from .acquisition import bp_acquisition
 from .cards import bp_cards
 from .dashboard import bp_dashboard
 from .deck_builder import bp_deck_builder
@@ -9,6 +10,7 @@ from .stats import bp_stats
 
 
 all_blueprints = [
+    bp_acquisition,
     bp_decks,
     bp_matches,
     bp_play,

@@ -29,9 +29,11 @@ import { useToast } from "../components/feedback/useToast";
 import {
   DEFAULT_CARD_FORM_OPTIONS,
   EMPTY_MANUAL_CARD_FORM,
+  cardAnalysisToManualForm,
   manualCardFormIsComplete,
 } from "../components/deck-builder/manualCardFormState";
 import { PageHeader } from "../components/layout/PageHeader";
+import { usePersistentState } from "../hooks/usePersistentState";
 import type {
   Card,
   CardFormOptions,
@@ -65,30 +67,65 @@ export function DeckBuilder() {
   const [versions, setVersions] = useState<DeckVersionSummary[]>([]);
   const [currentVersion, setCurrentVersion] = useState<DeckVersion | null>(null);
 
-  const [selectedDeckId, setSelectedDeckId] = useState("");
-  const [selectedVersionId, setSelectedVersionId] = useState("");
+  const [selectedDeckId, setSelectedDeckId] = usePersistentState(
+    "cardfight.deck-builder.selected-deck",
+    "",
+  );
+  const [selectedVersionId, setSelectedVersionId] = usePersistentState(
+    "cardfight.deck-builder.selected-version",
+    "",
+  );
+  const previousSelectedDeckIdRef = useRef(selectedDeckId);
 
-  const [newVersionName, setNewVersionName] = useState("");
-  const [newVersionNotes, setNewVersionNotes] = useState("");
-  const [newVersionSourceId, setNewVersionSourceId] = useState("");
-  const [editVersionName, setEditVersionName] = useState("");
-  const [editVersionNotes, setEditVersionNotes] = useState("");
+  const [newVersionName, setNewVersionName] = usePersistentState(
+    "cardfight.deck-builder.new-version-name",
+    "",
+  );
+  const [newVersionNotes, setNewVersionNotes] = usePersistentState(
+    "cardfight.deck-builder.new-version-notes",
+    "",
+  );
+  const [newVersionSourceId, setNewVersionSourceId] = usePersistentState(
+    "cardfight.deck-builder.new-version-source",
+    "",
+  );
+  const [editVersionName, setEditVersionName] = usePersistentState(
+    "cardfight.deck-builder.edit-version-name",
+    "",
+  );
+  const [editVersionNotes, setEditVersionNotes] = usePersistentState(
+    "cardfight.deck-builder.edit-version-notes",
+    "",
+  );
+  const [editVersionDraftId, setEditVersionDraftId] = usePersistentState<
+    number | null
+  >("cardfight.deck-builder.edit-version-id", null);
   const [showCreateVersion, setShowCreateVersion] = useState(false);
   const [showEditVersion, setShowEditVersion] = useState(false);
-  const [comparisonBaselineId, setComparisonBaselineId] = useState("");
+  const [comparisonBaselineId, setComparisonBaselineId] = usePersistentState(
+    "cardfight.deck-builder.comparison-version",
+    "",
+  );
   const [comparisonBaseline, setComparisonBaseline] =
     useState<DeckVersion | null>(null);
 
   const [cardSearch, setCardSearch] = useState("");
   const [cardResults, setCardResults] = useState<Card[]>([]);
   const [selectedCardId, setSelectedCardId] = useState("");
+  const [selectedPrintingId, setSelectedPrintingId] = useState("");
   const [cardFormMode, setCardFormMode] = useState<CardFormMode>("create");
   const [cardAnalysis, setCardAnalysis] =
     useState<CardImageAnalysisResult | null>(null);
   const [analyzingCardImage, setAnalyzingCardImage] = useState(false);
 
-  const [addQuantity, setAddQuantity] = useState(4);
-  const [addZone, setAddZone] = useState<DeckCardZone>("main");
+  const [addQuantity, setAddQuantity] = usePersistentState(
+    "cardfight.deck-builder.add-quantity",
+    4,
+  );
+  const [addZone, setAddZone] = usePersistentState<DeckCardZone>(
+    "cardfight.deck-builder.add-zone",
+    "main",
+  );
 
   const [newCard, setNewCard] = useState(EMPTY_MANUAL_CARD_FORM);
   const [cardFormOptions, setCardFormOptions] = useState<CardFormOptions>(
@@ -118,6 +155,23 @@ export function DeckBuilder() {
     () => cardResults.find((card) => card.id === Number(selectedCardId)) ?? null,
     [cardResults, selectedCardId],
   );
+
+  useEffect(() => {
+    setSelectedPrintingId((current) => {
+      if (
+        current &&
+        selectedCard?.printings.some(
+          (printing) => String(printing.id) === current,
+        )
+      ) {
+        return current;
+      }
+
+      return selectedCard?.primary_printing
+        ? String(selectedCard.primary_printing.id)
+        : "";
+    });
+  }, [selectedCard]);
 
   const manualCardIsComplete = useMemo(() => {
     return manualCardFormIsComplete(newCard);
@@ -173,7 +227,7 @@ export function DeckBuilder() {
     } finally {
       setLoadingDecks(false);
     }
-  }, []);
+  }, [setSelectedDeckId]);
 
   const loadDeckVersions = useCallback(async (deckId: number) => {
     setError(null);
@@ -205,7 +259,7 @@ export function DeckBuilder() {
     } finally {
       setLoadingVersions(false);
     }
-  }, []);
+  }, [setSelectedVersionId]);
 
   const loadCurrentVersion = useCallback(async (versionId: number) => {
     setError(null);
@@ -274,11 +328,28 @@ export function DeckBuilder() {
       return;
     }
 
+    const previousDeckId = previousSelectedDeckIdRef.current;
+    const changedDecks =
+      Boolean(previousDeckId) && previousDeckId !== selectedDeckId;
+    previousSelectedDeckIdRef.current = selectedDeckId;
+
+    if (changedDecks) {
+      setNewVersionName("");
+      setNewVersionNotes("");
+    }
+
     setNewVersionSourceId("");
     setShowCreateVersion(false);
     setShowEditVersion(false);
     void loadDeckVersions(Number(selectedDeckId));
-  }, [selectedDeckId, loadDeckVersions]);
+  }, [
+    selectedDeckId,
+    loadDeckVersions,
+    setNewVersionName,
+    setNewVersionNotes,
+    setNewVersionSourceId,
+    setSelectedVersionId,
+  ]);
 
   useEffect(() => {
     if (!selectedVersionId) {
@@ -311,7 +382,12 @@ export function DeckBuilder() {
     if (availableBaselines.length === 0) {
       setComparisonBaseline(null);
     }
-  }, [currentVersion?.id, selectedVersionId, versions]);
+  }, [
+    currentVersion?.id,
+    selectedVersionId,
+    setComparisonBaselineId,
+    versions,
+  ]);
 
   useEffect(() => {
     if (!comparisonBaselineId) {
@@ -347,9 +423,19 @@ export function DeckBuilder() {
   }, [comparisonBaselineId]);
 
   useEffect(() => {
-    setEditVersionName(currentVersion?.version_name ?? "");
-    setEditVersionNotes(currentVersion?.notes ?? "");
-  }, [currentVersion?.id, currentVersion?.notes, currentVersion?.version_name]);
+    if (!currentVersion) return;
+    if (editVersionDraftId === currentVersion.id) return;
+
+    setEditVersionName(currentVersion.version_name);
+    setEditVersionNotes(currentVersion.notes);
+    setEditVersionDraftId(currentVersion.id);
+  }, [
+    currentVersion,
+    editVersionDraftId,
+    setEditVersionDraftId,
+    setEditVersionName,
+    setEditVersionNotes,
+  ]);
 
   function handleClearCardSearch() {
     setCardSearch("");
@@ -394,17 +480,7 @@ export function DeckBuilder() {
   }
 
   function applyCardAnalysisToForm(result: CardImageAnalysisResult) {
-    setNewCard({
-      name: result.fields.name,
-      grade: result.fields.grade,
-      nation: result.fields.nation,
-      card_type: result.fields.card_type || "Normal Unit",
-      set_selection: result.fields.set_code,
-      set_code: result.fields.set_code,
-      set_name: result.fields.set_name,
-      card_number: result.fields.card_number,
-      rarity: result.fields.rarity,
-    });
+    setNewCard(cardAnalysisToManualForm(result));
 
     setCardFormMode("create");
     setError(null);
@@ -583,7 +659,7 @@ export function DeckBuilder() {
     try {
       await addCardToDeckVersion(currentVersion.id, {
         card_id: selectedCard.id,
-        printing_id: selectedCard.primary_printing?.id ?? null,
+        printing_id: selectedPrintingId ? Number(selectedPrintingId) : null,
         quantity: addQuantity,
         zone: addZone,
       });
@@ -618,6 +694,29 @@ export function DeckBuilder() {
     }
   }
 
+  async function handlePrintingChange(
+    entry: DeckCardEntry,
+    nextPrintingId: string,
+  ) {
+    setSaving(true);
+    setError(null);
+
+    try {
+      await updateDeckCard(entry.id, {
+        printing_id: nextPrintingId ? Number(nextPrintingId) : null,
+      });
+
+      await loadCurrentVersion(entry.deck_version_id);
+      toast.success(`Updated the printing used for ${entry.card?.name ?? "this card"}.`);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to update card printing",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleRemoveCard(entry: DeckCardEntry) {
     setSaving(true);
     setError(null);
@@ -640,6 +739,16 @@ export function DeckBuilder() {
         title="Build and version your decks"
         description="Create deck versions, add card entries, and start turning match history into real deck testing data."
       />
+
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.05] px-4 py-3">
+        <p className="text-sm font-bold text-emerald-100">
+          Workspace remembered in this browser
+        </p>
+        <p className="text-xs text-slate-500">
+          Your selected deck, version, comparison, and unsaved version details
+          will restore when you return.
+        </p>
+      </div>
 
       <div className="space-y-6">
         <DeckBuilderSetup
@@ -734,15 +843,18 @@ export function DeckBuilder() {
             groupedCards={groupedCards}
             cardResults={cardResults}
             selectedCardId={selectedCardId}
+            selectedPrintingId={selectedPrintingId}
             addQuantity={addQuantity}
             addZone={addZone}
             saving={saving}
             selectedCard={selectedCard}
             onSelectedCardIdChange={setSelectedCardId}
+            onSelectedPrintingIdChange={setSelectedPrintingId}
             onAddQuantityChange={setAddQuantity}
             onAddZoneChange={handleAddZoneChange}
             onAddCardToVersion={handleAddCardToVersion}
             onQuantityChange={handleQuantityChange}
+            onPrintingChange={handlePrintingChange}
             onRemoveCard={handleRemoveCard}
           />
         </div>

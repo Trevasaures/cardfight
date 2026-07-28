@@ -29,15 +29,21 @@ type DeckVersionContentsProps = {
   groupedCards: Map<DeckCardZone, DeckCardEntry[]>;
   cardResults: Card[];
   selectedCardId: string;
+  selectedPrintingId: string;
   addQuantity: number;
   addZone: DeckCardZone;
   saving: boolean;
   selectedCard: Card | null;
   onSelectedCardIdChange: (value: string) => void;
+  onSelectedPrintingIdChange: (value: string) => void;
   onAddQuantityChange: (value: number) => void;
   onAddZoneChange: (value: DeckCardZone) => void;
   onAddCardToVersion: () => void;
   onQuantityChange: (entry: DeckCardEntry, nextQuantity: number) => void;
+  onPrintingChange: (
+    entry: DeckCardEntry,
+    nextPrintingId: string,
+  ) => void;
   onRemoveCard: (entry: DeckCardEntry) => void;
 };
 
@@ -173,15 +179,18 @@ export function DeckVersionContents({
   groupedCards,
   cardResults,
   selectedCardId,
+  selectedPrintingId,
   addQuantity,
   addZone,
   saving,
   selectedCard,
   onSelectedCardIdChange,
+  onSelectedPrintingIdChange,
   onAddQuantityChange,
   onAddZoneChange,
   onAddCardToVersion,
   onQuantityChange,
+  onPrintingChange,
   onRemoveCard,
 }: DeckVersionContentsProps) {
   const rules = currentVersion?.deck_rules ?? null;
@@ -318,7 +327,7 @@ export function DeckVersionContents({
       ) : null}
 
       <div className="mt-5 rounded-3xl border border-white/10 bg-black/20 p-4">
-        <div className="grid gap-3 lg:grid-cols-[1fr_6rem_10rem]">
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(12rem,0.7fr)_6rem_10rem]">
           <select
             value={selectedCardId}
             onChange={(event) => onSelectedCardIdChange(event.target.value)}
@@ -331,6 +340,31 @@ export function DeckVersionContents({
             {cardResults.map((card) => (
               <option key={card.id} value={card.id}>
                 {card.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={selectedPrintingId}
+            onChange={(event) =>
+              onSelectedPrintingIdChange(event.target.value)
+            }
+            disabled={!selectedCard}
+            title="Choose the exact set and rarity to use for this deck entry."
+            className="min-w-0 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50 disabled:opacity-50"
+          >
+            {!selectedCard?.printings.length ? (
+              <option value="">No printing recorded</option>
+            ) : null}
+            {selectedCard?.printings.map((printing) => (
+              <option key={printing.id} value={printing.id}>
+                {[
+                  printing.set_code,
+                  printing.card_number,
+                  printing.rarity,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || `Printing ${printing.id}`}
               </option>
             ))}
           </select>
@@ -458,6 +492,33 @@ export function DeckVersionContents({
                               </div>
 
                               <div className="flex items-center justify-between gap-3 md:justify-end">
+                                <select
+                                  value={entry.printing_id ?? ""}
+                                  onChange={(event) =>
+                                    onPrintingChange(entry, event.target.value)
+                                  }
+                                  disabled={saving}
+                                  title={`Choose the printing used for ${entry.card?.name ?? "this card"}`}
+                                  className="min-w-0 max-w-56 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs font-semibold text-slate-300 outline-none focus:border-cyan-300/50 disabled:opacity-50"
+                                >
+                                  <option value="">No printing selected</option>
+                                  {entry.card?.printings.map((printing) => (
+                                    <option
+                                      key={printing.id}
+                                      value={printing.id}
+                                    >
+                                      {[
+                                        printing.set_code,
+                                        printing.card_number,
+                                        printing.rarity,
+                                      ]
+                                        .filter(Boolean)
+                                        .join(" · ") ||
+                                        `Printing ${printing.id}`}
+                                    </option>
+                                  ))}
+                                </select>
+
                                 <div className="flex items-center gap-2">
                                   <button
                                     type="button"

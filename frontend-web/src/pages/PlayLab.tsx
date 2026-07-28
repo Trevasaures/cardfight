@@ -8,6 +8,7 @@ import { usePlayLabReveal } from "../animations/usePlayLabReveal";
 import { FormatBadge } from "../components/badges/FormatBadge";
 import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
+import { usePersistentState } from "../hooks/usePersistentState";
 import type { Deck, MatchFormat, RandomMatchupResponse } from "../types/api";
 import { formatPercent, formatRecord } from "../utils/format";
 
@@ -96,16 +97,41 @@ function MatchupDeckPanel({
 
 export function PlayLab() {
   const [decks, setDecks] = useState<Deck[]>([]);
-  const [mode, setMode] = useState<MatchupMode>("random");
-  const [format, setFormat] = useState<MatchFormat>("Any");
+  const [mode, setMode] = usePersistentState<MatchupMode>(
+    "cardfight.play-lab.mode",
+    "random",
+  );
+  const [format, setFormat] = usePersistentState<MatchFormat>(
+    "cardfight.play-lab.format",
+    "Any",
+  );
 
-  const [customDeck1Id, setCustomDeck1Id] = useState<number | "">("");
-  const [customDeck2Id, setCustomDeck2Id] = useState<number | "">("");
+  const [customDeck1Id, setCustomDeck1Id] = usePersistentState<number | "">(
+    "cardfight.play-lab.custom-deck-one",
+    "",
+  );
+  const [customDeck2Id, setCustomDeck2Id] = usePersistentState<number | "">(
+    "cardfight.play-lab.custom-deck-two",
+    "",
+  );
 
-  const [matchup, setMatchup] = useState<RandomMatchupResponse | null>(null);
-  const [winnerId, setWinnerId] = useState<number | null>(null);
-  const [firstPlayerId, setFirstPlayerId] = useState<number | null>(null);
-  const [notes, setNotes] = useState("");
+  const [matchup, setMatchup] =
+    usePersistentState<RandomMatchupResponse | null>(
+      "cardfight.play-lab.matchup",
+      null,
+    );
+  const [winnerId, setWinnerId] = usePersistentState<number | null>(
+    "cardfight.play-lab.winner",
+    null,
+  );
+  const [firstPlayerId, setFirstPlayerId] = usePersistentState<number | null>(
+    "cardfight.play-lab.first-player",
+    null,
+  );
+  const [notes, setNotes] = usePersistentState(
+    "cardfight.play-lab.notes",
+    "",
+  );
 
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -158,6 +184,8 @@ export function PlayLab() {
   );
 
   useEffect(() => {
+    if (loadingDecks) return;
+
     if (
       customDeck1Id !== "" &&
       !eligibleDecks.some((deck) => deck.id === customDeck1Id)
@@ -171,7 +199,14 @@ export function PlayLab() {
     ) {
       setCustomDeck2Id("");
     }
-  }, [eligibleDecks, customDeck1Id, customDeck2Id]);
+  }, [
+    eligibleDecks,
+    customDeck1Id,
+    customDeck2Id,
+    loadingDecks,
+    setCustomDeck1Id,
+    setCustomDeck2Id,
+  ]);
 
   async function rollMatchup() {
     setError(null);
@@ -250,6 +285,21 @@ export function PlayLab() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function discardMatchDraft() {
+    if (
+      (notes.trim() || winnerId !== null) &&
+      !window.confirm("Discard this unsaved match and its notes?")
+    ) {
+      return;
+    }
+
+    setMatchup(null);
+    setWinnerId(null);
+    setFirstPlayerId(null);
+    setNotes("");
+    setMessage("Local match draft cleared.");
   }
 
   return (
@@ -420,11 +470,24 @@ export function PlayLab() {
 
       {matchup ? (
         <section ref={matchupStageRef} className="mt-8">
-          <div className="mb-5 flex items-center justify-center gap-3 text-slate-400">
-            <Swords className="h-5 w-5 text-cyan-200" />
-            <span className="text-sm font-bold uppercase tracking-[0.24em]">
-              Featured battle
-            </span>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3 text-slate-400">
+              <Swords className="h-5 w-5 text-cyan-200" />
+              <span className="text-sm font-bold uppercase tracking-[0.24em]">
+                Featured battle
+              </span>
+              <span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-bold normal-case tracking-normal text-emerald-100">
+                Draft saved locally
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={discardMatchDraft}
+              className="rounded-xl border border-rose-300/20 bg-rose-300/5 px-3 py-2 text-xs font-bold text-rose-200 transition hover:bg-rose-300/10"
+            >
+              Discard draft
+            </button>
           </div>
 
           <div className="grid items-stretch gap-5 lg:grid-cols-[1fr_auto_1fr]">

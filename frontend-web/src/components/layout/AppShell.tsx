@@ -8,6 +8,7 @@ import {
   History,
   Home,
   LibraryBig,
+  ShoppingCart,
   Sparkles,
   Swords,
   Trophy,
@@ -26,6 +27,7 @@ const navGroups = [
       { to: "/decks", label: "Deck Library", icon: BookOpen },
       { to: "/cards", label: "Card Library", icon: LibraryBig },
       { to: "/deck-builder", label: "Deck Builder", icon: Hammer },
+      { to: "/order-tracker", label: "Order Tracker", icon: ShoppingCart },
     ],
   },
   {

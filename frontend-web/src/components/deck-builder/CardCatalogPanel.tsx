@@ -1,6 +1,7 @@
-import { Pencil, Search, X } from "lucide-react";
+import { Library, Pencil, Search, X } from "lucide-react";
+import { Link } from "react-router-dom";
 
-import { CardImageImportAssistant } from "./CardImageImportAssistant";
+import { CardCreationTools } from "../cards/CardCreationTools";
 import { ManualCardForm } from "./ManualCardForm";
 import type { ManualCardFormState } from "./manualCardFormState";
 import type {
@@ -98,10 +99,19 @@ export function CardCatalogPanel({
             Find or create a card
           </h3>
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            Search the local catalog first. If the card does not exist yet,
-            create a manual entry below.
+            Search the shared catalog first. If the card does not exist yet,
+            create it here or manage the full catalog in Card Library.
           </p>
         </div>
+
+        <Link
+          to="/cards"
+          className="inline-flex shrink-0 items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-bold text-slate-200 transition hover:bg-white/[0.09]"
+          title="Open the full shared card catalog"
+        >
+          <Library className="h-4 w-4" />
+          Card Library
+        </Link>
       </div>
 
       <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_auto_auto]">
@@ -175,7 +185,8 @@ export function CardCatalogPanel({
           ))
         ) : (
           <div className="rounded-2xl border border-dashed border-white/15 bg-black/20 p-6 text-center text-sm text-slate-500">
-            Enter at least 2 characters to search, or create a manual card below.
+            Enter at least 2 characters to search, or use the shared card
+            creator below.
           </div>
         )}
       </div>
@@ -195,32 +206,40 @@ export function CardCatalogPanel({
         Edit selected card
       </button>
 
-      <CardImageImportAssistant
-        analysisResult={analysisResult}
-        analyzing={analyzingImage}
-        onAnalyzeImage={onAnalyzeCardImage}
-        onApplyAnalysis={onApplyCardAnalysis}
-      />
+      {isEditing ? (
+        <details
+          open
+          className="mt-5 rounded-3xl border border-cyan-300/20 bg-cyan-300/[0.05] p-4"
+        >
+          <summary className="cursor-pointer select-none text-sm font-black text-slate-100">
+            Edit selected card
+          </summary>
 
-      <details
-        open={isEditing || Boolean(analysisResult)}
-        className="mt-5 rounded-3xl border border-white/10 bg-black/20 p-4"
-      >
-        <summary className="cursor-pointer select-none text-sm font-black text-slate-100">
-          {isEditing ? "Edit selected card" : "Create manual card"}
-        </summary>
-
-        <ManualCardForm
+          <ManualCardForm
+            value={newCard}
+            mode={cardFormMode}
+            onChange={onNewCardChange}
+            onSubmit={onSaveCardForm}
+            onCancelEdit={onCancelCardEdit}
+            disabled={saving}
+            canSubmit={manualCardIsComplete}
+            options={cardFormOptions}
+          />
+        </details>
+      ) : (
+        <CardCreationTools
           value={newCard}
-          mode={cardFormMode}
           onChange={onNewCardChange}
           onSubmit={onSaveCardForm}
-          onCancelEdit={onCancelCardEdit}
-          disabled={saving}
+          saving={saving}
           canSubmit={manualCardIsComplete}
           options={cardFormOptions}
+          analysisResult={analysisResult}
+          analyzingImage={analyzingImage}
+          onAnalyzeImage={onAnalyzeCardImage}
+          onApplyAnalysis={onApplyCardAnalysis}
         />
-      </details>
+      )}
     </section>
   );
 }
