@@ -364,12 +364,18 @@ export type AcquisitionPlanItem = {
   card_id: number;
   printing_id: number | null;
   required_quantity: number;
+  source_quantity: number;
+  removed_quantity: number;
+  target_quantity: number;
   owned_quantity: number;
+  available_quantity: number;
   ordered_quantity: number;
   accounted_quantity: number;
   missing_quantity: number;
   overage_quantity: number;
+  purchase_quantity: number;
   unit_price_cents: number;
+  estimated_cost_cents: number;
   remaining_cost_cents: number;
   ordered_value_cents: number;
   status: AcquisitionItemStatus;
@@ -383,10 +389,14 @@ export type AcquisitionPlanItem = {
 export type AcquisitionPlanSummary = {
   line_count: number;
   required_quantity: number;
+  source_quantity: number;
+  removed_quantity: number;
   owned_quantity: number;
   ordered_quantity: number;
   missing_quantity: number;
   overage_quantity: number;
+  purchase_quantity: number;
+  estimated_cost_cents: number;
   remaining_cost_cents: number;
   ordered_value_cents: number;
   progress: number;
@@ -441,6 +451,8 @@ export type AddAcquisitionItemPayload = {
   card_id: number;
   printing_id?: number | null;
   required_quantity?: number;
+  source_quantity?: number;
+  removed_quantity?: number;
   owned_quantity?: number;
   ordered_quantity?: number;
   unit_price_cents?: number;
@@ -452,9 +464,13 @@ export type UpdateAcquisitionItemPayload = Partial<
     AcquisitionPlanItem,
     | "printing_id"
     | "required_quantity"
+    | "source_quantity"
+    | "removed_quantity"
     | "owned_quantity"
     | "ordered_quantity"
     | "unit_price_cents"
     | "notes"
   >
->;
+> & {
+  target_quantity?: number;
+};

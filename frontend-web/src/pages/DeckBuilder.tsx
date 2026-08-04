@@ -14,6 +14,7 @@ import {
 import {
   addCardToDeckVersion,
   createDeckVersion,
+  deleteDeckVersion,
   getDeckVersion,
   getDeckVersions,
   removeDeckCard,
@@ -574,6 +575,52 @@ export function DeckBuilder() {
     }
   }
 
+  async function handleActivateVersion() {
+    if (!currentVersion || currentVersion.is_active) return;
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      const updated = await updateDeckVersion(currentVersion.id, {
+        is_active: true,
+      });
+      setCurrentVersion(updated);
+      await loadDeckVersions(updated.deck_id);
+      toast.success(`${updated.version_name} is now the active deck version.`);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to activate deck version",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteVersion() {
+    if (!currentVersion || currentVersion.is_active) return;
+
+    const deletedName = currentVersion.version_name;
+    const deckId = currentVersion.deck_id;
+    setSaving(true);
+    setError(null);
+
+    try {
+      await deleteDeckVersion(currentVersion.id);
+      setCurrentVersion(null);
+      setSelectedVersionId("");
+      setShowEditVersion(false);
+      await loadDeckVersions(deckId);
+      toast.success(`Deleted ${deletedName}.`);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to delete deck version",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleSaveCardForm() {
     if (!manualCardIsComplete) {
       setError("All manual card fields are required before saving a card.");
@@ -801,6 +848,8 @@ export function DeckBuilder() {
           }
           onCreateVersion={handleCreateVersion}
           onSaveVersionDetails={handleSaveVersionDetails}
+          onActivateVersion={handleActivateVersion}
+          onDeleteVersion={handleDeleteVersion}
         />
 
         <DeckVersionComparison

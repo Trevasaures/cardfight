@@ -275,11 +275,20 @@ def serialize_acquisition_item(item):
     if not item:
         return None
 
-    accounted_quantity = item.owned_quantity + item.ordered_quantity
-    missing_quantity = max(item.required_quantity - accounted_quantity, 0)
-    overage_quantity = max(accounted_quantity - item.required_quantity, 0)
+    target_quantity = max(item.required_quantity - item.removed_quantity, 0)
+    available_quantity = min(item.owned_quantity, target_quantity)
+    accounted_quantity = available_quantity + item.ordered_quantity
+    missing_quantity = max(target_quantity - accounted_quantity, 0)
+    overage_quantity = max(
+        item.owned_quantity
+        + item.ordered_quantity
+        - target_quantity
+        - item.removed_quantity,
+        0,
+    )
+    purchase_quantity = max(target_quantity - available_quantity, 0)
 
-    if item.owned_quantity >= item.required_quantity:
+    if available_quantity >= target_quantity:
         item_status = "owned"
     elif item.ordered_quantity > 0 and missing_quantity == 0:
         item_status = "ordered"
@@ -294,12 +303,18 @@ def serialize_acquisition_item(item):
         "card_id": item.card_id,
         "printing_id": item.printing_id,
         "required_quantity": item.required_quantity,
+        "source_quantity": item.source_quantity,
+        "removed_quantity": item.removed_quantity,
+        "target_quantity": target_quantity,
         "owned_quantity": item.owned_quantity,
+        "available_quantity": available_quantity,
         "ordered_quantity": item.ordered_quantity,
         "accounted_quantity": accounted_quantity,
         "missing_quantity": missing_quantity,
         "overage_quantity": overage_quantity,
+        "purchase_quantity": purchase_quantity,
         "unit_price_cents": item.unit_price_cents,
+        "estimated_cost_cents": purchase_quantity * item.unit_price_cents,
         "remaining_cost_cents": missing_quantity * item.unit_price_cents,
         "ordered_value_cents": item.ordered_quantity * item.unit_price_cents,
         "status": item_status,
@@ -329,11 +344,17 @@ def serialize_acquisition_plan(plan, include_items=True):
 
     summary = {
         "line_count": len(item_rows),
-        "required_quantity": sum(item["required_quantity"] for item in item_rows),
-        "owned_quantity": sum(item["owned_quantity"] for item in item_rows),
+        "required_quantity": sum(item["target_quantity"] for item in item_rows),
+        "source_quantity": sum(item["source_quantity"] for item in item_rows),
+        "removed_quantity": sum(item["removed_quantity"] for item in item_rows),
+        "owned_quantity": sum(item["available_quantity"] for item in item_rows),
         "ordered_quantity": sum(item["ordered_quantity"] for item in item_rows),
         "missing_quantity": sum(item["missing_quantity"] for item in item_rows),
         "overage_quantity": sum(item["overage_quantity"] for item in item_rows),
+        "purchase_quantity": sum(item["purchase_quantity"] for item in item_rows),
+        "estimated_cost_cents": sum(
+            item["estimated_cost_cents"] for item in item_rows
+        ),
         "remaining_cost_cents": sum(
             item["remaining_cost_cents"] for item in item_rows
         ),
@@ -344,25 +365,21 @@ def serialize_acquisition_plan(plan, include_items=True):
 
     if not include_items:
         query = plan.items
+        items = query.all()
         summary = {
             "line_count": query.count(),
-            "required_quantity": int(
-                query.with_entities(
-                    db.func.coalesce(
-                        db.func.sum(AcquisitionPlanItem.required_quantity),
-                        0,
-                    )
-                ).scalar()
-                or 0
+            "required_quantity": sum(
+                max(item.required_quantity - item.removed_quantity, 0)
+                for item in items
             ),
-            "owned_quantity": int(
-                query.with_entities(
-                    db.func.coalesce(
-                        db.func.sum(AcquisitionPlanItem.owned_quantity),
-                        0,
-                    )
-                ).scalar()
-                or 0
+            "source_quantity": sum(item.source_quantity for item in items),
+            "removed_quantity": sum(item.removed_quantity for item in items),
+            "owned_quantity": sum(
+                min(
+                    item.owned_quantity,
+                    max(item.required_quantity - item.removed_quantity, 0),
+                )
+                for item in items
             ),
             "ordered_quantity": int(
                 query.with_entities(
@@ -375,20 +392,67 @@ def serialize_acquisition_plan(plan, include_items=True):
             ),
         }
         summary["missing_quantity"] = sum(
-            max(item.required_quantity - item.owned_quantity - item.ordered_quantity, 0)
-            for item in query.all()
+            max(
+                item.required_quantity
+                - item.removed_quantity
+                - min(
+                    item.owned_quantity,
+                    max(item.required_quantity - item.removed_quantity, 0),
+                )
+                - item.ordered_quantity,
+                0,
+            )
+            for item in items
         )
         summary["overage_quantity"] = sum(
-            max(item.owned_quantity + item.ordered_quantity - item.required_quantity, 0)
-            for item in query.all()
+            max(
+                item.owned_quantity
+                + item.ordered_quantity
+                - max(item.required_quantity - item.removed_quantity, 0)
+                - item.removed_quantity,
+                0,
+            )
+            for item in items
+        )
+        summary["purchase_quantity"] = sum(
+            max(
+                max(item.required_quantity - item.removed_quantity, 0)
+                - min(
+                    item.owned_quantity,
+                    max(item.required_quantity - item.removed_quantity, 0),
+                ),
+                0,
+            )
+            for item in items
+        )
+        summary["estimated_cost_cents"] = sum(
+            max(
+                max(item.required_quantity - item.removed_quantity, 0)
+                - min(
+                    item.owned_quantity,
+                    max(item.required_quantity - item.removed_quantity, 0),
+                ),
+                0,
+            )
+            * item.unit_price_cents
+            for item in items
         )
         summary["remaining_cost_cents"] = sum(
-            max(item.required_quantity - item.owned_quantity - item.ordered_quantity, 0)
+            max(
+                item.required_quantity
+                - item.removed_quantity
+                - min(
+                    item.owned_quantity,
+                    max(item.required_quantity - item.removed_quantity, 0),
+                )
+                - item.ordered_quantity,
+                0,
+            )
             * item.unit_price_cents
-            for item in query.all()
+            for item in items
         )
         summary["ordered_value_cents"] = sum(
-            item.ordered_quantity * item.unit_price_cents for item in query.all()
+            item.ordered_quantity * item.unit_price_cents for item in items
         )
 
     required_quantity = summary["required_quantity"]

@@ -267,6 +267,11 @@ def update_deck_version(version_id, payload):
 def delete_deck_version(version_id):
     version = get_deck_version_or_raise(version_id)
 
+    if version.is_active:
+        raise ValueError(
+            "Active deck versions cannot be deleted. Activate another version first."
+        )
+
     db.session.delete(version)
     db.session.commit()
 

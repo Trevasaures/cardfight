@@ -42,7 +42,7 @@ import type {
   UpdateAcquisitionItemPayload,
 } from "../types/api";
 
-type ItemFilter = "all" | "needed" | "incoming" | "owned";
+type ItemFilter = "changes" | "all" | "needed" | "incoming" | "owned";
 
 const EMPTY_OPTIONS: DeckOptionsResponse = {
   types: ["Standard", "Stride"],
@@ -96,8 +96,8 @@ export function OrderTracker() {
   const [showSetup, setShowSetup] = useState(false);
 
   const [itemFilter, setItemFilter] = usePersistentState<ItemFilter>(
-    "cardfight.order-tracker.item-filter",
-    "all",
+    "cardfight.order-tracker.item-filter-v2",
+    "changes",
   );
   const [itemSearch, setItemSearch] = usePersistentState(
     "cardfight.order-tracker.item-search",
@@ -198,7 +198,7 @@ export function OrderTracker() {
       setSelectedPlan(created);
       setPreferredPlanId(created.id);
       setShowSetup(false);
-      setItemFilter("all");
+      setItemFilter("changes");
       setItemSearch("");
       toast.success(`Created ${created.name}.`);
     } catch (error) {
@@ -371,10 +371,16 @@ export function OrderTracker() {
 
       const matchesFilter =
         itemFilter === "all" ||
+        (itemFilter === "changes" &&
+          (item.missing_quantity > 0 ||
+            item.ordered_quantity > 0 ||
+            item.removed_quantity > 0 ||
+            item.source_quantity === 0)) ||
         (itemFilter === "needed" && item.missing_quantity > 0) ||
         (itemFilter === "incoming" && item.ordered_quantity > 0) ||
         (itemFilter === "owned" &&
-          item.owned_quantity >= item.required_quantity);
+          item.available_quantity >= item.target_quantity &&
+          item.removed_quantity === 0);
 
       return matchesSearch && matchesFilter;
     });
@@ -654,19 +660,24 @@ export function OrderTracker() {
             </div>
           </section>
 
-          <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
             {[
               {
-                label: "Required",
+                label: "Next version",
                 value: selectedPlan.summary.required_quantity,
-                helper: `${selectedPlan.summary.line_count} unique card lines`,
+                helper: `${selectedPlan.summary.line_count} tracked card lines`,
               },
               {
-                label: "Owned",
+                label: "Ready",
                 value: selectedPlan.summary.owned_quantity,
                 helper: selectedPlan.summary.is_physically_complete
                   ? "Physical build complete"
-                  : "Copies currently available",
+                  : "Copies kept for the next version",
+              },
+              {
+                label: "Outgoing",
+                value: selectedPlan.summary.removed_quantity,
+                helper: "Copies marked for replacement",
               },
               {
                 label: "Incoming",
@@ -681,9 +692,11 @@ export function OrderTracker() {
                   : "Not yet owned or ordered",
               },
               {
-                label: "Remaining estimate",
-                value: dollars(selectedPlan.summary.remaining_cost_cents),
-                helper: `${Math.round(selectedPlan.summary.progress * 100)}% accounted for`,
+                label: "Purchase estimate",
+                value: dollars(selectedPlan.summary.estimated_cost_cents),
+                helper: selectedPlan.summary.remaining_cost_cents
+                  ? `${dollars(selectedPlan.summary.remaining_cost_cents)} not yet incoming`
+                  : `${Math.round(selectedPlan.summary.progress * 100)}% accounted for`,
               },
             ].map((stat) => (
               <div
@@ -786,8 +799,8 @@ export function OrderTracker() {
                   <h3 className="text-xl font-black">Purchase checklist</h3>
                 </div>
                 <p className="mt-1 text-sm text-slate-500">
-                  Quantities never go negative; extra copies are shown as an
-                  over-target warning.
+                  Existing cards start ready. Track only the pieces leaving,
+                  arriving, or still needed for the next version.
                 </p>
               </div>
 
@@ -805,8 +818,9 @@ export function OrderTracker() {
             <div className="mt-4 flex flex-wrap gap-2">
               {(
                 [
+                  ["changes", "Changes only"],
                   ["all", "All cards"],
-                  ["needed", "Needs attention"],
+                  ["needed", "Needs cards"],
                   ["incoming", "Incoming"],
                   ["owned", "Owned"],
                 ] as const
@@ -827,6 +841,12 @@ export function OrderTracker() {
                 </button>
               ))}
             </div>
+            <p className="mt-3 text-xs leading-5 text-slate-500">
+              Needs cards only includes rows where the next-version quantity
+              is not fully covered by copies on hand plus copies incoming.
+              Reducing a card quantity does not create a shortage when you
+              still own enough for the reduced total.
+            </p>
 
             {loadingPlan ? (
               <div className="mt-5 rounded-3xl border border-white/10 bg-black/20 p-8 text-slate-500">
@@ -861,7 +881,9 @@ export function OrderTracker() {
               </div>
             ) : selectedPlan.items.length ? (
               <div className="mt-5 rounded-3xl border border-dashed border-white/15 bg-black/10 p-8 text-center text-slate-500">
-                No cards match this filter.
+                {itemFilter === "changes"
+                  ? "No swaps or purchases are tracked yet. Add a card or open All cards to mark an existing card for replacement."
+                  : "No cards match this filter."}
               </div>
             ) : (
               <div className="mt-5 rounded-3xl border border-dashed border-white/15 bg-black/10 p-10 text-center">

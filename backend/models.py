@@ -454,6 +454,8 @@ class AcquisitionPlanItem(db.Model):
     )
 
     required_quantity = db.Column(db.Integer, default=1, nullable=False)
+    source_quantity = db.Column(db.Integer, default=0, nullable=False)
+    removed_quantity = db.Column(db.Integer, default=0, nullable=False)
     owned_quantity = db.Column(db.Integer, default=0, nullable=False)
     ordered_quantity = db.Column(db.Integer, default=0, nullable=False)
     unit_price_cents = db.Column(db.Integer, default=0, nullable=False)
@@ -475,6 +477,14 @@ class AcquisitionPlanItem(db.Model):
         db.CheckConstraint(
             "required_quantity > 0",
             name="ck_acquisition_item_required_positive",
+        ),
+        db.CheckConstraint(
+            "source_quantity >= 0",
+            name="ck_acquisition_item_source_nonnegative",
+        ),
+        db.CheckConstraint(
+            "removed_quantity >= 0",
+            name="ck_acquisition_item_removed_nonnegative",
         ),
         db.CheckConstraint(
             "owned_quantity >= 0",

@@ -185,8 +185,8 @@ export function OrderTrackerSetup({
             Upgrade an existing deck
           </p>
           <p className="mt-1 text-sm leading-6 text-slate-400">
-            Track the cards needed to finish, update, or replace pieces in a
-            deck you already maintain.
+            Import the current list as owned, then mark only the cards leaving
+            and the new pieces you need to order.
           </p>
         </button>
       </div>
@@ -225,7 +225,7 @@ export function OrderTrackerSetup({
             <Copy className="h-4 w-4" />
             {planType === "new_build"
               ? "Copy an existing version"
-              : "Import the current version"}
+              : "Import current version as owned"}
           </button>
         </div>
       </div>
