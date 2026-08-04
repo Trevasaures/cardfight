@@ -39,26 +39,30 @@ export function AcquisitionGradeSection({
 }: AcquisitionGradeSectionProps) {
   const totals = items.reduce(
     (summary, item) => ({
-      required: summary.required + item.required_quantity,
-      owned: summary.owned + item.owned_quantity,
+      required: summary.required + item.target_quantity,
+      owned: summary.owned + item.available_quantity,
+      outgoing: summary.outgoing + item.removed_quantity,
       incoming: summary.incoming + item.ordered_quantity,
       accounted: summary.accounted + item.accounted_quantity,
       missing: summary.missing + item.missing_quantity,
-      remainingCost: summary.remainingCost + item.remaining_cost_cents,
+      estimatedCost: summary.estimatedCost + item.estimated_cost_cents,
     }),
     {
       required: 0,
       owned: 0,
+      outgoing: 0,
       incoming: 0,
       accounted: 0,
       missing: 0,
-      remainingCost: 0,
+      estimatedCost: 0,
     },
   );
+  const complete = totals.missing === 0;
   const progress = totals.required
     ? Math.min(100, Math.round((totals.accounted / totals.required) * 100))
-    : 0;
-  const complete = totals.missing === 0;
+    : complete
+      ? 100
+      : 0;
   const gradeLabel = grade === null ? "Unknown grade" : `Grade ${grade}`;
 
   return (
@@ -93,16 +97,22 @@ export function AcquisitionGradeSection({
               </div>
               <p className="mt-1 text-xs text-slate-500">
                 {items.length} printing{items.length === 1 ? "" : "s"} ·{" "}
-                {totals.required} required
+                {totals.required} planned
               </p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-x-5 gap-y-2 text-xs">
             <span className="text-slate-500">
-              Owned{" "}
+              Ready{" "}
               <strong className="text-slate-200">{totals.owned}</strong>
             </span>
+            {totals.outgoing ? (
+              <span className="text-slate-500">
+                Outgoing{" "}
+                <strong className="text-rose-200">{totals.outgoing}</strong>
+              </span>
+            ) : null}
             <span className="text-slate-500">
               Incoming{" "}
               <strong className="text-violet-200">{totals.incoming}</strong>
@@ -118,9 +128,9 @@ export function AcquisitionGradeSection({
               </strong>
             </span>
             <span className="text-slate-500">
-              Estimate{" "}
+              Purchase estimate{" "}
               <strong className="text-slate-200">
-                {dollars(totals.remainingCost)}
+                {dollars(totals.estimatedCost)}
               </strong>
             </span>
             <ChevronDown className="h-4 w-4 text-slate-500 transition group-open:rotate-180" />

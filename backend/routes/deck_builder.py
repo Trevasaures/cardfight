@@ -70,6 +70,8 @@ def delete_deck_version_route(version_id):
         delete_deck_version(version_id)
     except LookupError as exc:
         return _json_error(str(exc), 404)
+    except ValueError as exc:
+        return _json_error(str(exc), 400)
 
     return jsonify({"deleted": True, "id": version_id})
 

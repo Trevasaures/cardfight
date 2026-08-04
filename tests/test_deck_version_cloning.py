@@ -5,6 +5,8 @@ from backend.models import Card, CardPrinting, Deck, DeckCard, DeckVersion
 from backend.services.deck_builder import (
     add_card_to_deck_version,
     create_deck_version,
+    delete_deck_version,
+    update_deck_version,
 )
 from backend.services.serializers import serialize_deck_card
 
@@ -127,3 +129,23 @@ def test_same_card_can_use_different_printings_in_main_and_ride_decks(
     assert main_entry.printing_id == triple_rare.id
     assert ride_entry.printing_id == silver_rare.id
     assert serialize_deck_card(main_entry)["card"]["printings"]
+
+
+def test_deck_version_can_be_activated_and_only_inactive_versions_deleted(
+    app_context,
+):
+    deck = Deck(name="Version Controls", type="Standard")
+    active = DeckVersion(deck=deck, version_name="Current", is_active=True)
+    draft = DeckVersion(deck=deck, version_name="Mistake", is_active=False)
+    db.session.add_all([deck, active, draft])
+    db.session.commit()
+
+    with pytest.raises(ValueError, match="Activate another version first"):
+        delete_deck_version(active.id)
+
+    update_deck_version(draft.id, {"is_active": True})
+    assert db.session.get(DeckVersion, draft.id).is_active is True
+    assert db.session.get(DeckVersion, active.id).is_active is False
+
+    delete_deck_version(active.id)
+    assert db.session.get(DeckVersion, active.id) is None

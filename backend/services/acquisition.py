@@ -132,12 +132,15 @@ def _copy_version_items(plan, source_version):
         aggregated[(entry.card_id, entry.printing_id)] += entry.quantity
 
     for (card_id, printing_id), quantity in aggregated.items():
+        source_quantity = quantity if plan.plan_type == "existing_deck" else 0
         db.session.add(
             AcquisitionPlanItem(
                 plan_id=plan.id,
                 card_id=card_id,
                 printing_id=printing_id,
                 required_quantity=quantity,
+                source_quantity=source_quantity,
+                owned_quantity=source_quantity,
             )
         )
 
@@ -338,11 +341,23 @@ def add_acquisition_item(plan_id, payload):
         "unit_price_cents",
         default=0,
     )
+    source_quantity = _int_value(
+        payload.get("source_quantity"),
+        "source_quantity",
+        default=0,
+    )
+    removed_quantity = _int_value(
+        payload.get("removed_quantity"),
+        "removed_quantity",
+        default=0,
+    )
 
     if required_quantity <= 0:
         raise ValueError("required_quantity must be greater than 0")
 
     for field_name, value in (
+        ("source_quantity", source_quantity),
+        ("removed_quantity", removed_quantity),
         ("owned_quantity", owned_quantity),
         ("ordered_quantity", ordered_quantity),
         ("unit_price_cents", unit_price_cents),
@@ -358,6 +373,10 @@ def add_acquisition_item(plan_id, payload):
 
     if existing:
         existing.required_quantity += required_quantity
+        if "source_quantity" in payload:
+            existing.source_quantity += source_quantity
+        if "removed_quantity" in payload:
+            existing.removed_quantity += removed_quantity
         if "owned_quantity" in payload:
             existing.owned_quantity += owned_quantity
         if "ordered_quantity" in payload:
@@ -372,6 +391,8 @@ def add_acquisition_item(plan_id, payload):
         card_id=card.id,
         printing_id=printing.id if printing else None,
         required_quantity=required_quantity,
+        source_quantity=source_quantity,
+        removed_quantity=removed_quantity,
         owned_quantity=owned_quantity,
         ordered_quantity=ordered_quantity,
         unit_price_cents=unit_price_cents,
@@ -391,6 +412,8 @@ def update_acquisition_item(item_id, payload):
 
     quantity_fields = {
         "required_quantity": True,
+        "source_quantity": False,
+        "removed_quantity": False,
         "owned_quantity": False,
         "ordered_quantity": False,
         "unit_price_cents": False,
@@ -409,6 +432,23 @@ def update_acquisition_item(item_id, payload):
             raise ValueError(f"{field_name} cannot be negative")
 
         setattr(item, field_name, value)
+
+    if "target_quantity" in payload:
+        target_quantity = _int_value(
+            payload.get("target_quantity"),
+            "target_quantity",
+        )
+        if target_quantity is None or target_quantity < 0:
+            raise ValueError("target_quantity cannot be negative")
+
+        item.required_quantity = max(item.source_quantity, target_quantity, 1)
+        item.removed_quantity = max(item.source_quantity - target_quantity, 0)
+
+    if item.removed_quantity > item.source_quantity:
+        raise ValueError("removed_quantity cannot exceed the source deck quantity")
+
+    if item.removed_quantity > item.required_quantity:
+        raise ValueError("removed_quantity cannot exceed the tracked quantity")
 
     if "printing_id" in payload:
         printing = _get_printing_or_raise(payload.get("printing_id"), item.card_id)

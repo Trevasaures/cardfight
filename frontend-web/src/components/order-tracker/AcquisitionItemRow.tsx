@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { AlertTriangle, PackageCheck, Save, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRightLeft,
+  PackageCheck,
+  PackagePlus,
+  RotateCcw,
+  Save,
+  Trash2,
+} from "lucide-react";
 
 import type {
   AcquisitionPlanItem,
@@ -25,10 +33,10 @@ function dollars(cents: number) {
 }
 
 const STATUS_LABELS = {
-  needed: "Needs cards",
-  partial: "Partially covered",
-  ordered: "Fully ordered",
-  owned: "Owned",
+  needed: "Not covered",
+  partial: "Some copies covered",
+  ordered: "Fully incoming",
+  owned: "Ready",
 };
 
 const STATUS_STYLES = {
@@ -45,8 +53,8 @@ export function AcquisitionItemRow({
   onReceive,
   onRemove,
 }: AcquisitionItemRowProps) {
-  const [requiredQuantity, setRequiredQuantity] = useState(
-    String(item.required_quantity),
+  const [targetQuantity, setTargetQuantity] = useState(
+    String(item.target_quantity),
   );
   const [ownedQuantity, setOwnedQuantity] = useState(
     String(item.owned_quantity),
@@ -63,12 +71,22 @@ export function AcquisitionItemRow({
 
   async function save() {
     await onSave(item.id, {
-      required_quantity: Number(requiredQuantity),
+      target_quantity: Number(targetQuantity),
       owned_quantity: Number(ownedQuantity),
       ordered_quantity: Number(orderedQuantity),
       unit_price_cents: Math.round(Number(price || 0) * 100),
       printing_id: printingId ? Number(printingId) : null,
     });
+  }
+
+  async function markMissingIncoming() {
+    await onSave(item.id, {
+      ordered_quantity: item.ordered_quantity + item.missing_quantity,
+    });
+  }
+
+  async function setNextVersionQuantity(quantity: number) {
+    await onSave(item.id, { target_quantity: quantity });
   }
 
   const printingLabel = item.printing
@@ -80,6 +98,14 @@ export function AcquisitionItemRow({
         .filter(Boolean)
         .join(" · ")
     : "Any printing";
+  const comesFromCurrentDeck = item.source_quantity > 0;
+  const statusHelp = {
+    needed: "No copies are currently on hand or incoming.",
+    partial:
+      "Some of the next-version quantity is covered, but at least one copy is still needed.",
+    ordered: "Every needed copy is marked incoming.",
+    owned: "The on-hand quantity covers this card's next-version quantity.",
+  }[item.status];
 
   return (
     <article className="rounded-3xl border border-white/10 bg-black/20 p-4">
@@ -92,9 +118,15 @@ export function AcquisitionItemRow({
                 "rounded-full border px-2.5 py-1 text-xs font-bold",
                 STATUS_STYLES[item.status],
               ].join(" ")}
+              title={statusHelp}
             >
               {STATUS_LABELS[item.status]}
             </span>
+            {item.removed_quantity > 0 ? (
+              <span className="rounded-full border border-rose-300/25 bg-rose-300/10 px-2.5 py-1 text-xs font-bold text-rose-100">
+                {item.removed_quantity} outgoing
+              </span>
+            ) : null}
           </div>
 
           <p className="mt-1 text-sm text-slate-500">
@@ -104,7 +136,7 @@ export function AcquisitionItemRow({
 
         <div className="text-right">
           <p className="text-xs uppercase tracking-[0.16em] text-slate-600">
-            Still missing
+            Still needed
           </p>
           <p
             className={[
@@ -119,23 +151,45 @@ export function AcquisitionItemRow({
         </div>
       </div>
 
+      {comesFromCurrentDeck ? (
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-violet-300/15 bg-violet-300/[0.05] px-4 py-3 text-sm">
+          <ArrowRightLeft className="h-4 w-4 text-violet-200" />
+          <span className="text-slate-400">
+            Current deck{" "}
+            <strong className="text-slate-100">{item.source_quantity}</strong>
+          </span>
+          <span className="text-slate-600">→</span>
+          <span className="text-slate-400">
+            Next version{" "}
+            <strong className="text-violet-100">{item.target_quantity}</strong>
+          </span>
+          {item.removed_quantity > 0 ? (
+            <span className="text-rose-200">
+              Replace/remove {item.removed_quantity}
+            </span>
+          ) : (
+            <span className="text-emerald-200">Keeping current copies</span>
+          )}
+        </div>
+      ) : null}
+
       <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <label className="grid gap-1.5">
           <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-            Required
+            Next version qty
           </span>
           <input
             type="number"
-            min="1"
-            value={requiredQuantity}
-            onChange={(event) => setRequiredQuantity(event.target.value)}
+            min={comesFromCurrentDeck ? "0" : "1"}
+            value={targetQuantity}
+            onChange={(event) => setTargetQuantity(event.target.value)}
             className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm outline-none focus:border-cyan-300/50"
           />
         </label>
 
         <label className="grid gap-1.5">
           <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-            Owned
+            On hand
           </span>
           <input
             type="number"
@@ -189,11 +243,7 @@ export function AcquisitionItemRow({
             <option value="">Any printing</option>
             {item.card.printings.map((printing) => (
               <option key={printing.id} value={printing.id}>
-                {[
-                  printing.set_code,
-                  printing.card_number,
-                  printing.rarity,
-                ]
+                {[printing.set_code, printing.card_number, printing.rarity]
                   .filter(Boolean)
                   .join(" · ") || `Printing ${printing.id}`}
               </option>
@@ -205,30 +255,77 @@ export function AcquisitionItemRow({
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
         <div className="flex flex-wrap gap-4 text-sm">
           <span className="text-slate-500">
-            Remaining estimate{" "}
+            Purchase estimate{" "}
             <strong className="text-slate-200">
-              {dollars(item.remaining_cost_cents)}
+              {dollars(item.estimated_cost_cents)}
             </strong>
           </span>
+          {item.purchase_quantity > 0 ? (
+            <span className="text-slate-500">
+              {item.purchase_quantity} to acquire ×{" "}
+              {dollars(item.unit_price_cents)}
+            </span>
+          ) : null}
+          {item.remaining_cost_cents > 0 ? (
+            <span className="text-rose-200">
+              {dollars(item.remaining_cost_cents)} not yet incoming
+            </span>
+          ) : null}
 
           {item.overage_quantity ? (
             <span className="inline-flex items-center gap-1.5 text-amber-200">
               <AlertTriangle className="h-4 w-4" />
-              {item.overage_quantity} over target
+              {item.overage_quantity} extra beyond this plan
             </span>
           ) : null}
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => onRemove(item)}
-            disabled={busy}
-            className="inline-flex items-center gap-2 rounded-xl border border-rose-300/20 bg-rose-300/5 px-3 py-2 text-sm font-bold text-rose-200 transition hover:bg-rose-300/10 disabled:opacity-50"
-          >
-            <Trash2 className="h-4 w-4" />
-            Remove
-          </button>
+          {comesFromCurrentDeck ? (
+            item.removed_quantity > 0 ? (
+              <button
+                type="button"
+                onClick={() => setNextVersionQuantity(item.source_quantity)}
+                disabled={busy}
+                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-bold text-slate-200 transition hover:bg-white/[0.08] disabled:opacity-50"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Keep current copies
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setNextVersionQuantity(0)}
+                disabled={busy}
+                className="inline-flex items-center gap-2 rounded-xl border border-rose-300/20 bg-rose-300/5 px-3 py-2 text-sm font-bold text-rose-200 transition hover:bg-rose-300/10 disabled:opacity-50"
+              >
+                <ArrowRightLeft className="h-4 w-4" />
+                Replace in next version
+              </button>
+            )
+          ) : (
+            <button
+              type="button"
+              onClick={() => onRemove(item)}
+              disabled={busy}
+              className="inline-flex items-center gap-2 rounded-xl border border-rose-300/20 bg-rose-300/5 px-3 py-2 text-sm font-bold text-rose-200 transition hover:bg-rose-300/10 disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              Remove
+            </button>
+          )}
+
+          {item.missing_quantity > 0 ? (
+            <button
+              type="button"
+              onClick={markMissingIncoming}
+              disabled={busy}
+              className="inline-flex items-center gap-2 rounded-xl border border-violet-300/25 bg-violet-300/10 px-3 py-2 text-sm font-bold text-violet-100 transition hover:bg-violet-300/15 disabled:opacity-50"
+            >
+              <PackagePlus className="h-4 w-4" />
+              Mark missing incoming
+            </button>
+          ) : null}
 
           {item.ordered_quantity > 0 ? (
             <button
