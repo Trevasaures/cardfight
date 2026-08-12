@@ -1,31 +1,54 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+  Activity,
+  ChevronRight,
+  Crosshair,
+  Filter,
+  Gauge,
+  RefreshCcw,
+  Search,
+} from "lucide-react";
 
-import { getStatsTable } from "../api/stats";
+import { getPerformanceSpotlight, getStatsTable } from "../api/stats";
+import { PerformanceSpotlight } from "../components/analytics/PerformanceSpotlight";
 import { FormatBadge } from "../components/badges/FormatBadge";
-import { StatusBadge } from "../components/badges/StatusBadge";
-import { StatCard } from "../components/cards/StatCard";
 import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
-import type { DeckType, StatsRow } from "../types/api";
+import { usePersistentState } from "../hooks/usePersistentState";
+import type {
+  DeckType,
+  PerformanceSpotlightResponse,
+  StatsRow,
+} from "../types/api";
 import { formatPercent, formatRecord } from "../utils/format";
 
 type FormatFilter = "All" | DeckType;
 
+function nationIcon(row: StatsRow) {
+  return row.deck.nation_icon ? `/nations/${row.deck.nation_icon}` : null;
+}
+
 export function Analytics() {
   const [rows, setRows] = useState<StatsRow[]>([]);
-  const [format, setFormat] = useState<FormatFilter>("All");
-  const [activeOnly, setActiveOnly] = useState(false);
+  const [spotlight, setSpotlight] = useState<PerformanceSpotlightResponse | null>(
+    null,
+  );
+  const [format, setFormat] = usePersistentState<FormatFilter>(
+    "cardfight.analytics.format",
+    "All",
+  );
+  const [activeOnly, setActiveOnly] = usePersistentState(
+    "cardfight.analytics.active-only",
+    true,
+  );
+  const [selectedDeckId, setSelectedDeckId] = usePersistentState<number | null>(
+    "cardfight.analytics.spotlight-deck",
+    null,
+  );
+  const [search, setSearch] = useState("");
+  const [loadingRows, setLoadingRows] = useState(true);
+  const [loadingSpotlight, setLoadingSpotlight] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const toast = useToast();
 
   useEffect(() => {
@@ -36,263 +59,269 @@ export function Analytics() {
 
   useEffect(() => {
     getStatsTable()
-      .then(setRows)
+      .then((nextRows) => {
+        setRows(nextRows);
+        setSelectedDeckId((current) => {
+          if (current && nextRows.some((row) => row.id === current)) return current;
+          const defaultRow = nextRows
+            .slice()
+            .sort((a, b) => b.decided_games - a.decided_games)[0];
+          return defaultRow?.id ?? null;
+        });
+      })
       .catch((err) =>
         setError(err instanceof Error ? err.message : "Failed to load analytics"),
       )
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => setLoadingRows(false));
+  }, [setSelectedDeckId]);
+
+  useEffect(() => {
+    if (!selectedDeckId) {
+      setSpotlight(null);
+      return;
+    }
+
+    let active = true;
+    setLoadingSpotlight(true);
+
+    getPerformanceSpotlight(selectedDeckId)
+      .then((payload) => {
+        if (active) setSpotlight(payload);
+      })
+      .catch((err) => {
+        if (active) {
+          setError(
+            err instanceof Error ? err.message : "Failed to load deck spotlight",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingSpotlight(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedDeckId]);
 
   const filteredRows = useMemo(() => {
+    const query = search.trim().toLowerCase();
     return rows.filter((row) => {
       const matchesFormat = format === "All" || row.type === format;
       const matchesActive = !activeOnly || row.active;
-
-      return matchesFormat && matchesActive;
+      const matchesSearch =
+        !query ||
+        row.name.toLowerCase().includes(query) ||
+        (row.deck.nation ?? "").toLowerCase().includes(query);
+      return matchesFormat && matchesActive && matchesSearch;
     });
-  }, [rows, format, activeOnly]);
+  }, [activeOnly, format, rows, search]);
 
-  const chartRows = useMemo(() => {
-    return filteredRows
-      .filter((row) => row.decided_games > 0)
-      .slice()
-      .sort((a, b) => b.win_pct - a.win_pct)
-      .map((row) => ({
-        name: row.name,
-        winPct: Number((row.win_pct * 100).toFixed(1)),
-        wins: row.wins,
-        losses: row.losses,
-        decided: row.decided_games,
-        logged: row.logged_games,
-      }));
-  }, [filteredRows]);
-
-  const totalDecided = filteredRows.reduce(
-    (sum, row) => sum + row.decided_games,
-    0,
+  const rankedRows = useMemo(
+    () =>
+      filteredRows
+        .filter((row) => row.decided_games > 0)
+        .slice()
+        .sort((a, b) => {
+          if (b.win_pct !== a.win_pct) return b.win_pct - a.win_pct;
+          return b.decided_games - a.decided_games;
+        }),
+    [filteredRows],
   );
-  const totalLogged = filteredRows.reduce((sum, row) => sum + row.logged_games, 0);
-  const totalUndecided = filteredRows.reduce((sum, row) => sum + row.undecided, 0);
-  const activeDecks = filteredRows.filter((row) => row.active).length;
 
-  const bestDeck = filteredRows
-    .filter((row) => row.decided_games > 0)
-    .slice()
-    .sort((a, b) => {
-      if (b.win_pct !== a.win_pct) return b.win_pct - a.win_pct;
-      return b.decided_games - a.decided_games;
-    })[0];
+  async function refreshSpotlight() {
+    if (!selectedDeckId) return;
+    setLoadingSpotlight(true);
+    try {
+      const payload = await getPerformanceSpotlight(selectedDeckId);
+      setSpotlight(payload);
+      toast.success(`Refreshed ${payload.deck.name}'s performance spotlight.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to refresh spotlight");
+    } finally {
+      setLoadingSpotlight(false);
+    }
+  }
 
   return (
     <>
       <PageHeader
-        eyebrow="Analytics"
-        title="Deck performance"
-        description="Stats are calculated directly from match history, so undecided games are tracked separately and never counted as losses."
+        eyebrow="Analytics · Performance Spotlight"
+        title="See what the record is really saying"
+        description="Focus on one deck at a time, read its recent trajectory, expose its turn-order split, and turn match history into the next useful testing decision."
       />
 
-      <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+      <section
+        data-anime="motion-panel"
+        className="rounded-[2rem] border border-white/10 bg-white/[0.035] p-4 shadow-2xl shadow-black/20 sm:p-5"
+      >
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-500">
-              Filters
+            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.22em] text-cyan-200/80">
+              <Crosshair className="h-4 w-4" /> Spotlight controls
             </p>
-            <p className="mt-1 text-sm text-slate-400">
-              Narrow the analytics without changing the underlying data.
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+              Choose the deck you are actively testing. The selection stays with you when you leave and return.
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {(["All", "Standard", "Stride"] as FormatFilter[]).map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => setFormat(item)}
-                className={[
-                  "rounded-full border px-4 py-2 text-sm font-semibold transition",
-                  format === item
-                    ? "border-cyan-300/50 bg-cyan-300/15 text-cyan-100"
-                    : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]",
-                ].join(" ")}
-              >
-                {item}
-              </button>
-            ))}
-
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <label className="relative min-w-0 sm:w-72">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Find a deck or nation..."
+                className="w-full rounded-xl border border-white/10 bg-slate-950/65 py-2.5 pl-10 pr-3 text-sm outline-none placeholder:text-slate-600 focus:border-cyan-300/45"
+              />
+            </label>
             <button
               type="button"
-              onClick={() => setActiveOnly((value) => !value)}
-              className={[
-                "rounded-full border px-4 py-2 text-sm font-semibold transition",
-                activeOnly
-                  ? "border-emerald-300/50 bg-emerald-300/15 text-emerald-100"
-                  : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]",
-              ].join(" ")}
+              onClick={() => void refreshSpotlight()}
+              disabled={!selectedDeckId || loadingSpotlight}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-bold text-slate-300 transition hover:bg-white/[0.09] disabled:opacity-40"
             >
-              Active only
+              <RefreshCcw className={`h-4 w-4 ${loadingSpotlight ? "animate-spin" : ""}`} />
+              Refresh
             </button>
           </div>
         </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/10 pt-4">
+          <span className="mr-1 inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-slate-600">
+            <Filter className="h-3.5 w-3.5" /> Field
+          </span>
+          {(["All", "Standard", "Stride"] as FormatFilter[]).map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setFormat(item)}
+              className={[
+                "rounded-full border px-3.5 py-1.5 text-xs font-bold transition",
+                format === item
+                  ? "border-cyan-300/45 bg-cyan-300/15 text-cyan-100"
+                  : "border-white/10 bg-white/[0.035] text-slate-400 hover:text-slate-100",
+              ].join(" ")}
+            >
+              {item}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setActiveOnly((value) => !value)}
+            className={[
+              "rounded-full border px-3.5 py-1.5 text-xs font-bold transition",
+              activeOnly
+                ? "border-emerald-300/35 bg-emerald-300/10 text-emerald-100"
+                : "border-white/10 bg-white/[0.035] text-slate-400 hover:text-slate-100",
+            ].join(" ")}
+          >
+            Active only
+          </button>
+        </div>
+
+        {loadingRows ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[0, 1, 2, 3].map((item) => (
+              <div key={item} className="h-24 animate-pulse rounded-2xl bg-white/[0.045]" />
+            ))}
+          </div>
+        ) : filteredRows.length ? (
+          <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
+            {filteredRows.map((row) => {
+              const icon = nationIcon(row);
+              const selected = row.id === selectedDeckId;
+              return (
+                <button
+                  key={row.id}
+                  type="button"
+                  onClick={() => setSelectedDeckId(row.id)}
+                  className={[
+                    "group flex w-56 shrink-0 items-center gap-3 rounded-2xl border p-3 text-left transition",
+                    selected
+                      ? "border-cyan-300/45 bg-cyan-300/[0.11] shadow-[0_0_28px_rgba(34,211,238,0.08)]"
+                      : "border-white/10 bg-black/20 hover:border-white/20 hover:bg-white/[0.055]",
+                  ].join(" ")}
+                >
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-slate-950/70">
+                    {icon ? (
+                      <img src={icon} alt="" className="h-8 w-8 object-contain" />
+                    ) : (
+                      <Gauge className="h-5 w-5 text-slate-500" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-black text-white">{row.name}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {formatRecord(row.wins, row.losses)} · {formatPercent(row.win_pct)}
+                    </p>
+                  </div>
+                  <ChevronRight
+                    className={`h-4 w-4 shrink-0 transition ${selected ? "text-cyan-200" : "text-slate-700 group-hover:text-slate-400"}`}
+                  />
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="mt-4 rounded-2xl border border-dashed border-white/10 p-7 text-center text-sm text-slate-500">
+            No decks match these spotlight controls.
+          </div>
+        )}
       </section>
 
-      {loading ? (
-        <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-slate-400">
-          Loading analytics...
-        </div>
-      ) : (
-        <>
-          <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Decks shown" value={filteredRows.length} />
-            <StatCard label="Active shown" value={activeDecks} />
-            <StatCard label="Decided games" value={totalDecided} />
-            <StatCard label="Undecided entries" value={totalUndecided} />
-          </section>
+      <div className="mt-6">
+        {loadingSpotlight && !spotlight ? (
+          <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.035] p-8">
+            <div className="h-[32rem] animate-pulse rounded-3xl bg-white/[0.04]" />
+          </div>
+        ) : spotlight ? (
+          <PerformanceSpotlight key={spotlight.deck.id} spotlight={spotlight} />
+        ) : (
+          <div className="rounded-[2rem] border border-dashed border-white/10 p-12 text-center">
+            <Activity className="mx-auto h-8 w-8 text-slate-600" />
+            <p className="mt-4 text-lg font-black text-slate-300">Choose a deck to light the spotlight.</p>
+          </div>
+        )}
+      </div>
 
-          <section className="mt-6 grid gap-4 lg:grid-cols-[1fr_22rem]">
-            <div className="rounded-[2rem] border border-white/10 bg-slate-950/45 p-6">
-              <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <h3 className="text-xl font-bold">Win rate by deck</h3>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Only decks with decided games are shown.
-                  </p>
-                </div>
-              </div>
-
-              {chartRows.length ? (
-                <div className="h-[26rem]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={chartRows}
-                      layout="vertical"
-                      margin={{ top: 8, right: 24, bottom: 8, left: 24 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                      <XAxis
-                        type="number"
-                        domain={[0, 100]}
-                        tick={{ fill: "#94a3b8", fontSize: 12 }}
-                        tickFormatter={(value) => `${value}%`}
-                        stroke="rgba(255,255,255,0.15)"
-                      />
-                      <YAxis
-                        type="category"
-                        dataKey="name"
-                        width={120}
-                        tick={{ fill: "#cbd5e1", fontSize: 12 }}
-                        stroke="rgba(255,255,255,0.15)"
-                      />
-                      <Tooltip
-                        cursor={{ fill: "rgba(255,255,255,0.04)" }}
-                        contentStyle={{
-                          background: "#020617",
-                          border: "1px solid rgba(255,255,255,0.12)",
-                          borderRadius: "16px",
-                          color: "#f8fafc",
-                        }}
-                        formatter={(value, name) => {
-                          if (name === "winPct") return [`${value}%`, "Win rate"];
-                          return [value, name];
-                        }}
-                      />
-                      <Bar dataKey="winPct" radius={[0, 12, 12, 0]} fill="#7dd3fc" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.025] p-10 text-center text-slate-500">
-                  No decided games available for this filter.
-                </div>
-              )}
+      {rankedRows.length ? (
+        <section data-anime="motion-panel" className="mt-6 rounded-[2rem] border border-white/10 bg-white/[0.035] p-5 sm:p-6">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Field signal</p>
+              <h3 className="mt-2 text-xl font-black text-white">Performance board</h3>
             </div>
+            <p className="text-sm text-slate-500">Win rate uses decided games only. Sample size stays visible beside every result.</p>
+          </div>
 
-            <div className="rounded-[2rem] border border-white/10 bg-slate-950/45 p-6">
-              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-violet-200/70">
-                Current leader
-              </p>
-
-              {bestDeck ? (
-                <>
-                  <h3 className="mt-4 text-3xl font-black tracking-tight">
-                    {bestDeck.name}
-                  </h3>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <FormatBadge type={bestDeck.type} />
-                    <StatusBadge active={bestDeck.active} />
+          <div className="mt-5 grid gap-2 lg:grid-cols-2 2xl:grid-cols-3">
+            {rankedRows.map((row, index) => (
+              <button
+                key={row.id}
+                type="button"
+                onClick={() => {
+                  setSelectedDeckId(row.id);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 text-left transition hover:border-cyan-300/25 hover:bg-cyan-300/[0.045]"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.05] text-xs font-black text-slate-500">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="truncate text-sm font-black text-white">{row.name}</p>
+                    <FormatBadge type={row.type} />
                   </div>
-
-                  <div className="mt-6 grid grid-cols-2 gap-3">
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                      <p className="text-xs text-slate-500">Record</p>
-                      <p className="mt-1 text-xl font-bold">
-                        {formatRecord(bestDeck.wins, bestDeck.losses)}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                      <p className="text-xs text-slate-500">Win rate</p>
-                      <p className="mt-1 text-xl font-bold">
-                        {formatPercent(bestDeck.win_pct)}
-                      </p>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <p className="mt-4 text-slate-500">No leader yet.</p>
-              )}
-
-              <p className="mt-6 text-sm leading-6 text-slate-500">
-                Logged games shown in analytics: {totalLogged}. Decided games drive win
-                rate. Undecided entries are tracked separately.
-              </p>
-            </div>
-          </section>
-
-          <section className="mt-6 rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
-            <h3 className="text-xl font-bold">Deck table</h3>
-
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[760px] border-separate border-spacing-y-2 text-left text-sm">
-                <thead>
-                  <tr className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                    <th className="px-4 py-2">Deck</th>
-                    <th className="px-4 py-2">Format</th>
-                    <th className="px-4 py-2">Status</th>
-                    <th className="px-4 py-2">Record</th>
-                    <th className="px-4 py-2">Win rate</th>
-                    <th className="px-4 py-2">Logged</th>
-                    <th className="px-4 py-2">Undecided</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredRows.map((row) => (
-                    <tr key={row.id} className="bg-slate-950/45">
-                      <td className="rounded-l-2xl px-4 py-3 font-bold text-slate-100">
-                        {row.name}
-                      </td>
-                      <td className="px-4 py-3">
-                        <FormatBadge type={row.type} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge active={row.active} />
-                      </td>
-                      <td className="px-4 py-3 text-slate-300">
-                        {formatRecord(row.wins, row.losses)}
-                      </td>
-                      <td className="px-4 py-3 text-slate-300">
-                        {formatPercent(row.win_pct)}
-                      </td>
-                      <td className="px-4 py-3 text-slate-300">{row.logged_games}</td>
-                      <td className="rounded-r-2xl px-4 py-3 text-slate-300">
-                        {row.undecided}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </>
-      )}
+                  <p className="mt-1 text-xs text-slate-500">{formatRecord(row.wins, row.losses)} · {row.decided_games} decided</p>
+                </div>
+                <p className="text-lg font-black text-cyan-100">{formatPercent(row.win_pct)}</p>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </>
   );
 }

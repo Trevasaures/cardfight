@@ -1,6 +1,7 @@
 import type {
   CardFormOptions,
   CardImageAnalysisResult,
+  CardSetOption,
 } from "../../types/api";
 import { NATIONLESS_CARD_OPTION } from "../../utils/cards";
 
@@ -49,6 +50,19 @@ export const DEFAULT_CARD_FORM_OPTIONS: CardFormOptions = {
   ],
   sets: [],
 };
+
+export function withSavedCardSet(
+  options: CardFormOptions,
+  cardSet: CardSetOption,
+): CardFormOptions {
+  return {
+    ...options,
+    sets: [
+      ...options.sets.filter((option) => option.code !== cardSet.code),
+      cardSet,
+    ].sort((left, right) => left.code.localeCompare(right.code)),
+  };
+}
 
 export function manualCardFormIsComplete(value: ManualCardFormState) {
   return [

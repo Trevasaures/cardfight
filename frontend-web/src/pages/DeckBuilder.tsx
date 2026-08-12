@@ -23,6 +23,10 @@ import {
 } from "../api/deckBuilder";
 import { getDecks } from "../api/decks";
 import { CardCatalogPanel } from "../components/deck-builder/CardCatalogPanel";
+import {
+  clearCardSetSelection,
+  replaceCardSetSelection,
+} from "../components/cards/cardSetSelectionState";
 import { DeckBuilderSetup } from "../components/deck-builder/DeckBuilderSetup";
 import { DeckVersionComparison } from "../components/deck-builder/DeckVersionComparison";
 import { DeckVersionContents } from "../components/deck-builder/DeckVersionContents";
@@ -32,6 +36,7 @@ import {
   EMPTY_MANUAL_CARD_FORM,
   cardAnalysisToManualForm,
   manualCardFormIsComplete,
+  withSavedCardSet,
 } from "../components/deck-builder/manualCardFormState";
 import { PageHeader } from "../components/layout/PageHeader";
 import { usePersistentState } from "../hooks/usePersistentState";
@@ -39,6 +44,7 @@ import type {
   Card,
   CardFormOptions,
   CardImageAnalysisResult,
+  CardSetOption,
   CreateCardPayload,
   Deck,
   DeckCardEntry,
@@ -132,6 +138,42 @@ export function DeckBuilder() {
   const [cardFormOptions, setCardFormOptions] = useState<CardFormOptions>(
     DEFAULT_CARD_FORM_OPTIONS,
   );
+
+  function handleSetSaved(cardSet: CardSetOption) {
+    setCardFormOptions((current) => withSavedCardSet(current, cardSet));
+  }
+
+  function handleSetUpdated(previousCode: string, cardSet: CardSetOption) {
+    setCardFormOptions((current) =>
+      withSavedCardSet(
+        {
+          ...current,
+          sets: current.sets.filter((option) => option.code !== previousCode),
+        },
+        cardSet,
+      ),
+    );
+    setNewCard((current) =>
+      replaceCardSetSelection(current, previousCode, cardSet),
+    );
+  }
+
+  function handleSetDeleted(setCode: string) {
+    setCardFormOptions((current) => ({
+      ...current,
+      sets: current.sets.filter((option) => option.code !== setCode),
+    }));
+    setNewCard((current) => clearCardSetSelection(current, setCode));
+  }
+
+  function rememberFormSet(
+    setCode: string | null | undefined,
+    setName: string | null | undefined,
+  ) {
+    const code = setCode?.trim().toUpperCase() ?? "";
+    const name = setName?.trim() ?? "";
+    if (code && name) handleSetSaved({ code, name });
+  }
 
   const [loadingDecks, setLoadingDecks] = useState(true);
   const [loadingVersions, setLoadingVersions] = useState(false);
@@ -670,6 +712,10 @@ export function DeckBuilder() {
           await loadCurrentVersion(currentVersion.id);
         }
 
+        rememberFormSet(
+          refreshedCard.primary_printing?.set_code,
+          refreshedCard.primary_printing?.set_name,
+        );
         setNewCard(EMPTY_MANUAL_CARD_FORM);
         setCardFormMode("create");
         toast.success(`Updated ${refreshedCard.name}.`);
@@ -686,6 +732,10 @@ export function DeckBuilder() {
 
       setCardResults((rows) => [created, ...rows]);
       setSelectedCardId(String(created.id));
+      rememberFormSet(
+        created.primary_printing?.set_code,
+        created.primary_printing?.set_name,
+      );
       setNewCard(EMPTY_MANUAL_CARD_FORM);
       setCardFormMode("create");
       setCardAnalysis(null);
@@ -885,6 +935,9 @@ export function DeckBuilder() {
             onCancelCardEdit={handleCancelCardEdit}
             onAnalyzeCardImage={handleAnalyzeCardImage}
             onApplyCardAnalysis={handleApplyCardAnalysis}
+            onSetSaved={handleSetSaved}
+            onSetUpdated={handleSetUpdated}
+            onSetDeleted={handleSetDeleted}
           />
 
           <DeckVersionContents

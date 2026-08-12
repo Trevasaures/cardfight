@@ -11,7 +11,11 @@ from sqlalchemy import or_
 
 from backend.database import db
 from backend.models import Card, CardPrinting, DeckCard
-from backend.services.card_set_names import SET_CODE_NAMES, lookup_set_name
+from backend.services.card_set_names import (
+    list_set_options,
+    lookup_set_name,
+    remember_custom_set,
+)
 
 
 CARD_NATION_OPTIONS = [
@@ -244,10 +248,7 @@ def get_card_form_options():
         "grades": sorted(set(CARD_GRADE_OPTIONS).union(stored_grades)),
         "nations": standard_nations + extra_nations,
         "card_types": CARD_TYPE_OPTIONS + extra_card_types,
-        "sets": [
-            {"code": code, "name": name}
-            for code, name in sorted(SET_CODE_NAMES.items())
-        ],
+        "sets": list_set_options(),
     }
 
 
@@ -345,6 +346,7 @@ def list_cards_page(
     nation=None,
     grade=None,
     card_type=None,
+    set_code=None,
     page=1,
     page_size=100,
 ):
@@ -360,6 +362,14 @@ def list_cards_page(
                 Card.skill_text.ilike(like),
                 Card.nation.ilike(like),
                 Card.card_type.ilike(like),
+                Card.printings.any(
+                    or_(
+                        CardPrinting.set_code.ilike(like),
+                        CardPrinting.set_name.ilike(like),
+                        CardPrinting.card_number.ilike(like),
+                        CardPrinting.rarity.ilike(like),
+                    )
+                ),
             )
         )
 
@@ -371,6 +381,14 @@ def list_cards_page(
     card_type = _clean_string(card_type)
     if card_type:
         query = query.filter(Card.card_type == card_type)
+
+    set_code = _normalize_printing_value(set_code)
+    if set_code:
+        query = query.filter(
+            Card.printings.any(
+                db.func.upper(CardPrinting.set_code) == set_code,
+            )
+        )
 
     try:
         safe_page = int(page)
@@ -418,6 +436,7 @@ def search_cards(
     nation=None,
     grade=None,
     card_type=None,
+    set_code=None,
     limit=50,
 ):
     query = Card.query
@@ -430,6 +449,7 @@ def search_cards(
             _clean_string(nation),
             grade not in (None, ""),
             _clean_string(card_type),
+            _clean_string(set_code),
         ]
     )
 
@@ -444,6 +464,14 @@ def search_cards(
                 Card.skill_text.ilike(like),
                 Card.nation.ilike(like),
                 Card.card_type.ilike(like),
+                Card.printings.any(
+                    or_(
+                        CardPrinting.set_code.ilike(like),
+                        CardPrinting.set_name.ilike(like),
+                        CardPrinting.card_number.ilike(like),
+                        CardPrinting.rarity.ilike(like),
+                    )
+                ),
             )
         )
 
@@ -455,6 +483,14 @@ def search_cards(
     card_type = _clean_string(card_type)
     if card_type:
         query = query.filter(Card.card_type == card_type)
+
+    set_code = _normalize_printing_value(set_code)
+    if set_code:
+        query = query.filter(
+            Card.printings.any(
+                db.func.upper(CardPrinting.set_code) == set_code,
+            )
+        )
 
     try:
         safe_limit = int(limit)
@@ -503,6 +539,10 @@ def create_card(payload):
 
     if printing_data:
         db.session.add(CardPrinting(card_id=card.id, **printing_data))
+        remember_custom_set(
+            printing_data.get("set_code"),
+            printing_data.get("set_name"),
+        )
 
     db.session.commit()
     return card
@@ -575,6 +615,10 @@ def add_card_printing(card_id, payload):
     printing = CardPrinting(card_id=card.id, **printing_data)
 
     db.session.add(printing)
+    remember_custom_set(
+        printing_data.get("set_code"),
+        printing_data.get("set_name"),
+    )
     db.session.commit()
 
     return printing
@@ -623,6 +667,11 @@ def update_card_printing(printing_id, payload):
 
     for field_name, value in next_values.items():
         setattr(printing, field_name, value)
+
+    remember_custom_set(
+        next_values.get("set_code"),
+        next_values.get("set_name"),
+    )
 
     db.session.commit()
     return printing

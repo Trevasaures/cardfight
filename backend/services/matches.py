@@ -8,9 +8,10 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, or_
+from sqlalchemy.orm import aliased
 
 from backend.database import db
-from backend.models import Deck, Match
+from backend.models import Deck, DeckVersion, Match
 from backend.services.serializers import serialize_match
 
 
@@ -33,9 +34,14 @@ def create_match(payload: dict) -> dict:
     _validate_optional_participant(winner_id, deck1_id, deck2_id, "winner_id")
     _validate_optional_participant(first_player_id, deck1_id, deck2_id, "first_player_id")
 
+    deck1_version_id = _match_version_id(payload, "deck1_version_id", deck1_id)
+    deck2_version_id = _match_version_id(payload, "deck2_version_id", deck2_id)
+
     match = Match(
         deck1_id=deck1_id,
         deck2_id=deck2_id,
+        deck1_version_id=deck1_version_id,
+        deck2_version_id=deck2_version_id,
         winner_id=winner_id,
         first_player_id=first_player_id,
         format=match_format,
@@ -55,6 +61,27 @@ def create_match(payload: dict) -> dict:
     return get_match(match.id)
 
 
+def _match_version_id(payload: dict, field_name: str, deck_id: int) -> int | None:
+    if field_name in payload:
+        version_id = _optional_int(payload.get(field_name), field_name)
+        if version_id is None:
+            return None
+
+        version = db.session.get(DeckVersion, version_id)
+        if not version:
+            raise ValueError(f"{field_name} does not reference an existing deck version.")
+        if version.deck_id != deck_id:
+            raise ValueError(f"{field_name} must belong to its selected deck.")
+        return version.id
+
+    active_version = (
+        DeckVersion.query.filter_by(deck_id=deck_id, is_active=True)
+        .order_by(DeckVersion.updated_at.desc(), DeckVersion.id.desc())
+        .first()
+    )
+    return active_version.id if active_version else None
+
+
 def list_matches(
     deck_id: int | None = None,
     fmt: str | None = None,
@@ -67,6 +94,7 @@ def list_matches(
     page_size: int | None = None,
 ):
     query = Match.query
+    normalized_result = str(result or "").strip().lower()
 
     if fmt in ("Standard", "Stride", "Any"):
         query = query.filter(Match.format == fmt)
@@ -79,10 +107,10 @@ def list_matches(
             )
         )
 
-        if result in ("W", "L", "-"):
-            if result == "-":
+        if normalized_result in ("w", "l", "-"):
+            if normalized_result == "-":
                 query = query.filter(Match.winner_id.is_(None))
-            elif result == "W":
+            elif normalized_result == "w":
                 query = query.filter(Match.winner_id == deck_id)
             else:
                 query = query.filter(
@@ -91,6 +119,16 @@ def list_matches(
                         Match.winner_id != deck_id,
                     )
                 )
+
+    if normalized_result == "decided":
+        query = query.filter(
+            or_(
+                Match.winner_id == Match.deck1_id,
+                Match.winner_id == Match.deck2_id,
+            )
+        )
+    elif normalized_result == "undecided":
+        query = query.filter(Match.winner_id.is_(None))
 
     if since:
         query = query.filter(Match.date_played >= _parse_date_required(since, "since"))
@@ -104,8 +142,22 @@ def list_matches(
 
         query = query.filter(Match.date_played < until_dt)
 
-    if q:
-        query = query.filter(Match.notes.ilike(f"%{q}%"))
+    search_term = str(q or "").strip()
+    if search_term:
+        deck1 = aliased(Deck)
+        deck2 = aliased(Deck)
+        pattern = f"%{search_term}%"
+        query = (
+            query.join(deck1, Match.deck1_id == deck1.id)
+            .join(deck2, Match.deck2_id == deck2.id)
+            .filter(
+                or_(
+                    Match.notes.ilike(pattern),
+                    deck1.name.ilike(pattern),
+                    deck2.name.ilike(pattern),
+                )
+            )
+        )
 
     query = query.order_by(Match.date_played.desc())
 
@@ -145,12 +197,12 @@ def list_matches(
 
 
 def get_match(match_id: int) -> dict:
-    match = Match.query.get_or_404(match_id)
+    match = db.get_or_404(Match, match_id)
     return serialize_match(match)
 
 
 def update_match(match_id: int, payload: dict) -> dict:
-    match = Match.query.get_or_404(match_id)
+    match = db.get_or_404(Match, match_id)
 
     new_deck1_id = _optional_int(payload.get("deck1_id"), "deck1_id") if "deck1_id" in payload else match.deck1_id
     new_deck2_id = _optional_int(payload.get("deck2_id"), "deck2_id") if "deck2_id" in payload else match.deck2_id
@@ -207,7 +259,7 @@ def update_match(match_id: int, payload: dict) -> dict:
 
 
 def delete_match(match_id: int):
-    match = Match.query.get_or_404(match_id)
+    match = db.get_or_404(Match, match_id)
 
     _revert_winner_counter(match.deck1_id, match.deck2_id, match.winner_id)
 
@@ -270,8 +322,8 @@ def _validate_participants(deck1_id: int, deck2_id: int):
     if deck1_id == deck2_id:
         raise ValueError("deck1_id and deck2_id must be different.")
 
-    deck1_exists = Deck.query.get(deck1_id) is not None
-    deck2_exists = Deck.query.get(deck2_id) is not None
+    deck1_exists = db.session.get(Deck, deck1_id) is not None
+    deck2_exists = db.session.get(Deck, deck2_id) is not None
 
     if not deck1_exists or not deck2_exists:
         raise LookupError("One or both deck IDs do not exist.")
@@ -289,8 +341,8 @@ def _apply_winner_counter(deck1_id: int, deck2_id: int, winner_id: int | None):
     if winner_id is None:
         return
 
-    deck1 = Deck.query.get(deck1_id)
-    deck2 = Deck.query.get(deck2_id)
+    deck1 = db.session.get(Deck, deck1_id)
+    deck2 = db.session.get(Deck, deck2_id)
 
     if not deck1 or not deck2:
         return
@@ -307,8 +359,8 @@ def _revert_winner_counter(deck1_id: int, deck2_id: int, winner_id: int | None):
     if winner_id is None:
         return
 
-    deck1 = Deck.query.get(deck1_id)
-    deck2 = Deck.query.get(deck2_id)
+    deck1 = db.session.get(Deck, deck1_id)
+    deck2 = db.session.get(Deck, deck2_id)
 
     if not deck1 or not deck2:
         return

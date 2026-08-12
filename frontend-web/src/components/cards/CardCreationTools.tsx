@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 
 import { CardImageImportAssistant } from "../deck-builder/CardImageImportAssistant";
 import { ManualCardForm } from "../deck-builder/ManualCardForm";
+import { CardSetManager } from "./CardSetManager";
 import type { ManualCardFormState } from "../deck-builder/manualCardFormState";
 import type {
   CardFormOptions,
   CardImageAnalysisResult,
+  CardSetOption,
 } from "../../types/api";
 
 type CardCreationToolsProps = {
@@ -19,6 +21,9 @@ type CardCreationToolsProps = {
   onSubmit: () => void;
   onAnalyzeImage: (file: File) => void;
   onApplyAnalysis: () => void;
+  onSetSaved: (cardSet: CardSetOption) => void;
+  onSetUpdated: (previousCode: string, cardSet: CardSetOption) => void;
+  onSetDeleted: (setCode: string) => void;
 };
 
 export function CardCreationTools({
@@ -32,6 +37,9 @@ export function CardCreationTools({
   onSubmit,
   onAnalyzeImage,
   onApplyAnalysis,
+  onSetSaved,
+  onSetUpdated,
+  onSetDeleted,
 }: CardCreationToolsProps) {
   const [manualEntryOpen, setManualEntryOpen] = useState(
     Boolean(analysisResult),
@@ -50,6 +58,14 @@ export function CardCreationTools({
         analyzing={analyzingImage}
         onAnalyzeImage={onAnalyzeImage}
         onApplyAnalysis={onApplyAnalysis}
+      />
+
+      <CardSetManager
+        refreshToken={options.sets
+          .map((cardSet) => `${cardSet.code}:${cardSet.name}`)
+          .join("|")}
+        onSetUpdated={onSetUpdated}
+        onSetDeleted={onSetDeleted}
       />
 
       <details
@@ -80,6 +96,7 @@ export function CardCreationTools({
           disabled={saving}
           canSubmit={canSubmit}
           options={options}
+          onSetSaved={onSetSaved}
         />
       </details>
     </div>

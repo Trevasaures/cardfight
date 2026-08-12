@@ -21,6 +21,10 @@ import {
 import { CardCreationTools } from "../components/cards/CardCreationTools";
 import { CardPrintingForm } from "../components/cards/CardPrintingForm";
 import {
+  clearCardSetSelection,
+  replaceCardSetSelection,
+} from "../components/cards/cardSetSelectionState";
+import {
   EMPTY_CARD_PRINTING_FORM,
   type CardPrintingFormState,
 } from "../components/cards/cardPrintingFormState";
@@ -31,6 +35,7 @@ import {
   cardAnalysisToManualForm,
   manualCardFormIsComplete,
   type ManualCardFormState,
+  withSavedCardSet,
 } from "../components/deck-builder/manualCardFormState";
 import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
@@ -39,6 +44,7 @@ import type {
   CardFormOptions,
   CardImageAnalysisResult,
   CardPrinting,
+  CardSetOption,
 } from "../types/api";
 import {
   cardNationToApiValue,
@@ -116,12 +122,14 @@ function cardToManualForm(card: Card): ManualCardFormState {
 
 export function CardLibrary() {
   const parentRef = useRef<HTMLDivElement | null>(null);
+  const loadRequestRef = useRef(0);
 
   const [cards, setCards] = useState<Card[]>([]);
   const [query, setQuery] = useState("");
   const [nation, setNation] = useState("");
   const [grade, setGrade] = useState("");
   const [cardType, setCardType] = useState("");
+  const [setCode, setSetCode] = useState("");
 
   const [editingCard, setEditingCard] = useState<Card | null>(null);
   const [addingPrintingCard, setAddingPrintingCard] = useState<Card | null>(
@@ -168,8 +176,9 @@ export function CardLibrary() {
   });
 
   const activeFilterCount = useMemo(() => {
-    return [query.trim(), nation, grade, cardType].filter(Boolean).length;
-  }, [query, nation, grade, cardType]);
+    return [query.trim(), setCode, nation, grade, cardType].filter(Boolean)
+      .length;
+  }, [query, setCode, nation, grade, cardType]);
 
   const editFormIsComplete = useMemo(() => {
     return manualCardFormIsComplete(editForm);
@@ -189,7 +198,56 @@ export function CardLibrary() {
       });
   }, []);
 
+  function handleSetSaved(cardSet: CardSetOption) {
+    setCardFormOptions((current) => withSavedCardSet(current, cardSet));
+  }
+
+  function handleSetUpdated(previousCode: string, cardSet: CardSetOption) {
+    setCardFormOptions((current) =>
+      withSavedCardSet(
+        {
+          ...current,
+          sets: current.sets.filter((option) => option.code !== previousCode),
+        },
+        cardSet,
+      ),
+    );
+    setCreateForm((current) =>
+      replaceCardSetSelection(current, previousCode, cardSet),
+    );
+    setEditForm((current) =>
+      replaceCardSetSelection(current, previousCode, cardSet),
+    );
+    setPrintingForm((current) =>
+      replaceCardSetSelection(current, previousCode, cardSet),
+    );
+    setSetCode((current) =>
+      current === previousCode ? cardSet.code : current,
+    );
+  }
+
+  function handleSetDeleted(setCode: string) {
+    setCardFormOptions((current) => ({
+      ...current,
+      sets: current.sets.filter((option) => option.code !== setCode),
+    }));
+    setCreateForm((current) => clearCardSetSelection(current, setCode));
+    setEditForm((current) => clearCardSetSelection(current, setCode));
+    setPrintingForm((current) => clearCardSetSelection(current, setCode));
+    setSetCode((current) => (current === setCode ? "" : current));
+  }
+
+  function rememberFormSet(
+    setCode: string | null | undefined,
+    setName: string | null | undefined,
+  ) {
+    const code = setCode?.trim().toUpperCase() ?? "";
+    const name = setName?.trim() ?? "";
+    if (code && name) handleSetSaved({ code, name });
+  }
+
   const loadCards = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError(null);
 
@@ -199,18 +257,25 @@ export function CardLibrary() {
         nation: nation || undefined,
         grade: grade || undefined,
         card_type: cardType || undefined,
+        set_code: setCode || undefined,
         page: 1,
         page_size: 500,
       });
 
-      setCards(response.items);
-      setTotalItems(response.pagination.total_items);
+      if (requestId === loadRequestRef.current) {
+        setCards(response.items);
+        setTotalItems(response.pagination.total_items);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load cards");
+      if (requestId === loadRequestRef.current) {
+        setError(err instanceof Error ? err.message : "Failed to load cards");
+      }
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) {
+        setLoading(false);
+      }
     }
-  }, [query, nation, grade, cardType]);
+  }, [query, nation, grade, cardType, setCode]);
 
   useEffect(() => {
     void loadCards();
@@ -266,6 +331,10 @@ export function CardLibrary() {
         rarity: createForm.rarity,
       });
 
+      rememberFormSet(
+        created.primary_printing?.set_code,
+        created.primary_printing?.set_name,
+      );
       setCreateForm(EMPTY_MANUAL_CARD_FORM);
       setCardAnalysis(null);
       await loadCards();
@@ -282,6 +351,7 @@ export function CardLibrary() {
     setNation("");
     setGrade("");
     setCardType("");
+    setSetCode("");
   }
 
   function startEditingCard(card: Card) {
@@ -326,6 +396,7 @@ export function CardLibrary() {
         rarity: printingForm.rarity,
       });
 
+      rememberFormSet(printing.set_code, printing.set_name);
       await loadCards();
       cancelAddingPrinting();
       toast.success(
@@ -359,22 +430,21 @@ export function CardLibrary() {
         card_type: editForm.card_type,
       });
 
-      if (editingCard.primary_printing) {
-        await updateCardPrinting(editingCard.primary_printing.id, {
-          set_code: editForm.set_code,
-          set_name: editForm.set_name,
-          card_number: editForm.card_number,
-          rarity: editForm.rarity,
-        });
-      } else {
-        await addCardPrinting(editingCard.id, {
-          set_code: editForm.set_code,
-          set_name: editForm.set_name,
-          card_number: editForm.card_number,
-          rarity: editForm.rarity,
-        });
-      }
+      const savedPrinting = editingCard.primary_printing
+        ? await updateCardPrinting(editingCard.primary_printing.id, {
+            set_code: editForm.set_code,
+            set_name: editForm.set_name,
+            card_number: editForm.card_number,
+            rarity: editForm.rarity,
+          })
+        : await addCardPrinting(editingCard.id, {
+            set_code: editForm.set_code,
+            set_name: editForm.set_name,
+            card_number: editForm.card_number,
+            rarity: editForm.rarity,
+          });
 
+      rememberFormSet(savedPrinting.set_code, savedPrinting.set_name);
       await loadCards();
       cancelEditingCard();
       toast.success(`Saved changes to ${editForm.name.trim()}.`);
@@ -438,6 +508,9 @@ export function CardLibrary() {
             onSubmit={createCatalogCard}
             onAnalyzeImage={handleAnalyzeCardImage}
             onApplyAnalysis={handleApplyCardAnalysis}
+            onSetSaved={handleSetSaved}
+            onSetUpdated={handleSetUpdated}
+            onSetDeleted={handleSetDeleted}
           />
         </details>
       </section>
@@ -472,7 +545,7 @@ export function CardLibrary() {
           </button>
         </div>
 
-        <div className="mt-5 grid gap-3 xl:grid-cols-[1.2fr_0.8fr_0.5fr_0.8fr_auto_auto]">
+        <div className="mt-5 grid gap-3 lg:grid-cols-2 xl:grid-cols-12">
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -481,16 +554,30 @@ export function CardLibrary() {
                 void loadCards();
               }
             }}
-            placeholder="Search card name, skill text, nation..."
+            placeholder="Search name, set, number, rarity, skill..."
             title="Search card records"
-            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-300/50"
+            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-300/50 lg:col-span-2 xl:col-span-5"
           />
+
+          <select
+            value={setCode}
+            onChange={(event) => setSetCode(event.target.value)}
+            title="Filter by card set"
+            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50 xl:col-span-4"
+          >
+            <option value="">All card sets</option>
+            {cardFormOptions.sets.map((option) => (
+              <option key={option.code} value={option.code}>
+                {option.code} — {option.name}
+              </option>
+            ))}
+          </select>
 
           <select
             value={nation}
             onChange={(event) => setNation(event.target.value)}
             title="Filter by nation"
-            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50"
+            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50 xl:col-span-4 xl:row-start-2"
           >
             {NATION_OPTIONS.map((option) => (
               <option key={option || "all"} value={option}>
@@ -503,7 +590,7 @@ export function CardLibrary() {
             value={grade}
             onChange={(event) => setGrade(event.target.value)}
             title="Filter by grade"
-            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50"
+            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50 xl:col-span-3 xl:row-start-2"
           >
             <option value="">All grades</option>
             <option value="0">Grade 0</option>
@@ -517,7 +604,7 @@ export function CardLibrary() {
             value={cardType}
             onChange={(event) => setCardType(event.target.value)}
             title="Filter by card type"
-            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50"
+            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50 xl:col-span-5 xl:row-start-2"
           >
             {CARD_TYPE_OPTIONS.map((option) => (
               <option key={option || "all"} value={option}>
@@ -530,7 +617,7 @@ export function CardLibrary() {
             type="button"
             onClick={loadCards}
             disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50 xl:col-span-2 xl:col-start-10 xl:row-start-1"
             title="Apply filters"
           >
             <Search className="h-4 w-4" />
@@ -541,7 +628,7 @@ export function CardLibrary() {
             type="button"
             onClick={clearFilters}
             disabled={!activeFilterCount}
-            className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.035] px-5 py-3 text-sm font-bold text-slate-300 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.035] px-5 py-3 text-sm font-bold text-slate-300 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40 xl:col-span-1 xl:col-start-12 xl:row-start-1"
             title="Clear all filters"
           >
             Clear
@@ -590,6 +677,7 @@ export function CardLibrary() {
               onChange={setPrintingForm}
               onSubmit={saveNewPrinting}
               onCancel={cancelAddingPrinting}
+              onSetSaved={handleSetSaved}
             />
           </div>
         ) : null}
@@ -624,6 +712,7 @@ export function CardLibrary() {
               disabled={savingEdit}
               canSubmit={editFormIsComplete}
               options={cardFormOptions}
+              onSetSaved={handleSetSaved}
             />
           </div>
         ) : null}

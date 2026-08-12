@@ -2,19 +2,39 @@ import { apiRequest } from "./client";
 import type {
   CreateMatchPayload,
   Match,
+  MatchFormat,
   PaginatedMatchesResponse,
 } from "../types/api";
+
+export type MatchHistoryFilters = {
+  q?: string;
+  format?: MatchFormat | "All";
+  result?: "All" | "Decided" | "Undecided";
+};
 
 export function getMatches(limit?: number) {
   const query = limit ? `?limit=${limit}` : "";
   return apiRequest<Match[]>(`/api/matches${query}`);
 }
 
-export async function getMatchesPage(page = 1, pageSize = 12) {
+export async function getMatchesPage(
+  page = 1,
+  pageSize = 12,
+  filters: MatchHistoryFilters = {},
+) {
   const params = new URLSearchParams({
     page: String(page),
     page_size: String(pageSize),
   });
+
+  const search = filters.q?.trim();
+  if (search) params.set("q", search);
+  if (filters.format && filters.format !== "All") {
+    params.set("format", filters.format);
+  }
+  if (filters.result && filters.result !== "All") {
+    params.set("result", filters.result.toLowerCase());
+  }
 
   const response = await apiRequest<PaginatedMatchesResponse | Match[]>(
     `/api/matches?${params.toString()}`,

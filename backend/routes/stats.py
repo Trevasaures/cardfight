@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify
 
 from backend.services.stats import (
+    performance_spotlight,
     stats_table as svc_stats_table,
     versus_for,
     matrix as svc_matrix,
@@ -13,6 +14,14 @@ bp_stats = Blueprint("stats", __name__, url_prefix="/api/stats")
 @bp_stats.get("/table")
 def stats_table_route():
     return jsonify(svc_stats_table())
+
+
+@bp_stats.get("/spotlight/<int:deck_id>")
+def performance_spotlight_route(deck_id: int):
+    try:
+        return jsonify(performance_spotlight(deck_id))
+    except LookupError as exc:
+        return jsonify(error=str(exc)), 404
 
 
 @bp_stats.get("/versus/<int:deck_id>")

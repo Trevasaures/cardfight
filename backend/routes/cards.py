@@ -15,6 +15,14 @@ from backend.services.cards import (
 )
 from backend.services.serializers import serialize_card, serialize_card_printing
 from backend.services.card_image_analyzer import analyze_card_image
+from backend.services.card_set_names import (
+    CardSetInUseError,
+    DuplicateCardSetError,
+    delete_custom_set,
+    list_custom_sets,
+    save_custom_set,
+    update_custom_set,
+)
 
 
 bp_cards = Blueprint("cards", __name__, url_prefix="/api/cards")
@@ -29,6 +37,52 @@ def card_form_options_route():
     return jsonify(get_card_form_options())
 
 
+@bp_cards.post("/sets")
+def create_card_set_route():
+    try:
+        card_set, created = save_custom_set(request.get_json(silent=True) or {})
+    except DuplicateCardSetError as exc:
+        return _json_error(str(exc), 409)
+    except ValueError as exc:
+        return _json_error(str(exc), 400)
+
+    return jsonify(card_set), 201 if created else 200
+
+
+@bp_cards.get("/sets")
+def list_card_sets_route():
+    return jsonify(list_custom_sets())
+
+
+@bp_cards.patch("/sets/<string:set_code>")
+def update_card_set_route(set_code):
+    try:
+        card_set = update_custom_set(
+            set_code,
+            request.get_json(silent=True) or {},
+        )
+    except DuplicateCardSetError as exc:
+        return _json_error(str(exc), 409)
+    except LookupError as exc:
+        return _json_error(str(exc), 404)
+    except ValueError as exc:
+        return _json_error(str(exc), 400)
+
+    return jsonify(card_set)
+
+
+@bp_cards.delete("/sets/<string:set_code>")
+def delete_card_set_route(set_code):
+    try:
+        delete_custom_set(set_code)
+    except CardSetInUseError as exc:
+        return jsonify({"error": str(exc), "usage_count": exc.usage_count}), 409
+    except LookupError as exc:
+        return _json_error(str(exc), 404)
+
+    return ("", 204)
+
+
 @bp_cards.get("")
 @bp_cards.get("/")
 @bp_cards.get("/search")
@@ -38,6 +92,7 @@ def search_cards_route():
         nation=request.args.get("nation"),
         grade=request.args.get("grade"),
         card_type=request.args.get("card_type"),
+        set_code=request.args.get("set_code"),
         limit=request.args.get("limit", 50),
     )
 
@@ -76,6 +131,7 @@ def card_library_route():
         nation=request.args.get("nation"),
         grade=request.args.get("grade"),
         card_type=request.args.get("card_type"),
+        set_code=request.args.get("set_code"),
         page=request.args.get("page", 1),
         page_size=request.args.get("page_size", 250),
     )
