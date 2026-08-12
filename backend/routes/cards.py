@@ -28,7 +28,9 @@ from backend.services.card_set_names import (
 bp_cards = Blueprint("cards", __name__, url_prefix="/api/cards")
 
 
-def _json_error(message, status_code):
+def _json_error(message, status_code, exc=None):
+    if exc is not None:
+        current_app.logger.exception("cards route error: %s", message, exc_info=exc)
     return jsonify({"error": message}), status_code
 
 
@@ -42,9 +44,9 @@ def create_card_set_route():
     try:
         card_set, created = save_custom_set(request.get_json(silent=True) or {})
     except DuplicateCardSetError as exc:
-        return _json_error(str(exc), 409)
+        return _json_error("Card set already exists.", 409, exc)
     except ValueError as exc:
-        return _json_error(str(exc), 400)
+        return _json_error("Invalid card set data.", 400, exc)
 
     return jsonify(card_set), 201 if created else 200
 
@@ -62,11 +64,11 @@ def update_card_set_route(set_code):
             request.get_json(silent=True) or {},
         )
     except DuplicateCardSetError as exc:
-        return _json_error(str(exc), 409)
+        return _json_error("Card set already exists.", 409, exc)
     except LookupError as exc:
-        return _json_error(str(exc), 404)
+        return _json_error("Card set not found.", 404, exc)
     except ValueError as exc:
-        return _json_error(str(exc), 400)
+        return _json_error("Invalid card set data.", 400, exc)
 
     return jsonify(card_set)
 
@@ -76,9 +78,10 @@ def delete_card_set_route(set_code):
     try:
         delete_custom_set(set_code)
     except CardSetInUseError as exc:
-        return jsonify({"error": str(exc), "usage_count": exc.usage_count}), 409
+        current_app.logger.exception("cards route error: Card set is in use.", exc_info=exc)
+        return jsonify({"error": "Card set is in use.", "usage_count": exc.usage_count}), 409
     except LookupError as exc:
-        return _json_error(str(exc), 404)
+        return _json_error("Card set not found.", 404, exc)
 
     return ("", 204)
 
