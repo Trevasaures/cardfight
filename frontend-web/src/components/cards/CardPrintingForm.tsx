@@ -1,11 +1,12 @@
 import { Layers3 } from "lucide-react";
 
-import { FormSelect, FormTextInput } from "../forms/HelpfulField";
-import type { CardFormOptions } from "../../types/api";
+import { FormTextInput } from "../forms/HelpfulField";
+import type { CardFormOptions, CardSetOption } from "../../types/api";
 import {
   cardPrintingFormIsComplete,
   type CardPrintingFormState,
 } from "./cardPrintingFormState";
+import { CardSetFields } from "./CardSetFields";
 
 type CardPrintingFormProps = {
   value: CardPrintingFormState;
@@ -14,6 +15,7 @@ type CardPrintingFormProps = {
   onChange: (value: CardPrintingFormState) => void;
   onSubmit: () => void;
   onCancel: () => void;
+  onSetSaved: (cardSet: CardSetOption) => void;
 };
 
 export function CardPrintingForm({
@@ -23,13 +25,8 @@ export function CardPrintingForm({
   onChange,
   onSubmit,
   onCancel,
+  onSetSaved,
 }: CardPrintingFormProps) {
-  const knownSet = options.sets.find((set) => set.code === value.set_code);
-  const selectedSetValue = knownSet
-    ? knownSet.code
-    : value.set_selection === "__custom__" || value.set_code
-      ? "__custom__"
-      : "";
   const canSubmit = cardPrintingFormIsComplete(value);
 
   function updateField(
@@ -42,76 +39,16 @@ export function CardPrintingForm({
     });
   }
 
-  function updateSetSelection(setCode: string) {
-    if (setCode === "__custom__") {
-      onChange({
-        ...value,
-        set_selection: "__custom__",
-        set_code: "",
-        set_name: "",
-      });
-      return;
-    }
-
-    const selectedSet = options.sets.find((set) => set.code === setCode);
-    onChange({
-      ...value,
-      set_selection: setCode,
-      set_code: setCode,
-      set_name: selectedSet?.name ?? "",
-    });
-  }
-
   return (
     <div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <FormSelect
-          label="Card set"
-          help="Choose the product containing this printing, or use a custom set for promos and unlisted releases."
-          value={selectedSetValue}
-          onChange={updateSetSelection}
-          placeholder="Choose a card set"
-          required
-          options={[
-            ...options.sets.map((set) => ({
-              value: set.code,
-              label: `${set.code} — ${set.name}`,
-            })),
-            { value: "__custom__", label: "Custom or unlisted set" },
-          ]}
+        <CardSetFields
+          value={value}
+          options={options}
+          disabled={disabled}
+          onChange={(setFields) => onChange({ ...value, ...setFields })}
+          onSetSaved={onSetSaved}
         />
-
-        {selectedSetValue === "__custom__" ? (
-          <FormTextInput
-            label="Custom set code"
-            help="The product or promotional set code printed on the card."
-            value={value.set_code}
-            onChange={(fieldValue) => updateField("set_code", fieldValue)}
-            placeholder="Example: D-PR"
-            required
-          />
-        ) : (
-          <FormTextInput
-            label="Set name"
-            help="Filled automatically from the selected set code."
-            value={value.set_name}
-            onChange={(fieldValue) => updateField("set_name", fieldValue)}
-            placeholder="Select a card set first"
-            required
-            readOnly
-          />
-        )}
-
-        {selectedSetValue === "__custom__" ? (
-          <FormTextInput
-            label="Custom set name"
-            help="The full name of the unlisted product or promotional release."
-            value={value.set_name}
-            onChange={(fieldValue) => updateField("set_name", fieldValue)}
-            placeholder="Enter the product name"
-            required
-          />
-        ) : null}
 
         <FormTextInput
           label="Card number"

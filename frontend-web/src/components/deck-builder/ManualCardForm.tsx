@@ -2,8 +2,9 @@ import { Pencil, Plus, RotateCcw } from "lucide-react";
 
 import { FormSelect, FormTextInput } from "../forms/HelpfulField";
 import type { ManualCardFormState } from "./manualCardFormState";
-import type { CardFormOptions } from "../../types/api";
+import type { CardFormOptions, CardSetOption } from "../../types/api";
 import { NATIONLESS_CARD_OPTION } from "../../utils/cards";
+import { CardSetFields } from "../cards/CardSetFields";
 
 type CardFormMode = "create" | "edit";
 
@@ -16,6 +17,7 @@ type ManualCardFormProps = {
   disabled?: boolean;
   canSubmit: boolean;
   options: CardFormOptions;
+  onSetSaved: (cardSet: CardSetOption) => void;
 };
 
 export function ManualCardForm({
@@ -27,14 +29,9 @@ export function ManualCardForm({
   disabled = false,
   canSubmit,
   options,
+  onSetSaved,
 }: ManualCardFormProps) {
   const isEditing = mode === "edit";
-  const knownSet = options.sets.find((set) => set.code === value.set_code);
-  const selectedSetValue = knownSet
-    ? knownSet.code
-    : value.set_selection === "__custom__" || value.set_code
-      ? "__custom__"
-      : "";
 
   const nationOptions = value.nation && !options.nations.includes(value.nation)
     ? [value.nation, ...options.nations]
@@ -52,26 +49,6 @@ export function ManualCardForm({
     onChange({
       ...value,
       [field]: fieldValue,
-    });
-  }
-
-  function updateSetSelection(setCode: string) {
-    if (setCode === "__custom__") {
-      onChange({
-        ...value,
-        set_selection: "__custom__",
-        set_code: "",
-        set_name: "",
-      });
-      return;
-    }
-
-    const selectedSet = options.sets.find((set) => set.code === setCode);
-    onChange({
-      ...value,
-      set_selection: setCode,
-      set_code: setCode,
-      set_name: selectedSet?.name ?? "",
     });
   }
 
@@ -143,53 +120,13 @@ export function ManualCardForm({
           }))}
         />
 
-        <FormSelect
-          label="Card set"
-          help="Choose a known set to fill its code and name automatically, or choose Custom set for promos and upcoming products."
-          value={selectedSetValue}
-          onChange={updateSetSelection}
-          placeholder="Choose a card set"
-          required
-          options={[
-            ...options.sets.map((set) => ({
-              value: set.code,
-              label: `${set.code} — ${set.name}`,
-            })),
-            { value: "__custom__", label: "Custom or unlisted set" },
-          ]}
+        <CardSetFields
+          value={value}
+          options={options}
+          disabled={disabled}
+          onChange={(setFields) => onChange({ ...value, ...setFields })}
+          onSetSaved={onSetSaved}
         />
-
-        {selectedSetValue === "__custom__" ? (
-          <>
-            <FormTextInput
-              label="Custom set code"
-              help="The short product or set identifier printed with an unlisted card."
-              value={value.set_code}
-              onChange={(fieldValue) => updateField("set_code", fieldValue)}
-              placeholder="Example: DZ-SS20"
-              required
-            />
-
-            <FormTextInput
-              label="Custom set name"
-              help="The full name of the unlisted booster, deck, promo release, or product."
-              value={value.set_name}
-              onChange={(fieldValue) => updateField("set_name", fieldValue)}
-              placeholder="Enter the product name"
-              required
-            />
-          </>
-        ) : (
-          <FormTextInput
-            label="Set name"
-            help="This name is filled automatically from the selected set code."
-            value={value.set_name}
-            onChange={(fieldValue) => updateField("set_name", fieldValue)}
-            placeholder="Select a card set first"
-            required
-            readOnly
-          />
-        )}
 
         <FormTextInput
           label="Card number"

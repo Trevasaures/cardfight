@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, RefreshCcw, Search } from "lucide-react";
 
 import { deleteMatch, getMatchesPage } from "../api/matches";
@@ -38,6 +38,7 @@ export function MatchHistory() {
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const latestRequest = useRef(0);
   const toast = useToast();
 
   useEffect(() => {
@@ -46,47 +47,42 @@ export function MatchHistory() {
     setError(null);
   }, [error, toast]);
 
-  async function loadMatches(page = pagination.page, size = pageSize) {
+  const loadMatches = useCallback(async (
+    page: number,
+    size: number,
+    query: string,
+    matchFormat: MatchFormat | "All",
+    matchResult: ResultFilter,
+  ) => {
+    const requestId = latestRequest.current + 1;
+    latestRequest.current = requestId;
     setError(null);
     setLoading(true);
 
     try {
-      const response = await getMatchesPage(page, size);
+      const response = await getMatchesPage(page, size, {
+        q: query,
+        format: matchFormat,
+        result: matchResult,
+      });
+      if (requestId !== latestRequest.current) return;
       setMatches(response.items ?? []);
       setPagination(response.pagination);
     } catch (err) {
+      if (requestId !== latestRequest.current) return;
       setError(err instanceof Error ? err.message : "Failed to load matches");
     } finally {
-      setLoading(false);
+      if (requestId === latestRequest.current) setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
-    loadMatches(1, pageSize);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageSize]);
+    const timeout = window.setTimeout(() => {
+      void loadMatches(1, pageSize, search, format, result);
+    }, 300);
 
-  const filteredMatches = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-
-    return matches.filter((match) => {
-      const matchesSearch =
-        !needle ||
-        match.deck1_name.toLowerCase().includes(needle) ||
-        match.deck2_name.toLowerCase().includes(needle) ||
-        (match.winner_name ?? "").toLowerCase().includes(needle) ||
-        match.notes.toLowerCase().includes(needle);
-
-      const matchesFormat = format === "All" || match.format === format;
-
-      const matchesResult =
-        result === "All" ||
-        (result === "Decided" && match.is_decided) ||
-        (result === "Undecided" && match.is_undecided);
-
-      return matchesSearch && matchesFormat && matchesResult;
-    });
-  }, [matches, search, format, result]);
+    return () => window.clearTimeout(timeout);
+  }, [format, loadMatches, pageSize, result, search]);
 
   async function handleDelete(matchId: number) {
     const confirmed = window.confirm(
@@ -103,7 +99,7 @@ export function MatchHistory() {
           ? pagination.page - 1
           : pagination.page;
 
-      await loadMatches(nextPage, pageSize);
+      await loadMatches(nextPage, pageSize, search, format, result);
       toast.success("Match deleted and deck records updated.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete match");
@@ -112,15 +108,19 @@ export function MatchHistory() {
 
   function goToPage(page: number) {
     if (page < 1 || page > pagination.total_pages) return;
-    loadMatches(page, pageSize);
+    void loadMatches(page, pageSize, search, format, result);
   }
+
+  const hasFilters = Boolean(
+    search.trim() || format !== "All" || result !== "All",
+  );
 
   return (
     <>
       <PageHeader
         eyebrow="Match History"
         title="Logged battles"
-        description="Review recorded Vanguard matches page by page. Search and filters apply to the current page for now."
+        description="Review recorded Vanguard matches with search and filters applied across the complete battle history."
       />
 
       <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
@@ -130,7 +130,7 @@ export function MatchHistory() {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search current page..."
+              placeholder="Search decks or notes..."
               className="w-full rounded-2xl border border-white/10 bg-black/30 py-3 pl-11 pr-4 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-300/50"
             />
           </label>
@@ -172,7 +172,9 @@ export function MatchHistory() {
 
           <button
             type="button"
-            onClick={() => loadMatches(pagination.page, pageSize)}
+            onClick={() =>
+              void loadMatches(pagination.page, pageSize, search, format, result)
+            }
             className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-3 text-sm font-bold text-slate-200 transition hover:bg-white/[0.09]"
           >
             <RefreshCcw className="h-4 w-4" />
@@ -182,16 +184,20 @@ export function MatchHistory() {
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
           <div className="flex flex-wrap gap-3">
-            <span>{pagination.total_items} total matches</span>
+            <span>
+              {hasFilters
+                ? `${pagination.total_items} matching battles`
+                : `${pagination.total_items} total matches`}
+            </span>
             <span>•</span>
             <span>
               Page {pagination.page} of {pagination.total_pages}
             </span>
             <span>•</span>
-            <span>{filteredMatches.length} shown on this page</span>
+            <span>{matches.length} shown on this page</span>
           </div>
 
-          {(search || format !== "All" || result !== "All") && (
+          {hasFilters && (
             <button
               type="button"
               onClick={() => {
@@ -201,7 +207,7 @@ export function MatchHistory() {
               }}
               className="text-cyan-200 transition hover:text-cyan-100"
             >
-              Clear page filters
+              Clear filters
             </button>
           )}
         </div>
@@ -211,9 +217,9 @@ export function MatchHistory() {
         <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-slate-400">
           Loading matches...
         </div>
-      ) : filteredMatches.length ? (
+      ) : matches.length ? (
         <section className="mt-6 grid gap-4 lg:grid-cols-2">
-          {filteredMatches.map((match) => (
+          {matches.map((match) => (
             <MatchCard key={match.id} match={match} onDelete={handleDelete} />
           ))}
         </section>
@@ -221,7 +227,7 @@ export function MatchHistory() {
         <section className="mt-6 rounded-[2rem] border border-dashed border-white/15 bg-white/[0.025] p-10 text-center">
           <p className="text-lg font-bold text-slate-300">No matches found.</p>
           <p className="mt-2 text-sm text-slate-500">
-            Try changing the page filters, or go roll something spicy in Play Lab.
+            Try changing the filters, or go roll something spicy in Play Lab.
           </p>
         </section>
       )}

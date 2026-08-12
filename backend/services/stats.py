@@ -13,8 +13,113 @@ from __future__ import annotations
 from sqlalchemy import or_, case, func
 
 from backend.database import db
-from backend.models import Deck, Match
-from backend.services.serializers import serialize_deck
+from backend.models import Deck, DeckVersion, Match
+from backend.services.serializers import serialize_deck, serialize_deck_version_summary
+
+
+def _record_payload(matches, deck_id: int) -> dict:
+    wins = sum(1 for match in matches if match.winner_id == deck_id)
+    losses = sum(
+        1
+        for match in matches
+        if match.winner_id in {match.deck1_id, match.deck2_id}
+        and match.winner_id != deck_id
+    )
+    undecided_count = sum(1 for match in matches if match.winner_id is None)
+    decided_games = wins + losses
+
+    return {
+        "wins": wins,
+        "losses": losses,
+        "undecided": undecided_count,
+        "decided_games": decided_games,
+        "logged_games": len(matches),
+        "win_pct": round(wins / decided_games, 3) if decided_games else 0.0,
+    }
+
+
+def _sample_maturity(decided_games: int) -> dict:
+    if decided_games >= 20:
+        return {
+            "level": "established",
+            "label": "Established sample",
+            "message": "Twenty or more decided games give this profile a stable foundation.",
+        }
+    if decided_games >= 10:
+        return {
+            "level": "meaningful",
+            "label": "Meaningful sample",
+            "message": "There is enough match history to read patterns with reasonable context.",
+        }
+    if decided_games >= 5:
+        return {
+            "level": "developing",
+            "label": "Developing sample",
+            "message": "Useful signals are emerging, but a few results can still move the percentages.",
+        }
+    return {
+        "level": "early",
+        "label": "Early sample",
+        "message": "Treat these percentages as directional until more matches are logged.",
+    }
+
+
+def _subject_version(match, deck_id: int):
+    if match.deck1_id == deck_id:
+        return match.deck1_version
+    return match.deck2_version
+
+
+def _match_result(match, deck_id: int) -> str:
+    if match.winner_id is None:
+        return "U"
+    if match.winner_id == deck_id:
+        return "W"
+    if match.winner_id in {match.deck1_id, match.deck2_id}:
+        return "L"
+    return "U"
+
+
+def _match_spotlight_row(match, deck_id: int) -> dict:
+    opponent = match.deck2 if match.deck1_id == deck_id else match.deck1
+    version = _subject_version(match, deck_id)
+
+    if match.first_player_id == deck_id:
+        turn_order = "first"
+    elif match.first_player_id in {match.deck1_id, match.deck2_id}:
+        turn_order = "second"
+    else:
+        turn_order = "unknown"
+
+    return {
+        "match_id": match.id,
+        "date_played": match.date_played.isoformat() if match.date_played else None,
+        "opponent_id": opponent.id if opponent else None,
+        "opponent_name": opponent.name if opponent else "Unknown opponent",
+        "opponent_nation": opponent.nation if opponent else None,
+        "result": _match_result(match, deck_id),
+        "turn_order": turn_order,
+        "version_id": version.id if version else None,
+        "version_name": version.version_name if version else None,
+    }
+
+
+def _insight(
+    key: str,
+    tone: str,
+    eyebrow: str,
+    title: str,
+    body: str,
+    value: str,
+) -> dict:
+    return {
+        "key": key,
+        "tone": tone,
+        "eyebrow": eyebrow,
+        "title": title,
+        "body": body,
+        "value": value,
+    }
 
 
 def stats_table() -> list[dict]:
@@ -90,6 +195,322 @@ def stats_table() -> list[dict]:
         ),
         reverse=True,
     )
+
+
+def performance_spotlight(deck_id: int) -> dict:
+    deck = db.session.get(Deck, deck_id)
+    if not deck:
+        raise LookupError("Deck not found")
+
+    matches = (
+        Match.query.filter(
+            or_(
+                Match.deck1_id == deck_id,
+                Match.deck2_id == deck_id,
+            )
+        )
+        .order_by(Match.date_played.asc(), Match.id.asc())
+        .all()
+    )
+    decided_matches = [
+        match
+        for match in matches
+        if match.winner_id in {match.deck1_id, match.deck2_id}
+    ]
+    overview = _record_payload(matches, deck_id)
+    sample = {
+        **_sample_maturity(overview["decided_games"]),
+        "decided_games": overview["decided_games"],
+    }
+
+    recent_matches = decided_matches[-10:]
+    recent_record = _record_payload(recent_matches, deck_id)
+    recent_delta = recent_record["win_pct"] - overview["win_pct"]
+
+    if recent_record["decided_games"] < 3:
+        trend = "early"
+        trend_label = "Building a baseline"
+    elif recent_delta >= 0.08:
+        trend = "rising"
+        trend_label = "Trending upward"
+    elif recent_delta <= -0.08:
+        trend = "cooling"
+        trend_label = "Below the full record"
+    else:
+        trend = "steady"
+        trend_label = "Holding steady"
+
+    streak_result = None
+    streak_length = 0
+    for match in reversed(decided_matches):
+        result = _match_result(match, deck_id)
+        if streak_result is None:
+            streak_result = result
+        if result != streak_result:
+            break
+        streak_length += 1
+
+    first_matches = [match for match in matches if match.first_player_id == deck_id]
+    second_matches = [
+        match
+        for match in matches
+        if match.first_player_id in {match.deck1_id, match.deck2_id}
+        and match.first_player_id != deck_id
+    ]
+    unknown_order_matches = [
+        match
+        for match in matches
+        if match.first_player_id not in {match.deck1_id, match.deck2_id}
+    ]
+    going_first = _record_payload(first_matches, deck_id)
+    going_second = _record_payload(second_matches, deck_id)
+    unknown_order = _record_payload(unknown_order_matches, deck_id)
+    turn_order_edge = None
+    if going_first["decided_games"] and going_second["decided_games"]:
+        turn_order_edge = round(
+            (going_first["win_pct"] - going_second["win_pct"]) * 100,
+            1,
+        )
+
+    matchup_matches = {}
+    matchup_decks = {}
+    for match in matches:
+        opponent = match.deck2 if match.deck1_id == deck_id else match.deck1
+        if not opponent:
+            continue
+        matchup_decks[opponent.id] = opponent
+        matchup_matches.setdefault(opponent.id, []).append(match)
+
+    matchups = []
+    for opponent_id, opponent_matches in matchup_matches.items():
+        opponent = matchup_decks[opponent_id]
+        matchups.append(
+            {
+                "opponent_id": opponent.id,
+                "opponent_name": opponent.name,
+                "opponent_nation": opponent.nation,
+                "opponent_type": opponent.type,
+                **_record_payload(opponent_matches, deck_id),
+            }
+        )
+
+    matchups.sort(
+        key=lambda row: (
+            row["decided_games"],
+            row["logged_games"],
+            row["opponent_name"].lower(),
+        ),
+        reverse=True,
+    )
+    matchup_candidates = [row for row in matchups if row["decided_games"] >= 2]
+    if not matchup_candidates:
+        matchup_candidates = [row for row in matchups if row["decided_games"] > 0]
+
+    best_matchup = (
+        max(
+            matchup_candidates,
+            key=lambda row: (
+                row["win_pct"],
+                row["decided_games"],
+                row["wins"],
+            ),
+        )
+        if matchup_candidates
+        else None
+    )
+    hardest_matchup = (
+        min(
+            matchup_candidates,
+            key=lambda row: (
+                row["win_pct"],
+                -row["decided_games"],
+                row["opponent_name"].lower(),
+            ),
+        )
+        if matchup_candidates
+        else None
+    )
+
+    versions = deck.versions.order_by(
+        DeckVersion.is_active.desc(),
+        DeckVersion.updated_at.desc(),
+        DeckVersion.id.desc(),
+    ).all()
+    active_version = next((version for version in versions if version.is_active), None)
+    tagged_matches = [match for match in matches if _subject_version(match, deck_id)]
+    active_version_matches = [
+        match
+        for match in tagged_matches
+        if active_version and _subject_version(match, deck_id).id == active_version.id
+    ]
+    active_version_record = _record_payload(active_version_matches, deck_id)
+
+    insights = []
+    if recent_record["decided_games"]:
+        delta_points = round(recent_delta * 100, 1)
+        if trend == "rising":
+            insights.append(
+                _insight(
+                    "recent-form",
+                    "positive",
+                    "Recent form",
+                    "The latest run is outperforming the full record",
+                    f"The last {recent_record['decided_games']} decided games are "
+                    f"{recent_record['wins']}-{recent_record['losses']}, a "
+                    f"{abs(delta_points):.1f}-point lift over the overall win rate.",
+                    f"+{abs(delta_points):.1f} pts",
+                )
+            )
+        elif trend == "cooling":
+            insights.append(
+                _insight(
+                    "recent-form",
+                    "warning",
+                    "Recent form",
+                    "The latest run is below the deck's baseline",
+                    f"The last {recent_record['decided_games']} decided games are "
+                    f"{recent_record['wins']}-{recent_record['losses']}, "
+                    f"{abs(delta_points):.1f} points below the overall win rate.",
+                    f"-{abs(delta_points):.1f} pts",
+                )
+            )
+        else:
+            insights.append(
+                _insight(
+                    "recent-form",
+                    "neutral",
+                    "Recent form",
+                    "The latest results are tracking the full record",
+                    f"The last {recent_record['decided_games']} decided games are "
+                    f"{recent_record['wins']}-{recent_record['losses']} with no major "
+                    "departure from the deck's longer-term performance.",
+                    f"{delta_points:+.1f} pts",
+                )
+            )
+
+    if turn_order_edge is not None:
+        if abs(turn_order_edge) < 5:
+            insights.append(
+                _insight(
+                    "turn-order",
+                    "neutral",
+                    "Turn order",
+                    "Performance is balanced across turn order",
+                    "Going first and going second are within five percentage points, "
+                    "so turn order is not yet a strong separator in the recorded results.",
+                    f"{abs(turn_order_edge):.1f} pt gap",
+                )
+            )
+        else:
+            favored = "first" if turn_order_edge > 0 else "second"
+            insights.append(
+                _insight(
+                    "turn-order",
+                    "positive" if turn_order_edge > 0 else "accent",
+                    "Turn order",
+                    f"The deck is stronger going {favored}",
+                    f"Its going-{favored} win rate leads the other turn-order split by "
+                    f"{abs(turn_order_edge):.1f} percentage points.",
+                    f"{abs(turn_order_edge):.1f} pts",
+                )
+            )
+
+    if hardest_matchup:
+        insights.append(
+            _insight(
+                "matchup-pressure",
+                "danger" if hardest_matchup["win_pct"] < 0.4 else "warning",
+                "Pressure point",
+                f"{hardest_matchup['opponent_name']} is the toughest repeated matchup",
+                f"The recorded matchup is {hardest_matchup['wins']}-"
+                f"{hardest_matchup['losses']} across "
+                f"{hardest_matchup['decided_games']} decided games.",
+                f"{hardest_matchup['win_pct'] * 100:.1f}%",
+            )
+        )
+
+    if active_version:
+        if active_version_record["logged_games"]:
+            version_body = (
+                f"{active_version.version_name} is tagged in "
+                f"{active_version_record['logged_games']} logged matches."
+            )
+            version_value = (
+                f"{active_version_record['wins']}-{active_version_record['losses']}"
+            )
+        else:
+            version_body = (
+                "Select this version when logging future matches to build a clean "
+                "before-and-after performance baseline."
+            )
+            version_value = "Ready to track"
+        insights.append(
+            _insight(
+                "active-version",
+                "accent",
+                "Active build",
+                active_version.version_name,
+                version_body,
+                version_value,
+            )
+        )
+
+    return {
+        "deck": serialize_deck(deck),
+        "overview": {
+            **overview,
+            "opponents_faced": len(matchups),
+            "first_match_at": (
+                matches[0].date_played.isoformat()
+                if matches and matches[0].date_played
+                else None
+            ),
+            "last_match_at": (
+                matches[-1].date_played.isoformat()
+                if matches and matches[-1].date_played
+                else None
+            ),
+        },
+        "sample": sample,
+        "recent_form": {
+            **recent_record,
+            "window": len(recent_matches),
+            "delta_percentage_points": round(recent_delta * 100, 1),
+            "trend": trend,
+            "trend_label": trend_label,
+            "results": [
+                _match_spotlight_row(match, deck_id) for match in recent_matches
+            ],
+        },
+        "streak": {
+            "result": streak_result,
+            "length": streak_length,
+            "label": (
+                f"{streak_length} game {'win' if streak_result == 'W' else 'loss'} streak"
+                if streak_result and streak_length
+                else "No decided streak yet"
+            ),
+        },
+        "turn_order": {
+            "first": going_first,
+            "second": going_second,
+            "unknown": unknown_order,
+            "edge_percentage_points": turn_order_edge,
+        },
+        "matchups": {
+            "best": best_matchup,
+            "hardest": hardest_matchup,
+            "rows": matchups,
+            "minimum_repeated_sample": 2,
+        },
+        "version": {
+            "active": serialize_deck_version_summary(active_version),
+            "active_record": active_version_record,
+            "tagged_matches": len(tagged_matches),
+            "available_versions": len(versions),
+        },
+        "insights": insights,
+    }
 
 
 def versus_for(deck_id: int):

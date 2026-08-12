@@ -8,6 +8,7 @@ import type {
   Card,
   CardFormOptions,
   CardImageAnalysisResult,
+  CardSetOption,
 } from "../../types/api";
 import { formatCardNation } from "../../utils/cards";
 
@@ -36,6 +37,9 @@ type CardCatalogPanelProps = {
   onCancelCardEdit: () => void;
   onAnalyzeCardImage: (file: File) => void;
   onApplyCardAnalysis: () => void;
+  onSetSaved: (cardSet: CardSetOption) => void;
+  onSetUpdated: (previousCode: string, cardSet: CardSetOption) => void;
+  onSetDeleted: (setCode: string) => void;
 };
 
 function getPrimaryPrintingLabel(card: Card) {
@@ -81,6 +85,9 @@ export function CardCatalogPanel({
   onCancelCardEdit,
   onAnalyzeCardImage,
   onApplyCardAnalysis,
+  onSetSaved,
+  onSetUpdated,
+  onSetDeleted,
 }: CardCatalogPanelProps) {
   const hasSearchState = cardSearch.trim().length > 0 || cardResults.length > 0;
   const isEditing = cardFormMode === "edit";
@@ -224,6 +231,7 @@ export function CardCatalogPanel({
             disabled={saving}
             canSubmit={manualCardIsComplete}
             options={cardFormOptions}
+            onSetSaved={onSetSaved}
           />
         </details>
       ) : (
@@ -238,6 +246,9 @@ export function CardCatalogPanel({
           analyzingImage={analyzingImage}
           onAnalyzeImage={onAnalyzeCardImage}
           onApplyAnalysis={onApplyCardAnalysis}
+          onSetSaved={onSetSaved}
+          onSetUpdated={onSetUpdated}
+          onSetDeleted={onSetDeleted}
         />
       )}
     </section>

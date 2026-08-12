@@ -5,15 +5,48 @@ import type {
   CardImageAnalysisResult,
   CardLibraryParams,
   CardPrinting,
+  CardSetOption,
   CardSearchParams,
   CreateCardPayload,
   CreateCardPrintingPayload,
   PaginatedCardsResponse,
   UpdateCardPayload,
+  ManagedCardSet,
 } from "../types/api";
 
 export function getCardFormOptions() {
   return apiRequest<CardFormOptions>("/api/cards/options");
+}
+
+export function saveCardSet(code: string, name: string) {
+  return apiRequest<CardSetOption>("/api/cards/sets", {
+    method: "POST",
+    body: JSON.stringify({ code, name }),
+  });
+}
+
+export function getManagedCardSets() {
+  return apiRequest<ManagedCardSet[]>("/api/cards/sets");
+}
+
+export function updateCardSet(
+  currentCode: string,
+  code: string,
+  name: string,
+) {
+  return apiRequest<ManagedCardSet>(
+    `/api/cards/sets/${encodeURIComponent(currentCode)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ code, name }),
+    },
+  );
+}
+
+export function deleteCardSet(code: string) {
+  return apiRequest<void>(`/api/cards/sets/${encodeURIComponent(code)}`, {
+    method: "DELETE",
+  });
 }
 
 function toQueryString(params: CardSearchParams = {}) {

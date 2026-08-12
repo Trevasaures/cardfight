@@ -79,6 +79,89 @@ export type StatsRow = {
   deck: Deck;
 };
 
+export type PerformanceRecord = {
+  wins: number;
+  losses: number;
+  undecided: number;
+  decided_games: number;
+  logged_games: number;
+  win_pct: number;
+};
+
+export type SpotlightMatch = {
+  match_id: number;
+  date_played: string | null;
+  opponent_id: number | null;
+  opponent_name: string;
+  opponent_nation: string | null;
+  result: "W" | "L" | "U";
+  turn_order: "first" | "second" | "unknown";
+  version_id: number | null;
+  version_name: string | null;
+};
+
+export type SpotlightMatchup = PerformanceRecord & {
+  opponent_id: number;
+  opponent_name: string;
+  opponent_nation: string | null;
+  opponent_type: DeckType;
+};
+
+export type SpotlightInsight = {
+  key: string;
+  tone: "positive" | "warning" | "danger" | "accent" | "neutral";
+  eyebrow: string;
+  title: string;
+  body: string;
+  value: string;
+};
+
+export type PerformanceSpotlightResponse = {
+  deck: Deck;
+  overview: PerformanceRecord & {
+    opponents_faced: number;
+    first_match_at: string | null;
+    last_match_at: string | null;
+  };
+  sample: {
+    level: "early" | "developing" | "meaningful" | "established";
+    label: string;
+    message: string;
+    decided_games: number;
+  };
+  recent_form: PerformanceRecord & {
+    window: number;
+    delta_percentage_points: number;
+    trend: "early" | "rising" | "cooling" | "steady";
+    trend_label: string;
+    results: SpotlightMatch[];
+  };
+  streak: {
+    result: "W" | "L" | null;
+    length: number;
+    label: string;
+  };
+  turn_order: {
+    first: PerformanceRecord;
+    second: PerformanceRecord;
+    unknown: PerformanceRecord;
+    edge_percentage_points: number | null;
+  };
+  matchups: {
+    best: SpotlightMatchup | null;
+    hardest: SpotlightMatchup | null;
+    rows: SpotlightMatchup[];
+    minimum_repeated_sample: number;
+  };
+  version: {
+    active: DeckVersionSummary | null;
+    active_record: PerformanceRecord;
+    tagged_matches: number;
+    available_versions: number;
+  };
+  insights: SpotlightInsight[];
+};
+
 export type DashboardDeckSummary = {
   deck: Deck;
   wins: number;
@@ -212,6 +295,7 @@ export type CardSearchParams = {
   nation?: string;
   grade?: number | string | null;
   card_type?: string;
+  set_code?: string;
   limit?: number;
 };
 
@@ -333,14 +417,20 @@ export type CardLibraryParams = CardSearchParams & {
   page_size?: number;
 };
 
+export type CardSetOption = {
+  code: string;
+  name: string;
+};
+
+export type ManagedCardSet = CardSetOption & {
+  usage_count: number;
+};
+
 export type CardFormOptions = {
   grades: number[];
   nations: string[];
   card_types: string[];
-  sets: {
-    code: string;
-    name: string;
-  }[];
+  sets: CardSetOption[];
 };
 
 export type AcquisitionPlanType = "new_build" | "existing_deck";

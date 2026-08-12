@@ -251,6 +251,31 @@ class CardPrinting(db.Model):
         return f"<CardPrinting card_id={self.card_id} set={self.set_code} rarity={self.rarity}>"
 
 
+class CardSet(db.Model):
+    """Reusable user-defined card set metadata."""
+
+    __tablename__ = "card_set"
+
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(80), unique=True, nullable=False)
+    name = db.Column(db.String(160), nullable=False)
+
+    created_at = db.Column(db.DateTime, default=now_central, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=now_central,
+        onupdate=now_central,
+        nullable=False,
+    )
+
+    __table_args__ = (
+        db.Index("ix_card_set_code", "code"),
+    )
+
+    def __repr__(self):
+        return f"<CardSet {self.code} {self.name}>"
+
+
 # --- Deck Builder ---
 class DeckVersion(db.Model):
     __tablename__ = "deck_version"
