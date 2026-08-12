@@ -20,8 +20,8 @@ def stats_table_route():
 def performance_spotlight_route(deck_id: int):
     try:
         return jsonify(performance_spotlight(deck_id))
-    except LookupError as exc:
-        return jsonify(error=str(exc)), 404
+    except LookupError:
+        return jsonify(error="Resource not found"), 404
 
 
 @bp_stats.get("/versus/<int:deck_id>")
