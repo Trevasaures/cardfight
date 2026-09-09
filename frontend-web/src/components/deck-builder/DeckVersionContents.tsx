@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, Plus, Trash2 } from "lucide-react";
 
+import { DeckBuilderStepHeader } from "./DeckBuilderStepHeader";
 import type {
   Card,
   DeckCardEntry,
@@ -228,193 +229,229 @@ export function DeckVersionContents({
   return (
     <section
       data-anime="motion-panel"
-      className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5"
+      className="min-w-0 rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5"
     >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-200/80">
-            Step 3
-          </p>
-          <h3 className="mt-1 text-2xl font-black text-slate-50">
-            {"Deck Build" +
-              (currentVersion?.version_name
-                ? ` - ${currentVersion.version_name}`
-                : "")}
-          </h3>
-          <p className="mt-2 text-sm leading-6 text-slate-500">
-            Add selected cards into a zone. Cards are displayed by grade, then
-            alphabetically inside each grade.
-          </p>
-        </div>
-
-        {rules ? (
-          <div
-            className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black ${
-              rules.is_complete
-                ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-100"
-                : "border-amber-300/20 bg-amber-300/10 text-amber-100"
-            }`}
-          >
-            {rules.is_complete ? (
-              <CheckCircle2 className="h-4 w-4" />
-            ) : (
-              <AlertTriangle className="h-4 w-4" />
-            )}
-            {rules.is_complete ? "Deck complete" : "Deck needs work"}
-          </div>
-        ) : null}
-      </div>
-
-      {rules ? (
-        <div className="mt-5 rounded-3xl border border-white/10 bg-black/20 p-4">
-          <div className="grid gap-3 sm:grid-cols-3">
-            {[
-              {
-                label: "Main deck",
-                value: rules.main_deck_count,
-                limit: rules.main_deck_limit,
-              },
-              {
-                label: "Ride deck",
-                value: rules.ride_deck_count,
-                limit: rules.ride_deck_limit,
-              },
-              {
-                label: "Core total",
-                value: rules.core_card_count,
-                limit: rules.required_total,
-              },
-            ].map((item) => {
-              const complete = item.value === item.limit;
-
-              return (
-                <div
-                  key={item.label}
-                  className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-                      {item.label}
-                    </p>
-                    {complete ? (
-                      <CheckCircle2 className="h-4 w-4 text-emerald-300" />
-                    ) : null}
-                  </div>
-                  <p className="mt-2 text-2xl font-black text-slate-50">
-                    {item.value}
-                    <span className="text-base text-slate-500">
-                      /{item.limit}
-                    </span>
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-
-          {!rules.is_complete && rules.issues.length ? (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {rules.issues.map((issue) => (
-                <span
-                  key={issue}
-                  className="rounded-full border border-amber-300/15 bg-amber-300/[0.07] px-3 py-1 text-xs font-bold text-amber-100/80"
-                >
-                  {issue}
-                </span>
-              ))}
+      <DeckBuilderStepHeader
+        step={3}
+        title={
+          "Deck Build" +
+          (currentVersion?.version_name
+            ? ` - ${currentVersion.version_name}`
+            : "")
+        }
+        description="Add cards to a zone, then tune quantities and printings below."
+        action={
+          rules ? (
+            <div
+              className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black ${
+                rules.is_complete
+                  ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-100"
+                  : "border-amber-300/20 bg-amber-300/10 text-amber-100"
+              }`}
+            >
+              {rules.is_complete ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <AlertTriangle className="h-4 w-4" />
+              )}
+              <span className="hidden sm:inline">
+                {rules.is_complete ? "Deck complete" : "Needs work"}
+              </span>
             </div>
+          ) : null
+        }
+      />
+
+      <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+        {rules ? (
+          <>
+            <div className="grid grid-cols-3 divide-x divide-white/10 bg-white/[0.02]">
+              {[
+                {
+                  label: "Main deck",
+                  value: rules.main_deck_count,
+                  limit: rules.main_deck_limit,
+                },
+                {
+                  label: "Ride deck",
+                  value: rules.ride_deck_count,
+                  limit: rules.ride_deck_limit,
+                },
+                {
+                  label: "Core total",
+                  value: rules.core_card_count,
+                  limit: rules.required_total,
+                },
+              ].map((item) => {
+                const complete = item.value === item.limit;
+
+                return (
+                  <div key={item.label} className="min-w-0 px-3 py-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate-600">
+                        {item.label}
+                      </p>
+                      {complete ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-300" />
+                      ) : null}
+                    </div>
+                    <p className="mt-0.5 text-lg font-black text-slate-50">
+                      {item.value}
+                      <span className="text-xs text-slate-600">
+                        /{item.limit}
+                      </span>
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+
+            {!rules.is_complete && rules.issues.length ? (
+              <div className="flex flex-wrap gap-2 border-t border-white/10 px-3 py-2.5">
+                {rules.issues.map((issue) => (
+                  <span
+                    key={issue}
+                    className="rounded-full border border-amber-300/15 bg-amber-300/[0.07] px-2.5 py-1 text-[0.68rem] font-bold text-amber-100/80"
+                  >
+                    {issue}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </>
+        ) : null}
+
+        <div className={rules ? "border-t border-white/10 p-3" : "p-3"}>
+          <div className="mb-2.5">
+            <p className="text-[0.65rem] font-bold uppercase tracking-[0.16em] text-slate-500">
+              Add a card
+            </p>
+            <p className="mt-0.5 truncate text-xs text-slate-600">
+              Choose from the current Step 2 search results.
+            </p>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="min-w-0">
+              <span className="mb-1.5 block text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate-600">
+                Card
+              </span>
+              <select
+                value={selectedCardId}
+                onChange={(event) => onSelectedCardIdChange(event.target.value)}
+                title="Choose a card from the current search results to add to the selected deck version."
+                className="w-full min-w-0 rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50"
+              >
+                {cardResults.length === 0 ? (
+                  <option value="">No card selected</option>
+                ) : null}
+                {cardResults.map((card) => (
+                  <option key={card.id} value={card.id}>
+                    {card.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="min-w-0">
+              <span className="mb-1.5 block text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate-600">
+                Printing
+              </span>
+              <select
+                value={selectedPrintingId}
+                onChange={(event) =>
+                  onSelectedPrintingIdChange(event.target.value)
+                }
+                disabled={!selectedCard}
+                title="Choose the exact set and rarity to use for this deck entry."
+                className="w-full min-w-0 rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50 disabled:opacity-50"
+              >
+                {!selectedCard?.printings.length ? (
+                  <option value="">No printing recorded</option>
+                ) : null}
+                {selectedCard?.printings.map((printing) => (
+                  <option key={printing.id} value={printing.id}>
+                    {[
+                      printing.set_code,
+                      printing.card_number,
+                      printing.rarity,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || `Printing ${printing.id}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(5rem,0.35fr)_minmax(9rem,0.65fr)_minmax(10rem,1fr)] sm:items-end">
+            <label>
+              <span className="mb-1.5 block text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate-600">
+                Quantity
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={addZone === "ride" ? 1 : undefined}
+                value={addQuantity}
+                onChange={(event) =>
+                  onAddQuantityChange(Number(event.target.value))
+                }
+                readOnly={addZone === "ride"}
+                title="Quantity of this card to add to the selected zone."
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-cyan-300/50"
+              />
+            </label>
+
+            <label>
+              <span className="mb-1.5 block text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate-600">
+                Zone
+              </span>
+              <select
+                value={addZone}
+                onChange={(event) =>
+                  onAddZoneChange(event.target.value as DeckCardZone)
+                }
+                title="Choose where this card belongs in the deck list."
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50"
+              >
+                {ZONES.map((zone) => (
+                  <option key={zone.value} value={zone.value}>
+                    {zone.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button
+              type="button"
+              onClick={onAddCardToVersion}
+              disabled={
+                !currentVersion ||
+                !selectedCard ||
+                saving ||
+                Boolean(addRuleIssue)
+              }
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-2.5 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+              title={
+                addRuleIssue ??
+                "Add the selected card to the current deck version"
+              }
+            >
+              <Plus className="h-4 w-4" />
+              Add selected card
+            </button>
+          </div>
+
+          {addRuleIssue ? (
+            <p className="mt-2 text-xs font-bold text-amber-200/80">
+              {addRuleIssue}
+            </p>
           ) : null}
         </div>
-      ) : null}
-
-      <div className="mt-5 rounded-3xl border border-white/10 bg-black/20 p-4">
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(12rem,0.7fr)_6rem_10rem]">
-          <select
-            value={selectedCardId}
-            onChange={(event) => onSelectedCardIdChange(event.target.value)}
-            title="Choose a card from the current search results to add to the selected deck version."
-            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50"
-          >
-            {cardResults.length === 0 ? (
-              <option value="">No card selected</option>
-            ) : null}
-            {cardResults.map((card) => (
-              <option key={card.id} value={card.id}>
-                {card.name}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={selectedPrintingId}
-            onChange={(event) =>
-              onSelectedPrintingIdChange(event.target.value)
-            }
-            disabled={!selectedCard}
-            title="Choose the exact set and rarity to use for this deck entry."
-            className="min-w-0 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50 disabled:opacity-50"
-          >
-            {!selectedCard?.printings.length ? (
-              <option value="">No printing recorded</option>
-            ) : null}
-            {selectedCard?.printings.map((printing) => (
-              <option key={printing.id} value={printing.id}>
-                {[
-                  printing.set_code,
-                  printing.card_number,
-                  printing.rarity,
-                ]
-                  .filter(Boolean)
-                  .join(" · ") || `Printing ${printing.id}`}
-              </option>
-            ))}
-          </select>
-
-          <input
-            type="number"
-            min={1}
-            max={addZone === "ride" ? 1 : undefined}
-            value={addQuantity}
-            onChange={(event) => onAddQuantityChange(Number(event.target.value))}
-            readOnly={addZone === "ride"}
-            title="Quantity of this card to add to the selected zone."
-            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none focus:border-cyan-300/50"
-          />
-
-          <select
-            value={addZone}
-            onChange={(event) =>
-              onAddZoneChange(event.target.value as DeckCardZone)
-            }
-            title="Choose where this card belongs in the deck list."
-            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50"
-          >
-            {ZONES.map((zone) => (
-              <option key={zone.value} value={zone.value}>
-                {zone.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <button
-          type="button"
-          onClick={onAddCardToVersion}
-          disabled={!currentVersion || !selectedCard || saving || Boolean(addRuleIssue)}
-          className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
-          title={addRuleIssue ?? "Add the selected card to the current deck version"}
-        >
-          <Plus className="h-4 w-4" />
-          Add selected card
-        </button>
-
-        {addRuleIssue ? (
-          <p className="mt-2 text-center text-xs font-bold text-amber-200/80">
-            {addRuleIssue}
-          </p>
-        ) : null}
       </div>
 
-      <div className="mt-5 max-h-[34rem] space-y-4 overflow-auto pr-1">
+      <div className="mt-4 max-h-[34rem] space-y-3 overflow-auto pr-1">
         {currentVersion ? (
           ZONES.map((zone) => {
             const rawEntries = groupedCards.get(zone.value) ?? [];
@@ -427,9 +464,9 @@ export function DeckVersionContents({
               <section
                 key={zone.value}
                 data-builder-anime="zone"
-                className="rounded-3xl border border-white/10 bg-black/10 p-4"
+                className="rounded-2xl border border-white/10 bg-black/10 p-3"
               >
-                <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h4 className="font-black text-slate-100">{zone.label}</h4>
                     {summary ? (
@@ -449,7 +486,7 @@ export function DeckVersionContents({
                 </div>
 
                 {gradeGroups.length ? (
-                  <div className="space-y-5">
+                  <div className="space-y-4">
                     {gradeGroups.map((group) => (
                       <div key={group.gradeKey}>
                         <div className="mb-2 flex items-center gap-3">
@@ -464,7 +501,7 @@ export function DeckVersionContents({
                           </span>
                         </div>
 
-                        <div className="divide-y divide-white/10 overflow-hidden rounded-2xl border border-white/10 bg-black/10">
+                        <div className="divide-y divide-white/10 overflow-hidden rounded-xl border border-white/10 bg-black/10">
                           {group.entries.map((entry) => (
                             <article
                               key={entry.id}
@@ -491,7 +528,7 @@ export function DeckVersionContents({
                                 </p>
                               </div>
 
-                              <div className="flex items-center justify-between gap-3 md:justify-end">
+                              <div className="grid min-w-0 gap-2 sm:flex sm:items-center sm:justify-between sm:gap-3 md:justify-end">
                                 <select
                                   value={entry.printing_id ?? ""}
                                   onChange={(event) =>
@@ -499,7 +536,7 @@ export function DeckVersionContents({
                                   }
                                   disabled={saving}
                                   title={`Choose the printing used for ${entry.card?.name ?? "this card"}`}
-                                  className="min-w-0 max-w-56 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs font-semibold text-slate-300 outline-none focus:border-cyan-300/50 disabled:opacity-50"
+                                  className="w-full min-w-0 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs font-semibold text-slate-300 outline-none focus:border-cyan-300/50 disabled:opacity-50 sm:w-auto sm:max-w-56"
                                 >
                                   <option value="">No printing selected</option>
                                   {entry.card?.printings.map((printing) => (
@@ -519,7 +556,7 @@ export function DeckVersionContents({
                                   ))}
                                 </select>
 
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center justify-end gap-2">
                                   <button
                                     type="button"
                                     onClick={() =>
@@ -586,8 +623,8 @@ export function DeckVersionContents({
             );
           })
         ) : (
-          <div className="rounded-[2rem] border border-dashed border-white/15 bg-black/20 p-10 text-center">
-            <p className="text-lg font-black text-slate-300">
+          <div className="rounded-2xl border border-dashed border-white/15 bg-black/20 p-8 text-center">
+            <p className="font-black text-slate-300">
               No deck version selected.
             </p>
             <p className="mt-2 text-sm text-slate-500">

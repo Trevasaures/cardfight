@@ -147,7 +147,7 @@ export function CardSetManager({
   }
 
   return (
-    <details className="mt-5 rounded-3xl border border-white/10 bg-black/20 p-4">
+    <details className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-black text-slate-100">
         <span className="inline-flex items-center gap-2">
           <Settings2 className="h-4 w-4 text-cyan-200" />

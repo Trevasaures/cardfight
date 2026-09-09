@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   BookOpen,
@@ -49,28 +49,31 @@ const navGroups = [
 
 export function AppShell() {
   const location = useLocation();
+  const navigate = useNavigate();
   const pageRef = useRef<HTMLElement | null>(null);
 
   useRoutePageReveal(pageRef, location.pathname);
 
   return (
     <div className="min-h-screen">
-      <aside className="fixed left-0 top-0 hidden h-screen w-72 overflow-auto border-r border-white/10 bg-slate-950/70 px-5 py-6 backdrop-blur-xl lg:block">
-        <div className="mb-8">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-300/30 bg-cyan-300/10">
-            <Trophy className="h-6 w-6 text-cyan-200" />
+      <aside className="fixed left-0 top-0 hidden h-screen w-72 overflow-auto border-r border-white/10 bg-slate-950/70 px-4 py-5 backdrop-blur-xl lg:block">
+        <div className="mb-6 px-1">
+          <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-300/25 bg-cyan-300/10">
+            <Trophy className="h-5 w-5 text-cyan-200" />
           </div>
 
-          <h1 className="mt-4 text-xl font-bold tracking-tight">
+          <h1 className="text-lg font-bold tracking-tight">
             Cardfight Lab
           </h1>
+          </div>
 
-          <p className="mt-1 text-sm text-slate-400">
+          <p className="mt-3 text-xs leading-5 text-slate-400">
             Vanguard match tracker and deck testing hub.
           </p>
         </div>
 
-        <nav className="space-y-6">
+        <nav aria-label="Main navigation" className="space-y-5">
           {navGroups.map((group) => (
             <div key={group.label}>
               <p className="mb-2 px-3 text-[0.65rem] font-black uppercase tracking-[0.22em] text-slate-600">
@@ -88,7 +91,7 @@ export function AppShell() {
                       end={item.to === "/"}
                       className={({ isActive }) =>
                         [
-                          "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition",
+                          "flex min-h-10 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-cyan-300",
                           isActive
                             ? "bg-cyan-300/15 text-cyan-100 ring-1 ring-cyan-300/20"
                             : "text-slate-400 hover:bg-white/5 hover:text-slate-100",
@@ -105,6 +108,20 @@ export function AppShell() {
           ))}
         </nav>
       </aside>
+
+      <nav aria-label="Mobile navigation" className="flex items-center justify-between gap-3 border-b border-white/10 bg-slate-950/70 px-4 py-3 lg:hidden">
+        <span className="flex shrink-0 items-center gap-2 text-sm font-black text-slate-100">
+          <Trophy aria-hidden="true" className="h-5 w-5 text-cyan-200" />
+          Cardfight Lab
+        </span>
+        <select aria-label="Navigate to" value={location.pathname} onChange={(event) => navigate(event.target.value)} className="workspace-control w-40 text-xs">
+          {navGroups.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.items.map((item) => <option key={item.to} value={item.to}>{item.label}</option>)}
+            </optgroup>
+          ))}
+        </select>
+      </nav>
 
       <main
         ref={pageRef}

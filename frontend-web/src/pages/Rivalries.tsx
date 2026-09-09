@@ -8,6 +8,7 @@ import {
 } from "../components/cards/RivalryCard";
 import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
+import { WorkspaceSectionHeader } from "../components/layout/WorkspaceSectionHeader";
 import type { Match, MatchFormat } from "../types/api";
 
 type FormatFilter = "All" | MatchFormat;
@@ -156,49 +157,65 @@ export function Rivalries() {
       <PageHeader
         eyebrow="Rivalries"
         title="Deck vs deck history"
-        description="Turn match history into head-to-head rivalry cards with records, leaders, undecided games, and recent results."
+        description="Compare head-to-head records, follow each series, and revisit the latest result."
       />
-
-      <section data-anime="motion-panel" className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-          <p className="text-sm text-slate-500">Pairings</p>
-          <p className="mt-2 text-3xl font-black">{totalPairings}</p>
-        </div>
-
-        <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-          <p className="text-sm text-slate-500">Logged matches</p>
-          <p className="mt-2 text-3xl font-black">{totalLogged}</p>
-        </div>
-
-        <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-          <p className="text-sm text-slate-500">Top rivalry</p>
-          <p className="mt-2 truncate text-xl font-black text-cyan-100">
-            {topRivalry
-              ? `${topRivalry.deckAName} vs ${topRivalry.deckBName}`
-              : "No rivalry yet"}
-          </p>
-        </div>
-      </section>
 
       <section
         data-anime="motion-panel"
-        className="mt-6 rounded-[2rem] border border-white/10 bg-white/[0.04] p-5"
+        className="workspace-panel"
       >
-        <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto_auto]">
+        <WorkspaceSectionHeader
+          eyebrow="Series"
+          title="Rivalry board"
+          description="Find a pairing by deck, nation, format, or games played."
+          actions={
+            <button
+              type="button"
+              onClick={loadMatches}
+              disabled={loading}
+              className="workspace-button inline-flex items-center justify-center gap-2 border border-white/10 bg-white/[0.05] px-3 text-sm font-semibold text-slate-200 transition hover:bg-white/[0.09] disabled:opacity-40"
+            >
+              <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          }
+        />
+
+        <div className="workspace-inset mt-4 grid grid-cols-2 overflow-hidden md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)]">
+          <div className="border-r border-white/10 px-4 py-3">
+            <p className="text-[0.6rem] font-bold uppercase tracking-[0.15em] text-slate-500">Pairings</p>
+            <p className="mt-1 text-2xl font-black text-white">{totalPairings}</p>
+          </div>
+          <div className="px-4 py-3 md:border-r md:border-white/10">
+            <p className="text-[0.6rem] font-bold uppercase tracking-[0.15em] text-slate-500">Logged matches</p>
+            <p className="mt-1 text-2xl font-black text-white">{totalLogged}</p>
+          </div>
+          <div className="col-span-2 min-w-0 border-t border-white/10 px-4 py-3 md:col-span-1 md:border-t-0">
+            <p className="text-[0.6rem] font-bold uppercase tracking-[0.15em] text-slate-500">Most played pairing</p>
+            <p className="mt-1 break-words text-base font-black text-cyan-100">
+              {topRivalry ? `${topRivalry.deckAName} vs ${topRivalry.deckBName}` : "No rivalry yet"}
+            </p>
+            {topRivalry ? <p className="mt-0.5 text-xs text-slate-500">{topRivalry.total} matches</p> : null}
+          </div>
+        </div>
+
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
           <label className="relative block">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
+              aria-label="Search rivalries by deck or nation"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search decks or nations..."
-              className="w-full rounded-2xl border border-white/10 bg-black/30 py-3 pl-11 pr-4 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-300/50"
+              className="w-full rounded-xl border border-white/10 bg-black/30 py-2.5 pl-10 pr-3 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-300/50"
             />
           </label>
 
           <select
+            aria-label="Rivalry format"
             value={format}
             onChange={(event) => setFormat(event.target.value as FormatFilter)}
-            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50"
+            className="workspace-control min-w-0 border border-white/10 bg-black/30 text-sm text-slate-100 outline-none focus:border-cyan-300/50"
           >
             <option value="All">All formats</option>
             <option value="Any">Any</option>
@@ -207,11 +224,12 @@ export function Rivalries() {
           </select>
 
           <select
+            aria-label="Minimum rivalry games"
             value={minGames}
             onChange={(event) =>
               setMinGames(Number(event.target.value) as MinGamesFilter)
             }
-            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50"
+            className="workspace-control min-w-0 border border-white/10 bg-black/30 text-sm text-slate-100 outline-none focus:border-cyan-300/50"
           >
             {MIN_GAME_OPTIONS.map((count) => (
               <option key={count} value={count}>
@@ -220,38 +238,31 @@ export function Rivalries() {
             ))}
           </select>
 
-          <button
-            type="button"
-            onClick={loadMatches}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-3 text-sm font-bold text-slate-200 transition hover:bg-white/[0.09]"
-          >
-            <RefreshCcw className="h-4 w-4" />
-            Refresh
-          </button>
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-3 text-sm text-slate-500">
-          <span>{filteredRows.length} rivalries shown</span>
-          <span>•</span>
-          <span>{rivalryRows.length} total pairings</span>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+          <span>{filteredRows.length} of {rivalryRows.length} pairings shown</span>
+          {search || format !== "All" || minGames !== 1 ? (
+            <button type="button" onClick={() => { setSearch(""); setFormat("All"); setMinGames(1); }} className="font-semibold text-cyan-200 transition hover:text-cyan-100">Clear filters</button>
+          ) : <span>Most played first</span>}
         </div>
       </section>
 
       {loading ? (
-        <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-slate-400">
+        <div className="workspace-panel mt-4 text-sm text-slate-400">
           Loading rivalries...
         </div>
       ) : filteredRows.length ? (
-        <section className="mt-6 grid gap-4 xl:grid-cols-2">
+        <section className="mt-4 grid items-start gap-4 xl:grid-cols-2">
           {filteredRows.map((row) => (
             <RivalryCard key={row.key} row={row} />
           ))}
         </section>
       ) : (
-        <section className="mt-6 rounded-[2rem] border border-dashed border-white/15 bg-white/[0.025] p-10 text-center">
+        <section className="workspace-panel mt-4 border-dashed py-8 text-center">
           <p className="text-lg font-bold text-slate-300">No rivalries found.</p>
           <p className="mt-2 text-sm text-slate-500">
-            Log a few matches in Play Lab and this board will start getting spicy.
+            {rivalryRows.length ? "Try a different deck, format, or minimum game count." : "Log a few matches in Play Lab to start a head-to-head record."}
           </p>
         </section>
       )}

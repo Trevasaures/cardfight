@@ -18,20 +18,20 @@ export function MatchCard({ match, onDelete }: MatchCardProps) {
   return (
     <article
       data-anime="motion-card"
-      className="rounded-3xl border border-white/10 bg-slate-950/45 p-5 shadow-xl shadow-black/20 transition will-change-transform hover:-translate-y-0.5 hover:border-cyan-300/30 hover:bg-slate-900/70"
+      className="min-w-0 rounded-2xl border border-white/10 bg-black/20 p-4 transition-colors hover:border-cyan-300/25 hover:bg-white/[0.035]"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-base font-bold text-slate-50">
+        <div className="min-w-0 flex-1 basis-44">
+          <h3 className="break-words text-sm font-black text-slate-50">
             {match.deck1_name} <span className="text-slate-500">vs</span>{" "}
             {match.deck2_name}
           </h3>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-xs text-slate-500">
             {formatDateTime(match.date_played_iso)}
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <FormatBadge type={match.format} />
           <ResultBadge match={match} />
 
@@ -39,8 +39,9 @@ export function MatchCard({ match, onDelete }: MatchCardProps) {
             <button
               type="button"
               onClick={() => onDelete(match.id)}
-              className="rounded-full border border-rose-300/20 bg-rose-300/10 p-2 text-rose-100 transition hover:bg-rose-300/20"
+              className="rounded-lg border border-transparent p-2 text-slate-500 transition hover:border-rose-300/20 hover:bg-rose-300/10 hover:text-rose-200 focus-visible:outline-2 focus-visible:outline-cyan-300/60"
               title="Delete match"
+              aria-label={`Delete ${match.deck1_name} versus ${match.deck2_name} match`}
             >
               <Trash2 className="h-4 w-4" />
             </button>
@@ -48,22 +49,22 @@ export function MatchCard({ match, onDelete }: MatchCardProps) {
         </div>
       </div>
 
-      <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-        <p className="text-sm font-semibold text-slate-200">{resultLabel}</p>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2.5">
+        <p className={`text-xs font-bold ${match.is_undecided ? "text-amber-100/85" : "text-emerald-100/85"}`}>{resultLabel}</p>
 
         {match.first_player_name ? (
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="text-[0.65rem] text-slate-400">
             First player: {match.first_player_name}
           </p>
         ) : (
-          <p className="mt-1 text-xs text-slate-600">
+          <p className="text-[0.65rem] text-slate-500">
             First player not recorded
           </p>
         )}
       </div>
 
       {match.notes ? (
-        <p className="mt-4 text-sm leading-6 text-slate-400">{match.notes}</p>
+        <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-400">{match.notes}</p>
       ) : null}
     </article>
   );

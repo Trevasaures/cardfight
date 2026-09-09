@@ -73,13 +73,13 @@ export function CardImageImportAssistant({
   }
 
   return (
-    <div className="mt-5 rounded-3xl border border-white/10 bg-black/20 p-4">
-      <div className="flex items-start justify-between gap-3">
+    <details className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+      <summary className="flex cursor-pointer list-none items-start justify-between gap-3 select-none [&::-webkit-details-marker]:hidden">
         <div>
           <h4 className="font-black text-slate-100">
             Card image import assistant
           </h4>
-          <p className="mt-1 text-sm leading-6 text-slate-500">
+          <p className="mt-1 text-xs leading-5 text-slate-500">
             Drop a card image, analyze it, then apply the suggested fields to the
             form below.
           </p>
@@ -88,7 +88,7 @@ export function CardImageImportAssistant({
         <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-bold text-cyan-100">
           MVP
         </span>
-      </div>
+      </summary>
 
       <div
         onDragEnter={(event) => {
@@ -109,14 +109,14 @@ export function CardImageImportAssistant({
           setImageFile(event.dataTransfer.files.item(0));
         }}
         className={[
-          "mt-4 rounded-3xl border border-dashed p-4 transition",
+          "mt-3 rounded-xl border border-dashed p-3 transition",
           dragActive
             ? "border-cyan-300/50 bg-cyan-300/10"
             : "border-white/15 bg-white/[0.025]",
         ].join(" ")}
       >
         <div className="grid gap-4 md:grid-cols-[10rem_1fr] md:items-center">
-          <div className="flex aspect-[3/4] items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black/30">
+          <div className="flex aspect-[3/4] items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/30">
             {previewUrl ? (
               <img
                 src={previewUrl}
@@ -132,15 +132,15 @@ export function CardImageImportAssistant({
             <p className="text-sm font-bold text-slate-200">
               {selectedFile ? selectedFile.name : "Drop image here"}
             </p>
-            <p className="mt-1 text-sm leading-6 text-slate-500">
+            <p className="mt-1 text-xs leading-5 text-slate-500">
               Use a clear PNG, JPG, or WEBP card image if possible. Cropped,
               low-resolution, or tilted images may be harder to analyze.
             </p>
 
-            <div className="mt-4 flex flex-wrap gap-3">
+            <div className="mt-3 flex flex-wrap gap-2">
               <label
                 htmlFor={inputId}
-                className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-3 text-sm font-bold text-slate-200 transition hover:bg-white/[0.09]"
+                className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2.5 text-xs font-bold text-slate-200 transition hover:bg-white/[0.09]"
               >
                 <ImageUp className="h-4 w-4" />
                 Choose image
@@ -160,7 +160,7 @@ export function CardImageImportAssistant({
                 type="button"
                 onClick={handleAnalyze}
                 disabled={!selectedFile || analyzing}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-3 py-2.5 text-xs font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {analyzing ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -174,7 +174,7 @@ export function CardImageImportAssistant({
                 type="button"
                 onClick={onApplyAnalysis}
                 disabled={!analysisResult}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-300/20 bg-emerald-300/10 px-5 py-3 text-sm font-bold text-emerald-100 transition hover:bg-emerald-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-3 py-2.5 text-xs font-bold text-emerald-100 transition hover:bg-emerald-300/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Check className="h-4 w-4" />
                 Apply suggestion
@@ -189,7 +189,7 @@ export function CardImageImportAssistant({
       ) : null}
 
       {analysisResult ? (
-        <div className="mt-4 rounded-3xl border border-white/10 bg-white/[0.025] p-4">
+        <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] p-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm font-black text-slate-100">
               Suggested fields
@@ -239,6 +239,6 @@ export function CardImageImportAssistant({
           </div>
         </div>
       ) : null}
-    </div>
+    </details>
   );
 }

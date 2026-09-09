@@ -33,9 +33,9 @@ function dollars(cents: number) {
 }
 
 const STATUS_LABELS = {
-  needed: "Not covered",
-  partial: "Some copies covered",
-  ordered: "Fully incoming",
+  needed: "Still needed",
+  partial: "More copies needed",
+  ordered: "Incoming",
   owned: "Ready",
 };
 
@@ -89,6 +89,14 @@ export function AcquisitionItemRow({
     await onSave(item.id, { target_quantity: quantity });
   }
 
+  function discardEdits() {
+    setTargetQuantity(String(item.target_quantity));
+    setOwnedQuantity(String(item.owned_quantity));
+    setOrderedQuantity(String(item.ordered_quantity));
+    setPrice(item.unit_price_cents ? (item.unit_price_cents / 100).toFixed(2) : "");
+    setPrintingId(item.printing_id ? String(item.printing_id) : "");
+  }
+
   const printingLabel = item.printing
     ? [
         item.printing.set_code,
@@ -99,6 +107,16 @@ export function AcquisitionItemRow({
         .join(" · ")
     : "Any printing";
   const comesFromCurrentDeck = item.source_quantity > 0;
+  const hasChanges =
+    Number(targetQuantity) !== item.target_quantity ||
+    Number(ownedQuantity) !== item.owned_quantity ||
+    Number(orderedQuantity) !== item.ordered_quantity ||
+    Math.round(Number(price || 0) * 100) !== item.unit_price_cents ||
+    (printingId ? Number(printingId) : null) !== item.printing_id;
+  const actionDisabled = busy || hasChanges;
+  const actionHint = hasChanges
+    ? "Save or discard row edits before using this action."
+    : undefined;
   const statusHelp = {
     needed: "No copies are currently on hand or incoming.",
     partial:
@@ -108,14 +126,19 @@ export function AcquisitionItemRow({
   }[item.status];
 
   return (
-    <article className="rounded-3xl border border-white/10 bg-black/20 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
+    <article
+      aria-label={item.card.name}
+      className={`min-w-0 rounded-2xl border bg-black/15 p-3 transition-colors sm:p-4 ${hasChanges ? "border-cyan-300/30" : "border-white/10 hover:border-white/20"}`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 flex-1 basis-60">
           <div className="flex flex-wrap items-center gap-2">
-            <h4 className="font-black text-slate-100">{item.card.name}</h4>
+            <h4 className="min-w-0 break-words text-sm font-black text-slate-100">
+              {item.card.name}
+            </h4>
             <span
               className={[
-                "rounded-full border px-2.5 py-1 text-xs font-bold",
+                "shrink-0 rounded-full border px-2 py-0.5 text-[0.65rem] font-bold",
                 STATUS_STYLES[item.status],
               ].join(" ")}
               title={statusHelp}
@@ -123,37 +146,33 @@ export function AcquisitionItemRow({
               {STATUS_LABELS[item.status]}
             </span>
             {item.removed_quantity > 0 ? (
-              <span className="rounded-full border border-rose-300/25 bg-rose-300/10 px-2.5 py-1 text-xs font-bold text-rose-100">
+              <span className="rounded-full border border-rose-300/25 bg-rose-300/10 px-2 py-0.5 text-[0.65rem] font-bold text-rose-100">
                 {item.removed_quantity} outgoing
               </span>
             ) : null}
           </div>
 
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 break-words text-xs leading-5 text-slate-400">
             {item.card.card_type} · {printingLabel}
           </p>
         </div>
 
-        <div className="text-right">
-          <p className="text-xs uppercase tracking-[0.16em] text-slate-600">
-            Still needed
-          </p>
-          <p
-            className={[
-              "mt-1 text-xl font-black",
-              item.missing_quantity
-                ? "text-rose-100"
-                : "text-emerald-100",
-            ].join(" ")}
-          >
-            {item.missing_quantity}
-          </p>
-        </div>
+        {hasChanges ? (
+          <span className="inline-flex items-center gap-1.5 text-[0.65rem] font-bold text-cyan-200">
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
+            Unsaved edits
+          </span>
+        ) : item.missing_quantity > 0 ? (
+          <span className="text-xs text-rose-200">
+            <strong className="tabular-nums">{item.missing_quantity}</strong>{" "}
+            still needed
+          </span>
+        ) : null}
       </div>
 
       {comesFromCurrentDeck ? (
-        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-violet-300/15 bg-violet-300/[0.05] px-4 py-3 text-sm">
-          <ArrowRightLeft className="h-4 w-4 text-violet-200" />
+        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+          <ArrowRightLeft aria-hidden="true" className="h-3.5 w-3.5 text-violet-300/70" />
           <span className="text-slate-400">
             Current deck{" "}
             <strong className="text-slate-100">{item.source_quantity}</strong>
@@ -165,30 +184,30 @@ export function AcquisitionItemRow({
           </span>
           {item.removed_quantity > 0 ? (
             <span className="text-rose-200">
-              Replace/remove {item.removed_quantity}
+              · {item.removed_quantity} leaving the deck
             </span>
           ) : (
-            <span className="text-emerald-200">Keeping current copies</span>
+            <span className="text-emerald-200/80">· Keeping current copies</span>
           )}
         </div>
       ) : null}
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <label className="grid gap-1.5">
-          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-            Next version qty
+      <div className="mt-3 grid min-w-0 grid-cols-3 gap-2 lg:grid-cols-[repeat(3,minmax(0,0.65fr))_minmax(0,0.9fr)_minmax(0,2fr)]">
+        <label className="grid min-w-0 gap-1.5">
+          <span className="text-[0.6rem] font-bold uppercase tracking-[0.1em] text-slate-400">
+            Next version
           </span>
           <input
             type="number"
             min={comesFromCurrentDeck ? "0" : "1"}
             value={targetQuantity}
             onChange={(event) => setTargetQuantity(event.target.value)}
-            className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm outline-none focus:border-cyan-300/50"
+            className="w-full min-w-0 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm tabular-nums outline-none focus:border-cyan-300/50"
           />
         </label>
 
-        <label className="grid gap-1.5">
-          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+        <label className="grid min-w-0 gap-1.5">
+          <span className="text-[0.6rem] font-bold uppercase tracking-[0.1em] text-slate-400">
             On hand
           </span>
           <input
@@ -196,12 +215,12 @@ export function AcquisitionItemRow({
             min="0"
             value={ownedQuantity}
             onChange={(event) => setOwnedQuantity(event.target.value)}
-            className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm outline-none focus:border-cyan-300/50"
+            className="w-full min-w-0 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm tabular-nums outline-none focus:border-cyan-300/50"
           />
         </label>
 
-        <label className="grid gap-1.5">
-          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+        <label className="grid min-w-0 gap-1.5">
+          <span className="text-[0.6rem] font-bold uppercase tracking-[0.1em] text-violet-200/80">
             Incoming
           </span>
           <input
@@ -209,16 +228,16 @@ export function AcquisitionItemRow({
             min="0"
             value={orderedQuantity}
             onChange={(event) => setOrderedQuantity(event.target.value)}
-            className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm outline-none focus:border-cyan-300/50"
+            className="w-full min-w-0 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm tabular-nums outline-none focus:border-cyan-300/50"
           />
         </label>
 
-        <label className="grid gap-1.5">
-          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+        <label className="grid min-w-0 gap-1.5">
+          <span className="text-[0.6rem] font-bold uppercase tracking-[0.1em] text-slate-400">
             Unit price
           </span>
-          <div className="flex rounded-xl border border-white/10 bg-slate-950/70 focus-within:border-cyan-300/50">
-            <span className="px-3 py-2 text-sm text-slate-600">$</span>
+          <div className="flex min-w-0 rounded-xl border border-white/10 bg-black/25 focus-within:border-cyan-300/50">
+            <span className="py-2 pl-2.5 pr-1.5 text-sm text-slate-500">$</span>
             <input
               type="number"
               min="0"
@@ -226,19 +245,20 @@ export function AcquisitionItemRow({
               value={price}
               onChange={(event) => setPrice(event.target.value)}
               placeholder="0.00"
-              className="min-w-0 flex-1 bg-transparent py-2 pr-3 text-sm outline-none"
+              className="w-full min-w-0 flex-1 bg-transparent py-2 pr-2.5 text-sm tabular-nums outline-none"
             />
           </div>
         </label>
 
-        <label className="grid gap-1.5">
-          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+        <label className="col-span-2 grid min-w-0 gap-1.5 lg:col-span-1">
+          <span className="text-[0.6rem] font-bold uppercase tracking-[0.1em] text-slate-400">
             Printing
           </span>
           <select
             value={printingId}
             onChange={(event) => setPrintingId(event.target.value)}
-            className="min-w-0 rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm outline-none focus:border-cyan-300/50"
+            title={printingLabel}
+            className="w-full min-w-0 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs outline-none focus:border-cyan-300/50"
           >
             <option value="">Any printing</option>
             {item.card.printings.map((printing) => (
@@ -252,42 +272,50 @@ export function AcquisitionItemRow({
         </label>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
-        <div className="flex flex-wrap gap-4 text-sm">
-          <span className="text-slate-500">
-            Purchase estimate{" "}
-            <strong className="text-slate-200">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-5 gap-y-2 border-t border-white/10 pt-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
+          <span
+            className="text-slate-400"
+            title={`${item.purchase_quantity} copies to acquire × ${dollars(item.unit_price_cents)} each`}
+          >
+            Purchase{" "}
+            <strong className="font-black tabular-nums text-slate-100">
               {dollars(item.estimated_cost_cents)}
             </strong>
           </span>
           {item.purchase_quantity > 0 ? (
-            <span className="text-slate-500">
-              {item.purchase_quantity} to acquire ×{" "}
+            <span className="text-slate-500 tabular-nums">
+              {item.purchase_quantity} ×{" "}
               {dollars(item.unit_price_cents)}
             </span>
           ) : null}
-          {item.remaining_cost_cents > 0 ? (
-            <span className="text-rose-200">
-              {dollars(item.remaining_cost_cents)} not yet incoming
-            </span>
+          <span className="text-slate-400">
+            Not yet incoming{" "}
+            <strong className={`tabular-nums ${item.missing_quantity ? "text-rose-200" : "text-slate-300"}`}>
+              {dollars(item.remaining_cost_cents)}
+            </strong>
+          </span>
+          {item.purchase_quantity > 0 && item.unit_price_cents === 0 ? (
+            <span className="text-amber-200/90">No unit price set</span>
           ) : null}
 
           {item.overage_quantity ? (
             <span className="inline-flex items-center gap-1.5 text-amber-200">
-              <AlertTriangle className="h-4 w-4" />
+              <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5" />
               {item.overage_quantity} extra beyond this plan
             </span>
           ) : null}
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {comesFromCurrentDeck ? (
             item.removed_quantity > 0 ? (
               <button
                 type="button"
                 onClick={() => setNextVersionQuantity(item.source_quantity)}
-                disabled={busy}
-                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-bold text-slate-200 transition hover:bg-white/[0.08] disabled:opacity-50"
+                disabled={actionDisabled}
+                title={actionHint}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-2.5 py-2 text-xs font-bold text-slate-300 transition hover:bg-white/[0.08] disabled:opacity-50"
               >
                 <RotateCcw className="h-4 w-4" />
                 Keep current copies
@@ -296,19 +324,21 @@ export function AcquisitionItemRow({
               <button
                 type="button"
                 onClick={() => setNextVersionQuantity(0)}
-                disabled={busy}
-                className="inline-flex items-center gap-2 rounded-xl border border-rose-300/20 bg-rose-300/5 px-3 py-2 text-sm font-bold text-rose-200 transition hover:bg-rose-300/10 disabled:opacity-50"
+                disabled={actionDisabled}
+                title={actionHint}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-2.5 py-2 text-xs font-bold text-slate-400 transition hover:border-rose-300/25 hover:bg-rose-300/5 hover:text-rose-200 disabled:opacity-50"
               >
                 <ArrowRightLeft className="h-4 w-4" />
-                Replace in next version
+                Replace
               </button>
             )
           ) : (
             <button
               type="button"
               onClick={() => onRemove(item)}
-              disabled={busy}
-              className="inline-flex items-center gap-2 rounded-xl border border-rose-300/20 bg-rose-300/5 px-3 py-2 text-sm font-bold text-rose-200 transition hover:bg-rose-300/10 disabled:opacity-50"
+              disabled={actionDisabled}
+              title={actionHint}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-2.5 py-2 text-xs font-bold text-slate-400 transition hover:border-rose-300/25 hover:bg-rose-300/5 hover:text-rose-200 disabled:opacity-50"
             >
               <Trash2 className="h-4 w-4" />
               Remove
@@ -319,11 +349,12 @@ export function AcquisitionItemRow({
             <button
               type="button"
               onClick={markMissingIncoming}
-              disabled={busy}
-              className="inline-flex items-center gap-2 rounded-xl border border-violet-300/25 bg-violet-300/10 px-3 py-2 text-sm font-bold text-violet-100 transition hover:bg-violet-300/15 disabled:opacity-50"
+              disabled={actionDisabled}
+              title={actionHint ?? `Mark the ${item.missing_quantity} still-needed copies as incoming.`}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-violet-300/20 bg-violet-300/[0.07] px-2.5 py-2 text-xs font-bold text-violet-100 transition hover:bg-violet-300/15 disabled:opacity-50"
             >
               <PackagePlus className="h-4 w-4" />
-              Mark missing incoming
+              Mark {item.missing_quantity} incoming
             </button>
           ) : null}
 
@@ -331,25 +362,43 @@ export function AcquisitionItemRow({
             <button
               type="button"
               onClick={() => onReceive(item.id, item.ordered_quantity)}
-              disabled={busy}
-              className="inline-flex items-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-300/10 px-3 py-2 text-sm font-bold text-emerald-100 transition hover:bg-emerald-300/15 disabled:opacity-50"
+              disabled={actionDisabled}
+              title={actionHint ?? `Move all ${item.ordered_quantity} incoming copies to on hand.`}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300/20 bg-emerald-300/[0.07] px-2.5 py-2 text-xs font-bold text-emerald-100 transition hover:bg-emerald-300/15 disabled:opacity-50"
             >
               <PackageCheck className="h-4 w-4" />
               Receive all
             </button>
           ) : null}
 
+          {hasChanges ? (
+            <button
+              type="button"
+              onClick={discardEdits}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-xs font-bold text-slate-400 transition hover:bg-white/[0.05] hover:text-slate-200 disabled:opacity-50"
+            >
+              <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
+              Discard edits
+            </button>
+          ) : null}
+
           <button
             type="button"
             onClick={save}
-            disabled={busy}
-            className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-3 py-2 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:opacity-50"
+            disabled={busy || !hasChanges}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/20 disabled:border-white/10 disabled:bg-white/[0.02] disabled:text-slate-500"
           >
             <Save className="h-4 w-4" />
-            Save row
+            {busy ? "Saving…" : "Save row"}
           </button>
         </div>
       </div>
+      {hasChanges ? (
+        <p className="mt-2 text-[0.65rem] text-cyan-200/75">
+          Totals reflect saved values. Save or discard edits to use the other actions.
+        </p>
+      ) : null}
     </article>
   );
 }

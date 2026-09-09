@@ -6,19 +6,19 @@ type PageHeaderProps = {
 
 export function PageHeader({ eyebrow, title, description }: PageHeaderProps) {
   return (
-    <header data-anime="page-header" className="mb-8">
+    <header data-anime="page-header" className="mb-5 min-w-0">
       {eyebrow ? (
-        <p className="mb-2 text-sm font-semibold uppercase tracking-[0.24em] text-cyan-200/80">
+        <p className="mb-1.5 text-xs font-bold uppercase tracking-[0.22em] text-cyan-200/80">
           {eyebrow}
         </p>
       ) : null}
 
-      <h2 className="text-3xl font-bold tracking-tight text-slate-50 md:text-4xl">
+      <h2 className="text-2xl font-bold tracking-tight text-slate-50 sm:text-3xl">
         {title}
       </h2>
 
       {description ? (
-        <p className="mt-3 max-w-3xl text-base text-slate-400">
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
           {description}
         </p>
       ) : null}

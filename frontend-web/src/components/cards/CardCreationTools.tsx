@@ -71,18 +71,18 @@ export function CardCreationTools({
       <details
         open={manualEntryOpen}
         onToggle={(event) => setManualEntryOpen(event.currentTarget.open)}
-        className="mt-5 rounded-3xl border border-white/10 bg-black/20 p-4"
+        className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3"
       >
         <summary className="cursor-pointer select-none">
           <span className="text-sm font-black text-slate-100">
             Review or enter card details
           </span>
-          <span className="ml-2 text-xs font-semibold text-slate-500">
+          <span className="ml-2 hidden text-xs font-semibold text-slate-500 sm:inline">
             Manual entry
           </span>
         </summary>
 
-        <p className="mt-3 text-sm leading-6 text-slate-500">
+        <p className="mt-2 text-xs leading-5 text-slate-500">
           Fill these fields yourself, or review the suggestions produced by the
           image reader before adding the card to the shared catalog.
         </p>

@@ -5,6 +5,7 @@ import { createDeck, getDeckOptions, getDecks, updateDeck } from "../api/decks";
 import { DeckCard } from "../components/cards/DeckCard";
 import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
+import { WorkspaceSectionHeader } from "../components/layout/WorkspaceSectionHeader";
 import type { Deck, DeckOptionsResponse, DeckType } from "../types/api";
 
 type EditorMode = "create" | "edit";
@@ -197,126 +198,127 @@ export function DeckLibrary() {
         description="Create, edit, organize, and toggle decks used by Play Lab and match logging."
       />
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-          <p className="text-sm text-slate-500">Total decks</p>
-          <p className="mt-2 text-3xl font-black">{decks.length}</p>
-        </div>
+      <section className="workspace-panel">
+        <WorkspaceSectionHeader
+          eyebrow="Roster"
+          title="Deck profiles"
+          description="Manage deck details and choose what is available for play testing."
+          actions={
+            <button
+              type="button"
+              onClick={openCreateEditor}
+              className="workspace-button inline-flex items-center justify-center gap-2 bg-cyan-300 px-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200"
+            >
+              <Plus className="h-4 w-4" />
+              Add deck
+            </button>
+          }
+        />
 
-        <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-          <p className="text-sm text-slate-500">Active</p>
-          <p className="mt-2 text-3xl font-black text-emerald-100">
-            {activeCount}
-          </p>
-        </div>
-
-        <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-          <p className="text-sm text-slate-500">Inactive</p>
-          <p className="mt-2 text-3xl font-black text-slate-300">
-            {inactiveCount}
-          </p>
-        </div>
-      </section>
-
-      <section className="mt-6 rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
-        <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
-          <label className="relative block">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+        <div className="workspace-inset mt-4 overflow-hidden">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-white/10 px-3 py-2.5 text-xs text-slate-500 sm:px-4">
+            <span><strong className="mr-1.5 font-black text-slate-100">{decks.length}</strong>Total decks</span>
+            <span><strong className="mr-1.5 font-black text-emerald-100">{activeCount}</strong>Active</span>
+            <span><strong className="mr-1.5 font-black text-slate-300">{inactiveCount}</strong>Inactive</span>
+            <span className="sm:ml-auto">{filteredDecks.length} shown</span>
+          </div>
+          <div className="grid gap-2 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:p-4">
+          <label className="relative block min-w-0">
+            <span className="sr-only">Search decks</span>
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search decks, formats, or nations..."
-              className="w-full rounded-2xl border border-white/10 bg-black/30 py-3 pl-11 pr-4 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-300/50"
+              className="workspace-control w-full !pl-9 placeholder:text-slate-600"
             />
           </label>
 
           <button
             type="button"
             onClick={() => setShowInactive((value) => !value)}
+            aria-pressed={showInactive}
             className={[
-              "rounded-2xl border px-5 py-3 text-sm font-bold transition",
+              "workspace-button border px-3 text-xs font-bold transition",
               showInactive
                 ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100"
                 : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]",
             ].join(" ")}
           >
-            {showInactive ? "Showing inactive" : "Active only"}
+            {showInactive ? "Including inactive" : "Active only"}
           </button>
-
-          <button
-            type="button"
-            onClick={openCreateEditor}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-300 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200"
-          >
-            <Plus className="h-4 w-4" />
-            Add deck
-          </button>
+          </div>
         </div>
       </section>
 
       {loading ? (
-        <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-slate-400">
+        <div className="workspace-panel mt-4 text-sm text-slate-400">
           Loading decks...
         </div>
       ) : filteredDecks.length ? (
-        <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <section className="mt-4 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {filteredDecks.map((deck) => (
             <DeckCard key={deck.id} deck={deck} onEdit={openEditEditor} />
           ))}
         </section>
       ) : (
-        <div className="mt-6 rounded-3xl border border-dashed border-white/15 bg-white/[0.025] p-10 text-center text-slate-500">
-          No decks found.
+        <div className="mt-4 rounded-2xl border border-dashed border-white/15 bg-white/[0.025] p-8 text-center">
+          <p className="text-sm font-bold text-slate-300">No decks found.</p>
+          <p className="mt-1 text-xs text-slate-500">Try another search or add a deck to your roster.</p>
         </div>
       )}
 
       {editingDeck ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-[2rem] border border-white/10 bg-slate-950 p-6 shadow-2xl shadow-black">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.22em] text-cyan-200/70">
-                  {editingDeck.mode === "create" ? "Create deck" : "Edit deck"}
-                </p>
-                <h3 className="mt-2 text-2xl font-black">Deck profile</h3>
-              </div>
-
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={editingDeck.mode === "create" ? "Create deck profile" : "Edit deck profile"}
+            className="max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-[1.75rem] border border-white/10 bg-slate-950 p-4 shadow-2xl shadow-black sm:p-5"
+          >
+            <WorkspaceSectionHeader
+              eyebrow={editingDeck.mode === "create" ? "Create" : "Edit"}
+              title="Deck profile"
+              description={editingDeck.mode === "create" ? "Add a deck to your testing roster." : "Update the identity and availability of this deck."}
+              actions={
               <button
                 type="button"
                 onClick={closeEditor}
-                className="rounded-full border border-white/10 bg-white/[0.05] p-2 text-slate-300 transition hover:bg-white/[0.1]"
+                aria-label="Close deck editor"
+                className="workspace-button inline-flex w-10 items-center justify-center border border-white/10 bg-white/[0.05] text-slate-300 transition hover:bg-white/[0.1]"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4" />
               </button>
-            </div>
+              }
+            />
 
-            <div className="mt-6 grid gap-5">
-              <div className="flex items-center gap-4 rounded-3xl border border-white/10 bg-white/[0.04] p-4">
-                <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-3xl border border-white/10 bg-black/30">
+            <div className="mt-4 grid gap-4">
+              <div className="workspace-inset flex items-center gap-3 p-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/30">
                   {previewIcon ? (
                     <img
                       src={previewIcon}
                       alt={editingDeck.nation ?? "Nation preview"}
-                      className="h-14 w-14 object-contain"
+                      className="h-9 w-9 object-contain"
                     />
                   ) : (
                     <span className="text-2xl font-black text-slate-700">?</span>
                   )}
                 </div>
 
-                <div>
-                  <p className="text-sm text-slate-500">Preview</p>
-                  <p className="mt-1 text-lg font-bold text-slate-100">
+                <div className="min-w-0">
+                  <p className="text-[0.65rem] font-bold uppercase tracking-[0.16em] text-slate-500">Preview</p>
+                  <p className="mt-0.5 break-words text-sm font-bold text-slate-100">
                     {editingDeck.name.trim() || "Unnamed deck"}
                   </p>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="mt-0.5 text-xs text-slate-500">
                     {editingDeck.nation ?? "No nation selected"} · {editingDeck.type}
                   </p>
                 </div>
               </div>
 
               <label className="grid gap-2">
-                <span className="text-sm font-semibold text-slate-300">
+                <span className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-500">
                   Deck name
                 </span>
                 <input
@@ -326,13 +328,13 @@ export function DeckLibrary() {
                       current ? { ...current, name: event.target.value } : current,
                     )
                   }
-                  className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none focus:border-cyan-300/50"
+                  className="workspace-control min-w-0"
                 />
               </label>
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <label className="grid gap-2">
-                  <span className="text-sm font-semibold text-slate-300">
+                  <span className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-500">
                     Format
                   </span>
                   <select
@@ -344,7 +346,7 @@ export function DeckLibrary() {
                           : current,
                       )
                     }
-                    className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none focus:border-cyan-300/50"
+                    className="workspace-control min-w-0"
                   >
                     {options.types.map((type) => (
                       <option key={type} value={type}>
@@ -355,7 +357,7 @@ export function DeckLibrary() {
                 </label>
 
                 <label className="grid gap-2">
-                  <span className="text-sm font-semibold text-slate-300">
+                  <span className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-500">
                     Nation logo
                   </span>
                   <select
@@ -370,7 +372,7 @@ export function DeckLibrary() {
                           : current,
                       )
                     }
-                    className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none focus:border-cyan-300/50"
+                    className="workspace-control min-w-0"
                   >
                     <option value="">No nation selected</option>
                     {options.nations.map((nation) => (
@@ -382,26 +384,27 @@ export function DeckLibrary() {
                 </label>
               </div>
 
-              <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="workspace-inset p-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-slate-300">
                       Active status
                     </p>
-                    <p className="mt-1 text-sm text-slate-500">
+                    <p className="mt-1 text-xs text-slate-500">
                       Inactive decks are hidden from Play Lab random rolls.
                     </p>
                   </div>
 
                   <button
                     type="button"
+                    aria-pressed={editingDeck.active}
                     onClick={() =>
                       setEditingDeck((current) =>
                         current ? { ...current, active: !current.active } : current,
                       )
                     }
                     className={[
-                      "rounded-2xl border px-5 py-3 text-sm font-bold transition",
+                      "workspace-button border px-3 text-xs font-bold transition",
                       editingDeck.active
                         ? "border-emerald-300/40 bg-emerald-300/10 text-emerald-100"
                         : "border-slate-300/20 bg-slate-300/10 text-slate-300",
@@ -413,11 +416,11 @@ export function DeckLibrary() {
               </div>
             </div>
 
-            <div className="mt-6 flex flex-wrap justify-end gap-3">
+            <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-white/10 pt-4">
               <button
                 type="button"
                 onClick={closeEditor}
-                className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-bold text-slate-300 transition hover:bg-white/[0.08]"
+                className="workspace-button border border-white/10 bg-white/[0.04] px-4 text-sm font-bold text-slate-300 transition hover:bg-white/[0.08]"
               >
                 Cancel
               </button>
@@ -426,7 +429,7 @@ export function DeckLibrary() {
                 type="button"
                 onClick={saveDeck}
                 disabled={saving}
-                className="inline-flex items-center gap-2 rounded-2xl bg-cyan-300 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
+                className="workspace-button inline-flex items-center gap-2 bg-cyan-300 px-4 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Save className="h-4 w-4" />
                 {saving ? "Saving..." : "Save deck"}
