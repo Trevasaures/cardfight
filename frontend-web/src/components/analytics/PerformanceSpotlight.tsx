@@ -2,7 +2,6 @@ import { useRef, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowRight,
-  BarChart3,
   CalendarDays,
   CircleGauge,
   Gamepad2,
@@ -10,8 +9,6 @@ import {
   Layers3,
   PackageSearch,
   ShieldCheck,
-  Sparkles,
-  Swords,
   Target,
   TrendingDown,
   TrendingUp,
@@ -22,6 +19,7 @@ import {
 
 import { usePerformanceSpotlightMotion } from "../../animations/usePerformanceSpotlightMotion";
 import { FormatBadge } from "../badges/FormatBadge";
+import { WorkspaceSectionHeader } from "../layout/WorkspaceSectionHeader";
 import type {
   PerformanceRecord,
   PerformanceSpotlightResponse,
@@ -123,7 +121,7 @@ function WinRateDial({
   const percentage = Math.max(0, Math.min(winPct * 100, 100));
 
   return (
-    <div className="relative mx-auto flex h-[17rem] w-[17rem] items-center justify-center sm:h-[19rem] sm:w-[19rem]">
+    <div className="relative mx-auto flex aspect-square w-full max-w-[17rem] items-center justify-center">
       <div className="absolute inset-5 rounded-full border border-white/10 bg-slate-950/70 shadow-[inset_0_0_55px_rgba(0,0,0,0.72)]" />
       <svg
         viewBox="0 0 220 220"
@@ -173,11 +171,11 @@ function WinRateDial({
         <p className="text-[0.65rem] font-black uppercase tracking-[0.28em] text-slate-500">
           Decided win rate
         </p>
-        <p className="mt-2 bg-gradient-to-br from-white via-white to-[var(--spotlight-primary)] bg-clip-text text-6xl font-black tracking-[-0.075em] text-transparent sm:text-7xl">
+        <p className="mt-2 bg-gradient-to-br from-white via-white to-[var(--spotlight-primary)] bg-clip-text text-5xl font-black tracking-[-0.075em] text-transparent sm:text-6xl">
           {percentage.toFixed(1)}
           <span className="ml-1 text-2xl tracking-normal">%</span>
         </p>
-        <p className="mt-3 text-sm font-bold text-slate-300">
+        <p className="mt-2 text-xs font-bold text-slate-300">
           {formatRecord(record.wins, record.losses)} across {record.decided_games} games
         </p>
       </div>
@@ -199,7 +197,7 @@ function MetricTile({
   return (
     <div
       data-spotlight="metric"
-      className="rounded-2xl border border-white/10 bg-black/20 p-4 backdrop-blur-sm"
+      className="workspace-inset min-w-0 p-3 backdrop-blur-sm"
     >
       <div className="flex items-center gap-2 text-[var(--spotlight-primary)]">
         {icon}
@@ -207,7 +205,7 @@ function MetricTile({
           {eyebrow}
         </p>
       </div>
-      <p className="mt-3 text-2xl font-black tracking-tight text-white">{value}</p>
+      <p className="mt-2 text-2xl font-black tracking-tight text-white">{value}</p>
       <p className="mt-1 text-xs leading-5 text-slate-500">{helper}</p>
     </div>
   );
@@ -227,7 +225,7 @@ function TurnOrderCard({
     accent === "primary" ? "var(--spotlight-primary)" : "var(--spotlight-secondary)";
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+    <div className="workspace-inset min-w-0 p-3.5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
@@ -241,7 +239,7 @@ function TurnOrderCard({
           {formatRecord(record.wins, record.losses)}
         </span>
       </div>
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/[0.06]">
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
         <div
           className="h-full rounded-full shadow-[0_0_18px_currentColor] transition-[width] duration-700"
           style={{ width: `${percentage}%`, background: color, color }}
@@ -268,7 +266,7 @@ function MatchupCard({
   const isGood = tone === "good";
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/20 p-4">
+    <div className="workspace-inset relative min-w-0 overflow-hidden p-3.5">
       <div
         className={`absolute inset-y-0 left-0 w-1 ${isGood ? "bg-emerald-300" : "bg-rose-300"}`}
       />
@@ -277,9 +275,9 @@ function MatchupCard({
       </p>
       {matchup ? (
         <>
-          <div className="mt-3 flex items-center justify-between gap-4">
+          <div className="mt-2 flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="truncate text-lg font-black text-white">
+              <p className="break-words text-base font-black text-white">
                 {matchup.opponent_name}
               </p>
               <p className="mt-1 truncate text-xs text-slate-500">
@@ -356,15 +354,15 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
   }
 
   return (
-    <section ref={rootRef} style={style} className="space-y-5" aria-live="polite">
+    <section ref={rootRef} style={style} className="space-y-4" aria-live="polite">
       <article
         data-spotlight="hero"
-        className="analytics-spotlight relative isolate overflow-hidden rounded-[2rem] border border-white/10 bg-[#080b16] shadow-[0_32px_100px_rgba(0,0,0,0.45)]"
+        className="analytics-spotlight relative isolate overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#080b16] shadow-[0_32px_100px_rgba(0,0,0,0.45)]"
       >
         <div data-spotlight="glow" className="spotlight-glow" />
         <div className="spotlight-grid" />
-        <div className="relative z-10 p-5 sm:p-7 xl:p-9">
-          <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
+        <div className="relative z-10 p-4 sm:p-5 xl:p-6">
+          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
             <div data-spotlight="identity" className="flex min-w-0 items-center gap-4">
               <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-[1.35rem] border border-white/10 bg-black/35 shadow-[0_0_35px_rgb(var(--spotlight-rgb)/0.16)]">
                 {nationIcon ? (
@@ -406,14 +404,14 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
             </div>
           </div>
 
-          <div className="mt-7 grid items-center gap-7 xl:grid-cols-[22rem_1fr]">
+          <div className="mt-4 grid items-center gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]">
             <div data-spotlight="identity" className="relative">
               <div className="absolute inset-12 rounded-full bg-[rgb(var(--spotlight-rgb)/0.12)] blur-3xl" />
               <WinRateDial winPct={overview.win_pct} record={overview} />
             </div>
 
             <div>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-4">
                 <MetricTile
                   icon={
                     recent.trend === "cooling" ? (
@@ -446,13 +444,13 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
                 />
               </div>
 
-              <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+              <div className="workspace-inset mt-3 p-3.5">
                 <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                   <div>
                     <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
                       Recent decided games
                     </p>
-                    <p className="mt-1 text-sm text-slate-400">
+                    <p className="mt-1 text-xs text-slate-400">
                       Oldest to newest · hover a result for the matchup
                     </p>
                   </div>
@@ -460,14 +458,14 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
                 </div>
 
                 {recent.results.length ? (
-                  <div className="mt-4 grid grid-cols-5 gap-2 sm:grid-cols-10">
+                  <div className="mt-3 grid grid-cols-5 gap-2 sm:grid-cols-10">
                     {recent.results.map((result) => (
                       <div
                         key={result.match_id}
                         data-spotlight="result"
                         title={`${result.result === "W" ? "Win" : "Loss"} vs ${result.opponent_name} · ${conciseDate(result.date_played)} · went ${result.turn_order}`}
                         className={[
-                          "group relative flex aspect-square min-h-10 items-center justify-center overflow-hidden rounded-xl border text-sm font-black transition hover:-translate-y-1",
+                          "group relative flex h-10 items-center justify-center overflow-hidden rounded-lg border text-sm font-black transition hover:-translate-y-1",
                           result.result === "W"
                             ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-200 hover:bg-emerald-300/20"
                             : "border-rose-300/25 bg-rose-300/10 text-rose-200 hover:bg-rose-300/20",
@@ -487,7 +485,7 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
             </div>
           </div>
 
-          <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-white/10 pt-5">
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/10 pt-4">
             <Link
               to="/play"
               onClick={preparePlayLab}
@@ -522,33 +520,29 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
         </div>
       </article>
 
-      <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+      <div className="grid items-start gap-4 xl:grid-cols-2">
         <section
           data-spotlight="panel"
-          className="rounded-[1.75rem] border border-white/10 bg-white/[0.035] p-5 shadow-2xl shadow-black/20 sm:p-6"
+          className="workspace-panel min-w-0"
         >
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.22em] text-[var(--spotlight-primary)]">
-                <Swords className="h-4 w-4" /> Turn-order profile
-              </p>
-              <h4 className="mt-2 text-xl font-black text-white">How the deck enters the fight</h4>
-            </div>
-            {turnOrder.edge_percentage_points !== null ? (
+          <WorkspaceSectionHeader
+            eyebrow="Turn order"
+            title="How the deck enters the fight"
+            actions={turnOrder.edge_percentage_points !== null ? (
               <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-bold text-slate-300">
                 {Math.abs(turnOrder.edge_percentage_points).toFixed(1)} pt split
               </span>
             ) : null}
-          </div>
+          />
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
             <TurnOrderCard label="Going first" record={turnOrder.first} accent="primary" />
             <TurnOrderCard label="Going second" record={turnOrder.second} accent="secondary" />
           </div>
 
-          <div className="mt-4 flex items-start gap-3 rounded-2xl border border-white/10 bg-black/20 p-4">
+          <div className="mt-3 flex items-start gap-2 border-t border-white/10 pt-3">
             <Target className="mt-0.5 h-4 w-4 shrink-0 text-[var(--spotlight-primary)]" />
-            <p className="text-sm leading-6 text-slate-400">
+            <p className="text-xs leading-5 text-slate-400">
               {turnOrder.edge_percentage_points === null
                 ? "Log decided games from both turn orders to unlock a reliable comparison."
                 : Math.abs(turnOrder.edge_percentage_points) < 5
@@ -560,38 +554,26 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
 
         <section
           data-spotlight="panel"
-          className="rounded-[1.75rem] border border-white/10 bg-white/[0.035] p-5 shadow-2xl shadow-black/20 sm:p-6"
+          className="workspace-panel min-w-0"
         >
-          <div>
-            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.22em] text-[var(--spotlight-secondary)]">
-              <BarChart3 className="h-4 w-4" /> Matchup pressure
-            </p>
-            <h4 className="mt-2 text-xl font-black text-white">Head-to-head performance</h4>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Every percentage below is {deck.name}&apos;s decided-game win rate
-              against the named opponent.
-            </p>
-          </div>
+          <WorkspaceSectionHeader
+            eyebrow="Matchups"
+            title="Head-to-head performance"
+            description={<>Every percentage is {deck.name}&apos;s decided-game win rate against the named opponent.</>}
+          />
 
-          <div className="mt-5 grid gap-3 2xl:grid-cols-2">
+          <div className="mt-4 grid gap-2 2xl:grid-cols-2">
             <MatchupCard label="Highest repeated win rate" matchup={spotlight.matchups.best} tone="good" />
             <MatchupCard label="Lowest repeated win rate" matchup={spotlight.matchups.hardest} tone="danger" />
           </div>
         </section>
       </div>
 
-      <section data-spotlight="panel" className="rounded-[1.75rem] border border-white/10 bg-white/[0.035] p-5 sm:p-6">
-        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-          <div>
-            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.22em] text-[var(--spotlight-primary)]">
-              <Sparkles className="h-4 w-4" /> Signal report
-            </p>
-            <h4 className="mt-2 text-xl font-black text-white">What deserves your attention</h4>
-          </div>
-        </div>
+      <section data-spotlight="panel" className="workspace-panel">
+        <WorkspaceSectionHeader eyebrow="Signals" title="What deserves your attention" />
 
         {spotlight.insights.length ? (
-          <div className="mt-5 grid gap-3 lg:grid-cols-2 2xl:grid-cols-4">
+          <div className="mt-4 grid gap-3 lg:grid-cols-2 2xl:grid-cols-4">
             {spotlight.insights.map((insight) => (
               <article
                 key={insight.key}
@@ -604,7 +586,7 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
                   </p>
                   <span className="shrink-0 text-sm font-black">{insight.value}</span>
                 </div>
-                <h5 className="mt-4 text-base font-black leading-6 text-white">{insight.title}</h5>
+                <h5 className="mt-3 text-base font-black leading-6 text-white">{insight.title}</h5>
                 <p className="mt-2 text-sm leading-6 text-slate-400">{insight.body}</p>
               </article>
             ))}

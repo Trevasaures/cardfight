@@ -46,6 +46,7 @@ export function AcquisitionGradeSection({
       accounted: summary.accounted + item.accounted_quantity,
       missing: summary.missing + item.missing_quantity,
       estimatedCost: summary.estimatedCost + item.estimated_cost_cents,
+      remainingCost: summary.remainingCost + item.remaining_cost_cents,
     }),
     {
       required: 0,
@@ -55,6 +56,7 @@ export function AcquisitionGradeSection({
       accounted: 0,
       missing: 0,
       estimatedCost: 0,
+      remainingCost: 0,
     },
   );
   const complete = totals.missing === 0;
@@ -69,14 +71,14 @@ export function AcquisitionGradeSection({
     <details
       open={open}
       onToggle={(event) => onOpenChange(event.currentTarget.open)}
-      className="group overflow-hidden rounded-[1.75rem] border border-white/10 bg-black/15"
+      className="group min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-black/15"
     >
-      <summary className="cursor-pointer list-none bg-white/[0.035] p-4 select-none sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+      <summary className="cursor-pointer list-none bg-white/[0.025] px-3 py-3 select-none transition-colors hover:bg-white/[0.05] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-cyan-300/60 sm:px-4 [&::-webkit-details-marker]:hidden">
+        <div className="flex items-start justify-between gap-3 sm:items-center">
           <div className="flex min-w-0 items-center gap-3">
             <span
               className={[
-                "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border text-sm font-black",
+                "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-xs font-black",
                 complete
                   ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-100"
                   : "border-cyan-300/25 bg-cyan-300/10 text-cyan-100",
@@ -87,75 +89,105 @@ export function AcquisitionGradeSection({
 
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h4 className="font-black text-slate-100">{gradeLabel}</h4>
+                <h4 className="text-sm font-black text-slate-100">{gradeLabel}</h4>
                 {complete ? (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2.5 py-1 text-[0.7rem] font-bold text-emerald-100">
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    Accounted for
+                  <span
+                    title={
+                      totals.incoming > 0
+                        ? "Every planned copy is on hand or incoming."
+                        : "Every planned copy is on hand."
+                    }
+                    className="inline-flex items-center gap-1 text-[0.65rem] font-bold text-emerald-200/90"
+                  >
+                    <CheckCircle2 aria-hidden="true" className="h-3 w-3" />
+                    {totals.incoming > 0 ? "All copies covered" : "Ready"}
                   </span>
                 ) : null}
               </div>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-0.5 text-[0.65rem] text-slate-500">
                 {items.length} printing{items.length === 1 ? "" : "s"} ·{" "}
                 {totals.required} planned
               </p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-x-5 gap-y-2 text-xs">
-            <span className="text-slate-500">
-              Ready{" "}
-              <strong className="text-slate-200">{totals.owned}</strong>
-            </span>
-            {totals.outgoing ? (
-              <span className="text-slate-500">
-                Outgoing{" "}
-                <strong className="text-rose-200">{totals.outgoing}</strong>
-              </span>
-            ) : null}
-            <span className="text-slate-500">
-              Incoming{" "}
-              <strong className="text-violet-200">{totals.incoming}</strong>
-            </span>
-            <span className="text-slate-500">
-              Missing{" "}
-              <strong
-                className={
-                  totals.missing ? "text-rose-200" : "text-emerald-200"
-                }
-              >
-                {totals.missing}
-              </strong>
-            </span>
-            <span className="text-slate-500">
-              Purchase estimate{" "}
-              <strong className="text-slate-200">
+          <div className="flex shrink-0 items-center gap-3">
+            <div className="text-right">
+              <p className="text-[0.6rem] font-bold uppercase tracking-[0.08em] text-slate-500">
+                Purchase estimate
+              </p>
+              <p className="mt-0.5 text-sm font-black tabular-nums text-slate-100">
                 {dollars(totals.estimatedCost)}
-              </strong>
-            </span>
-            <ChevronDown className="h-4 w-4 text-slate-500 transition group-open:rotate-180" />
+              </p>
+            </div>
+            <ChevronDown aria-hidden="true" className="h-4 w-4 text-slate-500 transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none" />
           </div>
         </div>
 
-        <div className="mt-4 flex items-center gap-3">
-          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
-            <div
-              className={[
-                "h-full rounded-full transition-[width]",
-                complete ? "bg-emerald-300" : "bg-cyan-300",
-              ].join(" ")}
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <span className="w-10 text-right text-xs font-black text-slate-400">
-            {progress}%
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.65rem]">
+          <span className="text-slate-400">
+            Ready{" "}
+            <strong className="tabular-nums text-emerald-200">{totals.owned}</strong>
           </span>
+          {totals.outgoing ? (
+            <span className="text-slate-400">
+              Outgoing{" "}
+              <strong className="tabular-nums text-rose-200">{totals.outgoing}</strong>
+            </span>
+          ) : null}
+          <span className="text-slate-400">
+            Incoming{" "}
+            <strong className="tabular-nums text-violet-200">{totals.incoming}</strong>
+          </span>
+          <span className="text-slate-400">
+            Missing{" "}
+            <strong
+              className={
+                totals.missing
+                  ? "tabular-nums text-rose-200"
+                  : "tabular-nums text-emerald-200"
+              }
+            >
+              {totals.missing}
+            </strong>
+          </span>
+          {totals.remainingCost > 0 ? (
+            <span className="text-slate-400">
+              Not yet incoming{" "}
+              <strong className="tabular-nums text-rose-200">
+                {dollars(totals.remainingCost)}
+              </strong>
+            </span>
+          ) : null}
+          <span
+            className="ml-auto font-bold tabular-nums text-slate-500"
+            title="Planned copies covered by on-hand and incoming quantities"
+          >
+            {progress}% covered
+          </span>
+        </div>
+
+        <div
+          role="progressbar"
+          aria-label={`${gradeLabel} copies covered`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progress}
+          className="mt-2 h-1 overflow-hidden rounded-full bg-white/[0.06]"
+        >
+          <div
+            className={[
+              "h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none",
+              complete ? "bg-emerald-300" : "bg-cyan-300",
+            ].join(" ")}
+            style={{ width: `${progress}%` }}
+          />
         </div>
       </summary>
 
-      <div className="border-t border-white/10 p-3 sm:p-4">
+      <div className="border-t border-white/10 p-2.5 sm:p-3">
         {items.length ? (
-          <div className="grid gap-3">
+          <div className="grid min-w-0 gap-2.5">
             {items.map((item) => (
               <AcquisitionItemRow
                 key={`${item.id}-${item.updated_at}`}

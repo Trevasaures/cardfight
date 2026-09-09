@@ -172,6 +172,68 @@ export type DashboardDeckSummary = {
   win_pct: number;
 };
 
+export type DashboardDeckVersionBrief = {
+  id: number;
+  deck_id: number;
+  version_name: string;
+  is_active: boolean;
+  deck: Deck;
+  card_count: number;
+  unique_card_count: number;
+  main_deck_count: number;
+  ride_deck_count: number;
+  core_card_count: number;
+  required_total: number;
+  progress: number;
+  is_complete: boolean;
+  issues: string[];
+  updated_at: string | null;
+};
+
+export type DashboardTestingFocus = {
+  deck: Deck;
+  active_version: DeckVersionSummary | null;
+  reason: "untested-version" | "low-sample" | "recent-losses";
+  title: string;
+  body: string;
+  record: DashboardDeckSummary;
+  active_version_matches: number;
+  last_tested_at: string | null;
+  recent_results: Array<"W" | "L">;
+  suggested_opponent: Deck | null;
+  suggested_matchup: {
+    decided_games: number;
+    wins: number;
+    losses: number;
+  };
+};
+
+export type DashboardAttentionItem = {
+  key: string;
+  kind: "purchase" | "build" | "testing" | "history";
+  tone: "warning" | "accent" | "positive" | "neutral";
+  title: string;
+  body: string;
+  value: string;
+  to: string;
+  deck_id?: number;
+  version_id?: number;
+  plan_id?: number;
+  opponent_id?: number | null;
+};
+
+export type DashboardActivity = {
+  id: string;
+  kind: "match" | "version" | "purchase";
+  title: string;
+  detail: string;
+  timestamp: string | null;
+  to: string;
+  deck_id?: number;
+  version_id?: number;
+  plan_id?: number;
+};
+
 export type DashboardResponse = {
   summary: {
     total_decks: number;
@@ -184,6 +246,16 @@ export type DashboardResponse = {
   best_win_rate_deck: DashboardDeckSummary | null;
   most_played_deck: DashboardDeckSummary | null;
   recent_matches: Match[];
+  command_center: {
+    resume: {
+      deck_version: DashboardDeckVersionBrief | null;
+      purchase_plan: AcquisitionPlan | null;
+    };
+    testing_focus: DashboardTestingFocus | null;
+    build_readiness: DashboardDeckVersionBrief[];
+    attention: DashboardAttentionItem[];
+    activity: DashboardActivity[];
+  };
 };
 
 export type PaginatedMatchesResponse = {

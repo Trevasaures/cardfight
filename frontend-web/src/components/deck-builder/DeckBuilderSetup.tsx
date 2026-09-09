@@ -14,6 +14,7 @@ import {
 
 import { FormatBadge } from "../badges/FormatBadge";
 import { FormSelect, FormTextInput } from "../forms/HelpfulField";
+import { DeckBuilderStepHeader } from "./DeckBuilderStepHeader";
 import type { Deck, DeckVersion, DeckVersionSummary } from "../../types/api";
 import { formatDateTime, formatPercent } from "../../utils/format";
 
@@ -127,37 +128,36 @@ export function DeckBuilderSetup({
   return (
     <section
       data-anime="motion-panel"
-      className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5"
+      className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5"
     >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-200/80">
-            Step 1
-          </p>
-          <h3 className="mt-1 text-2xl font-black text-slate-50">
-            Choose a deck and version
-          </h3>
-        </div>
+      <DeckBuilderStepHeader
+        step={1}
+        title="Choose a deck and version"
+        description="Set the exact workspace you want to edit."
+        action={
+          <button
+            type="button"
+            onClick={onRefreshDecks}
+            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-bold text-slate-300 transition hover:bg-white/[0.09] hover:text-slate-100"
+            title="Refresh the deck list from the backend"
+          >
+            <RefreshCcw className="h-4 w-4" />
+            <span className="hidden sm:inline">Refresh decks</span>
+          </button>
+        }
+      />
 
-        <button
-          type="button"
-          onClick={onRefreshDecks}
-          className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-bold text-slate-200 transition hover:bg-white/[0.09]"
-          title="Refresh the deck list from the backend"
-        >
-          <RefreshCcw className="h-4 w-4" />
-          Refresh decks
-        </button>
-      </div>
-
-      <div className="mt-4 rounded-3xl border border-white/10 bg-black/20 p-4">
-        <div className="grid gap-4 lg:grid-cols-[minmax(16rem,0.55fr)_minmax(0,1.45fr)] lg:items-stretch">
-          <div className="flex">
+      <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+        <div className="grid xl:grid-cols-[minmax(14rem,0.42fr)_minmax(0,1.58fr)]">
+          <div className="p-3 sm:p-4 xl:border-r xl:border-white/10">
+            <label className="mb-2 block text-[0.68rem] font-bold uppercase tracking-[0.18em] text-slate-500">
+              Deck
+            </label>
             <select
               value={selectedDeckId}
               onChange={(event) => onSelectedDeckIdChange(event.target.value)}
               title="Choose which saved deck you want to build or version."
-              className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50"
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm font-semibold text-slate-100 outline-none transition focus:border-cyan-300/50"
             >
               {loadingDecks ? <option value="">Loading decks...</option> : null}
               {!loadingDecks && decks.length === 0 ? (
@@ -171,10 +171,10 @@ export function DeckBuilderSetup({
             </select>
           </div>
 
-          {selectedDeck ? (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-              <div className="flex flex-wrap items-center gap-4 xl:flex-nowrap">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-black/20">
+          <div className="border-t border-white/10 p-3 sm:p-4 xl:border-t-0">
+            {selectedDeck ? (
+              <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/20">
                   {nationIcons.length ? (
                     <div className="flex -space-x-3">
                       {nationIcons.slice(0, 2).map((icon) => (
@@ -182,7 +182,7 @@ export function DeckBuilderSetup({
                           key={icon.path}
                           src={icon.path}
                           alt={icon.nation}
-                          className="h-11 w-11 rounded-full bg-slate-950/80 object-contain ring-2 ring-slate-900"
+                          className="h-9 w-9 rounded-full bg-slate-950/80 object-contain ring-2 ring-slate-900"
                         />
                       ))}
                     </div>
@@ -191,66 +191,72 @@ export function DeckBuilderSetup({
                   )}
                 </div>
 
-                <div className="min-w-[10rem] flex-1">
+                <div className="min-w-[9rem] flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="truncate text-lg font-black text-slate-50">
+                    <h4 className="truncate font-black text-slate-50">
                       {selectedDeck.name}
                     </h4>
                     <FormatBadge type={selectedDeck.type} />
                   </div>
-                  <p className="mt-1 truncate text-sm text-slate-500">
+                  <p className="mt-0.5 truncate text-xs text-slate-500">
                     {nationLabel}
                   </p>
                 </div>
 
-                <div className="grid min-w-[18rem] flex-1 grid-cols-3 overflow-hidden rounded-xl border border-white/10 bg-black/15">
-                  <div className="px-3 py-2.5">
-                    <p className="text-[0.65rem] font-bold uppercase tracking-[0.12em] text-slate-600">
+                <div className="grid w-full grid-cols-3 overflow-hidden rounded-xl border border-white/10 bg-black/15 lg:w-auto lg:min-w-[21rem]">
+                  <div className="px-3 py-2">
+                    <p className="text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate-600">
                       Record
                     </p>
-                    <p className="mt-1 font-black text-slate-200">
+                    <p className="mt-0.5 text-sm font-black text-slate-200">
                       {selectedDeck.wins}-{selectedDeck.losses}
                     </p>
                   </div>
-                  <div className="border-x border-white/10 px-3 py-2.5">
-                    <p className="text-[0.65rem] font-bold uppercase tracking-[0.12em] text-slate-600">
+                  <div className="border-x border-white/10 px-3 py-2">
+                    <p className="text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate-600">
                       Win rate
                     </p>
-                    <p className="mt-1 font-black text-slate-200">
+                    <p className="mt-0.5 text-sm font-black text-slate-200">
                       {formatPercent(selectedDeck.win_pct)}
                     </p>
                   </div>
-                  <div className="px-3 py-2.5">
-                    <p className="text-[0.65rem] font-bold uppercase tracking-[0.12em] text-slate-600">
+                  <div className="px-3 py-2">
+                    <p className="text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate-600">
                       Games
                     </p>
-                    <p className="mt-1 font-black text-slate-200">
+                    <p className="mt-0.5 text-sm font-black text-slate-200">
                       {selectedDeck.decided_games}
                     </p>
                   </div>
                 </div>
               </div>
-            </div>
-          ) : null}
+            ) : (
+              <p className="text-sm text-slate-500">
+                Choose a deck to see its identity and record.
+              </p>
+            )}
+          </div>
         </div>
 
-        <div className="mt-5 border-t border-white/10 pt-5">
-          <div className="flex items-center gap-3">
-            <Layers3 className="h-5 w-5 text-cyan-200" />
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
-                Version
-              </p>
-              <h4 className="font-black text-slate-100">Deck list version</h4>
+        <div className="border-t border-white/10 p-3 sm:p-4">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
+            <div className="col-span-2 flex min-w-[10rem] items-center gap-2.5 lg:col-span-1">
+              <Layers3 className="h-4 w-4 text-cyan-200" />
+              <div>
+                <p className="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-slate-500">
+                  Version
+                </p>
+                <h4 className="text-sm font-black text-slate-100">
+                  Deck list version
+                </h4>
+              </div>
             </div>
-          </div>
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto]">
             <select
               value={selectedVersionId}
               onChange={(event) => onSelectedVersionIdChange(event.target.value)}
               title="Choose the version of this deck list you want to view or edit."
-              className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50"
+              className="min-w-0 rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm font-semibold text-slate-100 outline-none transition focus:border-cyan-300/50"
             >
               {loadingVersions ? (
                 <option value="">Loading versions...</option>
@@ -270,99 +276,103 @@ export function DeckBuilderSetup({
               type="button"
               onClick={onRefreshVersions}
               disabled={!selectedDeck}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-3 text-sm font-bold text-slate-200 transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] p-2.5 text-slate-400 transition hover:bg-white/[0.09] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
               title="Refresh versions for the selected deck"
+              aria-label="Refresh deck versions"
             >
               <RefreshCcw className="h-4 w-4" />
-              Refresh
             </button>
           </div>
 
           {currentVersion ? (
             <>
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <div
-                  data-builder-anime="stat"
-                  className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"
-                >
-                  <p className="text-xs text-slate-500">Core deck</p>
-                  <p className="mt-1 text-2xl font-black text-slate-50">
-                    {currentVersion.deck_rules.core_card_count}
-                    <span className="text-base text-slate-500">/54</span>
+              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-3 rounded-xl border border-white/10 bg-white/[0.025] p-3">
+                <div className="min-w-[10rem] flex-1">
+                  <p className="text-[0.65rem] font-bold uppercase tracking-[0.16em] text-cyan-200/70">
+                    Editing now
+                  </p>
+                  <p className="mt-0.5 truncate text-sm font-black text-slate-100">
+                    {currentVersion.version_name}
                   </p>
                 </div>
 
                 <div
                   data-builder-anime="stat"
-                  className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"
+                  className="border-l border-white/10 pl-4"
                 >
-                  <p className="text-xs text-slate-500">Unique cards</p>
-                  <p className="mt-1 text-2xl font-black text-slate-50">
+                  <p className="text-[0.62rem] uppercase tracking-wide text-slate-600">
+                    Core deck
+                  </p>
+                  <p className="mt-0.5 text-sm font-black text-slate-200">
+                    {currentVersion.deck_rules.core_card_count}
+                    <span className="text-slate-600">/54</span>
+                  </p>
+                </div>
+
+                <div
+                  data-builder-anime="stat"
+                  className="border-l border-white/10 pl-4"
+                >
+                  <p className="text-[0.62rem] uppercase tracking-wide text-slate-600">
+                    Unique
+                  </p>
+                  <p className="mt-0.5 text-sm font-black text-slate-200">
                     {currentVersion.unique_card_count}
                   </p>
                 </div>
 
                 <div
                   data-builder-anime="stat"
-                  className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"
+                  className="hidden border-l border-white/10 pl-4 md:block"
                 >
-                  <p className="text-xs text-slate-500">Updated</p>
-                  <p className="mt-1 truncate text-sm font-bold text-slate-200">
+                  <p className="text-[0.62rem] uppercase tracking-wide text-slate-600">
+                    Updated
+                  </p>
+                  <p className="mt-0.5 whitespace-nowrap text-xs font-bold text-slate-300">
                     {formatDateTime(currentVersion.updated_at)}
                   </p>
                 </div>
-              </div>
 
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-200/70">
-                    Current build
-                  </p>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Card changes below apply to {currentVersion.version_name}.
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 xl:ml-auto">
                   {!currentVersion.is_active ? (
                     <button
                       type="button"
                       onClick={onActivateVersion}
                       disabled={saving}
-                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-300/25 bg-emerald-300/10 px-4 py-2.5 text-sm font-bold text-emerald-100 transition hover:bg-emerald-300/15 disabled:opacity-50"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-300/10 px-3 py-2 text-xs font-bold text-emerald-100 transition hover:bg-emerald-300/15 disabled:opacity-50"
                     >
                       <CheckCircle2 className="h-4 w-4" />
                       Make active
                     </button>
                   ) : (
-                    <span className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.06] px-4 py-2.5 text-sm font-bold text-emerald-100">
+                    <span className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-300/20 bg-emerald-300/[0.06] px-3 py-2 text-xs font-bold text-emerald-100">
                       <CheckCircle2 className="h-4 w-4" />
-                      Active version
+                      Active
                     </span>
                   )}
                   <button
                     type="button"
                     onClick={onShowEditVersion}
                     disabled={showEditVersion}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-bold text-slate-200 transition hover:bg-white/[0.09] disabled:opacity-50"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/[0.09] disabled:opacity-50"
                   >
                     <Pencil className="h-4 w-4" />
-                    Edit details
+                    Edit
                   </button>
                   <button
                     type="button"
                     onClick={onShowCreateVersion}
                     disabled={showCreateVersion}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-violet-300/20 bg-violet-300/10 px-4 py-2.5 text-sm font-bold text-violet-100 transition hover:bg-violet-300/15 disabled:opacity-50"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-violet-300/20 bg-violet-300/10 px-3 py-2 text-xs font-bold text-violet-100 transition hover:bg-violet-300/15 disabled:opacity-50"
                   >
                     <Copy className="h-4 w-4" />
-                    Create another version
+                    New version
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowDeleteConfirmation(true)}
                     disabled={saving || currentVersion.is_active}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-300/20 bg-rose-300/5 px-4 py-2.5 text-sm font-bold text-rose-200 transition hover:bg-rose-300/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-300/20 bg-rose-300/5 px-3 py-2 text-xs font-bold text-rose-200 transition hover:bg-rose-300/10 disabled:cursor-not-allowed disabled:opacity-40"
                     title={
                       currentVersion.is_active
                         ? "Make another version active before deleting this one"
@@ -370,7 +380,7 @@ export function DeckBuilderSetup({
                     }
                   >
                     <Trash2 className="h-4 w-4" />
-                    Delete version
+                    Delete
                   </button>
                 </div>
               </div>
@@ -432,13 +442,13 @@ export function DeckBuilderSetup({
           ) : null}
 
           {showEditVersion && currentVersion ? (
-            <div className="mt-4 rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.035] p-4">
-              <div className="flex items-start justify-between gap-4">
+            <div className="mt-3 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.035] p-3">
+              <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-200/70">
+                  <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-cyan-200/70">
                     Edit current version details
                   </p>
-                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                  <p className="mt-1 text-xs text-slate-500">
                     This renames {currentVersion.version_name}; it does not create
                     a separate build.
                   </p>
@@ -453,7 +463,7 @@ export function DeckBuilderSetup({
                 </button>
               </div>
 
-              <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+              <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
                 <FormTextInput
                   label="Version name"
                   help="The saved label shown anywhere this deck version is selected."
@@ -477,7 +487,7 @@ export function DeckBuilderSetup({
                   disabled={
                     saving || !versionEditIsDirty || !editVersionName.trim()
                   }
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
                   title="Save the selected version name and notes"
                 >
                   <Save className="h-4 w-4" />
@@ -488,22 +498,20 @@ export function DeckBuilderSetup({
           ) : null}
 
           {createVersionIsVisible ? (
-            <div className="mt-4 rounded-2xl border border-violet-300/20 bg-violet-300/[0.05] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex gap-3">
-                  <div className="mt-0.5 rounded-xl border border-violet-300/15 bg-violet-300/10 p-2 text-violet-100">
-                    <Plus className="h-4 w-4" />
-                  </div>
+            <div className="mt-3 rounded-xl border border-violet-300/20 bg-violet-300/[0.045] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <Plus className="h-4 w-4 shrink-0 text-violet-200" />
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-violet-200/80">
+                    <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-violet-200/80">
                       {versions.length
                         ? "New separate version"
                         : "First deck version"}
                     </p>
-                    <p className="mt-2 text-sm leading-6 text-slate-400">
+                    <p className="mt-1 truncate text-xs text-slate-500">
                       {versions.length
-                        ? "This creates a new active build. Your current version will remain unchanged."
-                        : "Name the first build for this deck, then start with an empty list."}
+                        ? "Create an empty build or copy an existing list; the current version stays unchanged."
+                        : "Name the first build, then start adding its cards."}
                     </p>
                   </div>
                 </div>
@@ -520,7 +528,13 @@ export function DeckBuilderSetup({
                 ) : null}
               </div>
 
-              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              <div
+                className={
+                  versions.length
+                    ? "mt-3 grid gap-3 lg:grid-cols-2 2xl:grid-cols-[minmax(12rem,1fr)_minmax(14rem,1.15fr)_minmax(12rem,0.9fr)_auto] 2xl:items-end"
+                    : "mt-3 grid gap-3 lg:grid-cols-[minmax(12rem,1fr)_minmax(14rem,1.2fr)_auto] lg:items-end"
+                }
+              >
                 <FormTextInput
                   label="New version name"
                   help="Required. Use a distinct label such as Post Set 5 or Testing Build."
@@ -538,23 +552,25 @@ export function DeckBuilderSetup({
                   placeholder="What is this build for?"
                 />
 
-                <FormSelect
-                  label="Start from"
-                  help="Start empty or copy every card, quantity, printing, zone, and sort order from an older version."
-                  value={newVersionSourceId}
-                  onChange={onNewVersionSourceIdChange}
-                  placeholder="An empty deck list"
-                  options={versions.map((version) => ({
-                    value: String(version.id),
-                    label: `Copy ${version.version_name}`,
-                  }))}
-                />
+                {versions.length ? (
+                  <FormSelect
+                    label="Start from"
+                    help="Start empty or copy every card, quantity, printing, zone, and sort order from an older version."
+                    value={newVersionSourceId}
+                    onChange={onNewVersionSourceIdChange}
+                    placeholder="An empty deck list"
+                    options={versions.map((version) => ({
+                      value: String(version.id),
+                      label: `Copy ${version.version_name}`,
+                    }))}
+                  />
+                ) : null}
 
                 <button
                   type="button"
                   onClick={onCreateVersion}
                   disabled={!selectedDeck || saving || !newVersionName.trim()}
-                  className="inline-flex items-center justify-center gap-2 self-end rounded-2xl border border-violet-300/25 bg-violet-300/15 px-5 py-3 text-sm font-bold text-violet-50 transition hover:bg-violet-300/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-2 self-end whitespace-nowrap rounded-xl border border-violet-300/25 bg-violet-300/15 px-4 py-3 text-sm font-bold text-violet-50 transition hover:bg-violet-300/20 disabled:cursor-not-allowed disabled:opacity-50"
                   title={
                     !newVersionName.trim()
                       ? "Enter a version name before creating the build"

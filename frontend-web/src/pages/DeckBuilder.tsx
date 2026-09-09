@@ -837,17 +837,17 @@ export function DeckBuilder() {
         description="Create deck versions, add card entries, and start turning match history into real deck testing data."
       />
 
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.05] px-4 py-3">
-        <p className="text-sm font-bold text-emerald-100">
-          Workspace remembered in this browser
+      <div className="mb-5 inline-flex max-w-full items-center gap-2.5 rounded-full border border-emerald-300/15 bg-emerald-300/[0.05] px-3 py-2">
+        <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.65)]" />
+        <p className="truncate text-xs font-bold text-emerald-100">
+          Workspace restores automatically
         </p>
-        <p className="text-xs text-slate-500">
-          Your selected deck, version, comparison, and unsaved version details
-          will restore when you return.
+        <p className="hidden text-xs text-slate-500 lg:block">
+          Deck, version, comparison, and unsaved details are remembered here.
         </p>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-4">
         <DeckBuilderSetup
           decks={decks}
           versions={versions}
@@ -911,7 +911,7 @@ export function DeckBuilder() {
           onSelectedBaselineIdChange={setComparisonBaselineId}
         />
 
-        <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr] xl:items-start">
+        <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr] xl:items-start">
           <CardCatalogPanel
             cardSearch={cardSearch}
             cardResults={cardResults}

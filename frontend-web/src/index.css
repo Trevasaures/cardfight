@@ -54,6 +54,32 @@ a {
   text-decoration: none;
 }
 
+@layer components {
+  .workspace-panel {
+    @apply min-w-0 rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5;
+  }
+
+  .workspace-inset {
+    @apply min-w-0 rounded-2xl border border-white/10 bg-black/20;
+  }
+
+  .workspace-control {
+    @apply min-h-10 min-w-0 rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-300/50 disabled:opacity-50;
+  }
+
+  .workspace-button {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .workspace-toolbar {
+    @apply flex min-w-0 flex-wrap items-center gap-3;
+  }
+
+  .workspace-stack {
+    @apply grid min-w-0 gap-4;
+  }
+}
+
 @keyframes toast-in {
   from {
     opacity: 0;
@@ -105,6 +131,29 @@ a {
   filter: blur(70px);
 }
 
+.command-center-hero::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  background:
+    linear-gradient(115deg, rgb(var(--command-rgb) / 0.11), transparent 38%),
+    radial-gradient(circle at 88% 12%, rgb(var(--command-rgb) / 0.14), transparent 27rem),
+    radial-gradient(circle at 50% 125%, rgb(167 139 250 / 0.08), transparent 30rem);
+}
+
+.command-center-glow {
+  position: absolute;
+  top: -11rem;
+  right: -8rem;
+  width: 32rem;
+  height: 32rem;
+  border-radius: 999px;
+  pointer-events: none;
+  background: rgb(var(--command-rgb) / 0.12);
+  filter: blur(74px);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .toast-enter {
     animation: none;
@@ -114,6 +163,12 @@ a {
   .analytics-spotlight *::before,
   .analytics-spotlight *::after {
     scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .command-center-hero *,
+  .command-center-hero *::before,
+  .command-center-hero *::after {
     transition-duration: 0.01ms !important;
   }
 }

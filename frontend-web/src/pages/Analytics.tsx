@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   ChevronRight,
-  Crosshair,
   Filter,
   Gauge,
   RefreshCcw,
@@ -14,6 +13,7 @@ import { PerformanceSpotlight } from "../components/analytics/PerformanceSpotlig
 import { FormatBadge } from "../components/badges/FormatBadge";
 import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
+import { WorkspaceSectionHeader } from "../components/layout/WorkspaceSectionHeader";
 import { usePersistentState } from "../hooks/usePersistentState";
 import type {
   DeckType,
@@ -148,76 +148,76 @@ export function Analytics() {
       <PageHeader
         eyebrow="Analytics · Performance Spotlight"
         title="See what the record is really saying"
-        description="Focus on one deck at a time, read its recent trajectory, expose its turn-order split, and turn match history into the next useful testing decision."
+        description="Explore a deck's form, matchups, and turn-order split to decide what to test next."
       />
 
       <section
         data-anime="motion-panel"
-        className="rounded-[2rem] border border-white/10 bg-white/[0.035] p-4 shadow-2xl shadow-black/20 sm:p-5"
+        className="workspace-panel"
       >
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.22em] text-cyan-200/80">
-              <Crosshair className="h-4 w-4" /> Spotlight controls
-            </p>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-              Choose the deck you are actively testing. The selection stays with you when you leave and return.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <label className="relative min-w-0 sm:w-72">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Find a deck or nation..."
-                className="w-full rounded-xl border border-white/10 bg-slate-950/65 py-2.5 pl-10 pr-3 text-sm outline-none placeholder:text-slate-600 focus:border-cyan-300/45"
-              />
-            </label>
+        <WorkspaceSectionHeader
+          eyebrow="Focus"
+          title="Choose a deck"
+          description="Your spotlight selection is remembered when you return."
+          actions={
             <button
               type="button"
               onClick={() => void refreshSpotlight()}
               disabled={!selectedDeckId || loadingSpotlight}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-bold text-slate-300 transition hover:bg-white/[0.09] disabled:opacity-40"
+              className="workspace-button inline-flex items-center justify-center gap-2 border border-white/10 bg-white/[0.05] px-3 text-sm font-semibold text-slate-300 transition hover:bg-white/[0.09] disabled:opacity-40"
             >
               <RefreshCcw className={`h-4 w-4 ${loadingSpotlight ? "animate-spin" : ""}`} />
               Refresh
             </button>
-          </div>
-        </div>
+          }
+        />
 
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/10 pt-4">
-          <span className="mr-1 inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-slate-600">
-            <Filter className="h-3.5 w-3.5" /> Field
-          </span>
-          {(["All", "Standard", "Stride"] as FormatFilter[]).map((item) => (
+        <div className="mt-4 flex flex-col gap-3 border-t border-white/10 pt-3 xl:flex-row xl:items-center">
+          <label className="relative block min-w-0 xl:w-72 xl:shrink-0">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
+            <input
+              aria-label="Find a deck or nation"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Find a deck or nation..."
+              className="w-full rounded-xl border border-white/10 bg-slate-950/65 py-2.5 pl-10 pr-3 text-sm outline-none placeholder:text-slate-600 focus:border-cyan-300/45"
+            />
+          </label>
+          <div className="flex flex-1 flex-wrap items-center gap-2">
+            <span className="mr-1 inline-flex items-center gap-2 text-xs font-semibold text-slate-500">
+              <Filter className="h-3.5 w-3.5" /> Field
+            </span>
+            {(["All", "Standard", "Stride"] as FormatFilter[]).map((item) => (
+              <button
+                key={item}
+                type="button"
+                aria-pressed={format === item}
+                onClick={() => setFormat(item)}
+                className={[
+                  "rounded-full border px-3.5 py-1.5 text-xs font-bold transition",
+                  format === item
+                    ? "border-cyan-300/45 bg-cyan-300/15 text-cyan-100"
+                    : "border-white/10 bg-white/[0.035] text-slate-400 hover:text-slate-100",
+                ].join(" ")}
+              >
+                {item}
+              </button>
+            ))}
             <button
-              key={item}
               type="button"
-              onClick={() => setFormat(item)}
+              aria-pressed={activeOnly}
+              onClick={() => setActiveOnly((value) => !value)}
               className={[
                 "rounded-full border px-3.5 py-1.5 text-xs font-bold transition",
-                format === item
-                  ? "border-cyan-300/45 bg-cyan-300/15 text-cyan-100"
+                activeOnly
+                  ? "border-emerald-300/35 bg-emerald-300/10 text-emerald-100"
                   : "border-white/10 bg-white/[0.035] text-slate-400 hover:text-slate-100",
               ].join(" ")}
             >
-              {item}
+              Active only
             </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setActiveOnly((value) => !value)}
-            className={[
-              "rounded-full border px-3.5 py-1.5 text-xs font-bold transition",
-              activeOnly
-                ? "border-emerald-300/35 bg-emerald-300/10 text-emerald-100"
-                : "border-white/10 bg-white/[0.035] text-slate-400 hover:text-slate-100",
-            ].join(" ")}
-          >
-            Active only
-          </button>
+            <span className="ml-auto text-xs text-slate-500">{filteredRows.length} decks</span>
+          </div>
         </div>
 
         {loadingRows ? (
@@ -235,15 +235,16 @@ export function Analytics() {
                 <button
                   key={row.id}
                   type="button"
+                  aria-pressed={selected}
                   onClick={() => setSelectedDeckId(row.id)}
                   className={[
-                    "group flex w-56 shrink-0 items-center gap-3 rounded-2xl border p-3 text-left transition",
+                    "group flex w-52 shrink-0 items-center gap-2.5 rounded-xl border p-2.5 text-left transition",
                     selected
                       ? "border-cyan-300/45 bg-cyan-300/[0.11] shadow-[0_0_28px_rgba(34,211,238,0.08)]"
                       : "border-white/10 bg-black/20 hover:border-white/20 hover:bg-white/[0.055]",
                   ].join(" ")}
                 >
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-slate-950/70">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-slate-950/70">
                     {icon ? (
                       <img src={icon} alt="" className="h-8 w-8 object-contain" />
                     ) : (
@@ -270,15 +271,15 @@ export function Analytics() {
         )}
       </section>
 
-      <div className="mt-6">
+      <div className="mt-4">
         {loadingSpotlight && !spotlight ? (
-          <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.035] p-8">
+          <div className="workspace-panel overflow-hidden">
             <div className="h-[32rem] animate-pulse rounded-3xl bg-white/[0.04]" />
           </div>
         ) : spotlight ? (
           <PerformanceSpotlight key={spotlight.deck.id} spotlight={spotlight} />
         ) : (
-          <div className="rounded-[2rem] border border-dashed border-white/10 p-12 text-center">
+          <div className="workspace-panel border-dashed py-8 text-center">
             <Activity className="mx-auto h-8 w-8 text-slate-600" />
             <p className="mt-4 text-lg font-black text-slate-300">Choose a deck to light the spotlight.</p>
           </div>
@@ -286,16 +287,14 @@ export function Analytics() {
       </div>
 
       {rankedRows.length ? (
-        <section data-anime="motion-panel" className="mt-6 rounded-[2rem] border border-white/10 bg-white/[0.035] p-5 sm:p-6">
-          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Field signal</p>
-              <h3 className="mt-2 text-xl font-black text-white">Performance board</h3>
-            </div>
-            <p className="text-sm text-slate-500">Win rate uses decided games only. Sample size stays visible beside every result.</p>
-          </div>
+        <section data-anime="motion-panel" className="workspace-panel mt-4">
+          <WorkspaceSectionHeader
+            eyebrow="Field"
+            title="Performance board"
+            description="Ranked by decided-game win rate, with sample size beside every result."
+          />
 
-          <div className="mt-5 grid gap-2 lg:grid-cols-2 2xl:grid-cols-3">
+          <div className="mt-4 grid gap-2 lg:grid-cols-2 2xl:grid-cols-3">
             {rankedRows.map((row, index) => (
               <button
                 key={row.id}
@@ -304,7 +303,8 @@ export function Analytics() {
                   setSelectedDeckId(row.id);
                   window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
-                className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 text-left transition hover:border-cyan-300/25 hover:bg-cyan-300/[0.045]"
+                aria-pressed={row.id === selectedDeckId}
+                className="workspace-inset group flex min-w-0 items-center gap-3 p-3 text-left transition hover:border-cyan-300/25 hover:bg-cyan-300/[0.045]"
               >
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.05] text-xs font-black text-slate-500">
                   {String(index + 1).padStart(2, "0")}

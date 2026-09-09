@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ChevronDown,
   Layers3,
   Pencil,
-  Plus,
   RefreshCcw,
   Search,
-  Sparkles,
 } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
@@ -39,6 +38,7 @@ import {
 } from "../components/deck-builder/manualCardFormState";
 import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
+import { WorkspaceSectionHeader } from "../components/layout/WorkspaceSectionHeader";
 import type {
   Card,
   CardFormOptions,
@@ -456,47 +456,31 @@ export function CardLibrary() {
   }
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         eyebrow="Card Library"
         title="Build and browse your card catalog"
         description="Create cards manually or from an image, then search, inspect, and correct the shared records used throughout the app."
       />
 
-      <section
+      <details
         data-anime="motion-panel"
-        className="mb-6 rounded-[2rem] border border-cyan-300/15 bg-cyan-300/[0.035] p-5"
+        className="workspace-panel group mb-4"
       >
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="max-w-3xl">
-            <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-cyan-200/80">
-              <Sparkles className="h-4 w-4" />
-              Catalog tools
-            </div>
-            <h3 className="mt-2 text-2xl font-black text-slate-50">
-              Add cards to the library
-            </h3>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Use the image reader for a fast first pass or enter a card
-              manually. Either method creates the same shared catalog record
-              available to Deck Builder and Order Tracker.
-            </p>
-          </div>
-        </div>
-
-        <details className="mt-5 rounded-3xl border border-cyan-300/20 bg-black/20 p-4">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-2xl px-1 py-1 select-none">
-            <span className="inline-flex items-center gap-3 text-sm font-black text-cyan-100">
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-300/10">
-                <Plus className="h-4 w-4" />
+        <summary className="cursor-pointer list-none select-none [&::-webkit-details-marker]:hidden">
+          <WorkspaceSectionHeader
+            eyebrow="Create"
+            title="Add cards to the library"
+            description="Image reader or manual entry · Available throughout your lab."
+            actions={
+              <span className="workspace-button inline-flex w-10 items-center justify-center border border-white/10 bg-white/[0.04] text-cyan-100">
+                <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180 motion-reduce:transition-none" />
               </span>
-              Open card creator
-            </span>
-            <span className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-              Image reader + manual entry
-            </span>
-          </summary>
+            }
+          />
+        </summary>
 
+        <div className="mt-4 border-t border-white/10 pt-1">
           <CardCreationTools
             value={createForm}
             analysisResult={cardAnalysis}
@@ -512,40 +496,34 @@ export function CardLibrary() {
             onSetUpdated={handleSetUpdated}
             onSetDeleted={handleSetDeleted}
           />
-        </details>
-      </section>
+        </div>
+      </details>
 
       <section
         data-anime="motion-panel"
-        className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5"
+        className="workspace-panel min-w-0"
       >
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-200/80">
-              Catalog
-            </p>
-            <h3 className="mt-2 text-2xl font-black text-slate-50">
-              Card records
-            </h3>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Showing {cards.length} of {totalItems} cards
-              {activeFilterCount ? ` · ${activeFilterCount} active filters` : ""}
-            </p>
-          </div>
-
+        <WorkspaceSectionHeader
+          eyebrow="Catalog"
+          title="Card records"
+          description={`Showing ${cards.length} of ${totalItems} cards${activeFilterCount ? ` · ${activeFilterCount} active filters` : ""}`}
+          actions={
           <button
             type="button"
             onClick={loadCards}
             disabled={loading}
-            className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-bold text-slate-200 transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-50"
-            title="Refresh cards from the backend"
+            className="workspace-button inline-flex items-center gap-2 border border-white/10 bg-white/[0.05] px-3 text-xs font-bold text-slate-300 transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-50"
+            title="Refresh card records"
+            aria-label="Refresh card records"
           >
             <RefreshCcw className="h-4 w-4" />
-            Refresh
+            <span className="hidden sm:inline">Refresh</span>
           </button>
-        </div>
+          }
+        />
 
-        <div className="mt-5 grid gap-3 lg:grid-cols-2 xl:grid-cols-12">
+        <div className="workspace-inset mt-4 p-3 sm:p-4">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2">
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -556,14 +534,37 @@ export function CardLibrary() {
             }}
             placeholder="Search name, set, number, rarity, skill..."
             title="Search card records"
-            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-300/50 lg:col-span-2 xl:col-span-5"
+            className="workspace-control col-span-3 min-w-0 placeholder:text-slate-600 sm:col-span-1"
           />
 
+          <button
+            type="button"
+            onClick={loadCards}
+            disabled={loading}
+            className="workspace-button col-span-2 inline-flex items-center justify-center gap-2 border border-cyan-300/20 bg-cyan-300/10 px-4 text-xs font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-1"
+            title="Apply filters"
+          >
+            <Search className="h-4 w-4" />
+            Search
+          </button>
+
+          <button
+            type="button"
+            onClick={clearFilters}
+            disabled={!activeFilterCount}
+            className="workspace-button inline-flex items-center justify-center border border-white/10 bg-white/[0.035] px-3 text-xs font-bold text-slate-300 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+            title="Clear all filters"
+          >
+            Clear
+          </button>
+          </div>
+
+          <div className="mt-2 grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,0.65fr)_minmax(0,1fr)]">
           <select
             value={setCode}
             onChange={(event) => setSetCode(event.target.value)}
             title="Filter by card set"
-            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50 xl:col-span-4"
+            className="workspace-control w-full min-w-0"
           >
             <option value="">All card sets</option>
             {cardFormOptions.sets.map((option) => (
@@ -577,7 +578,7 @@ export function CardLibrary() {
             value={nation}
             onChange={(event) => setNation(event.target.value)}
             title="Filter by nation"
-            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50 xl:col-span-4 xl:row-start-2"
+            className="workspace-control w-full min-w-0"
           >
             {NATION_OPTIONS.map((option) => (
               <option key={option || "all"} value={option}>
@@ -590,7 +591,7 @@ export function CardLibrary() {
             value={grade}
             onChange={(event) => setGrade(event.target.value)}
             title="Filter by grade"
-            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50 xl:col-span-3 xl:row-start-2"
+            className="workspace-control w-full min-w-0"
           >
             <option value="">All grades</option>
             <option value="0">Grade 0</option>
@@ -604,7 +605,7 @@ export function CardLibrary() {
             value={cardType}
             onChange={(event) => setCardType(event.target.value)}
             title="Filter by card type"
-            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50 xl:col-span-5 xl:row-start-2"
+            className="workspace-control w-full min-w-0"
           >
             {CARD_TYPE_OPTIONS.map((option) => (
               <option key={option || "all"} value={option}>
@@ -613,56 +614,24 @@ export function CardLibrary() {
             ))}
           </select>
 
-          <button
-            type="button"
-            onClick={loadCards}
-            disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50 xl:col-span-2 xl:col-start-10 xl:row-start-1"
-            title="Apply filters"
-          >
-            <Search className="h-4 w-4" />
-            Search
-          </button>
-
-          <button
-            type="button"
-            onClick={clearFilters}
-            disabled={!activeFilterCount}
-            className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.035] px-5 py-3 text-sm font-bold text-slate-300 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40 xl:col-span-1 xl:col-start-12 xl:row-start-1"
-            title="Clear all filters"
-          >
-            Clear
-          </button>
+          </div>
         </div>
 
         {addingPrintingCard ? (
-          <div className="mt-5 rounded-3xl border border-violet-300/20 bg-violet-300/[0.06] p-4">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-violet-200/80">
-                  New printing
-                </p>
-                <h4 className="mt-1 text-lg font-black text-slate-50">
-                  Add another printing of {addingPrintingCard.name}
-                </h4>
-                <p className="mt-1 text-sm text-slate-500">
-                  The card identity stays shared while its set, collector
-                  number, rarity, deck usage, and pricing remain distinct.
-                </p>
-              </div>
-
-              <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-slate-400">
-                {addingPrintingCard.printings.length} existing printing
-                {addingPrintingCard.printings.length === 1 ? "" : "s"}
-              </span>
-            </div>
+          <div className="mt-4 rounded-2xl border border-violet-300/20 bg-violet-300/[0.06] p-3 sm:p-4">
+            <WorkspaceSectionHeader
+              eyebrow="New printing"
+              title={addingPrintingCard.name}
+              description="A separate set, number, or rarity with its own deck usage and pricing."
+              className="mb-3"
+            />
 
             {addingPrintingCard.printings.length ? (
-              <div className="mb-4 flex flex-wrap gap-2">
+              <div className="mb-3 flex flex-wrap gap-1.5">
                 {addingPrintingCard.printings.map((printing) => (
                   <span
                     key={printing.id}
-                    className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-slate-400"
+                    className="max-w-full break-words rounded-lg border border-white/10 bg-black/20 px-2 py-1 text-[0.65rem] font-bold text-slate-400"
                   >
                     {printingLabel(printing) || `Printing ${printing.id}`}
                   </span>
@@ -683,25 +652,15 @@ export function CardLibrary() {
         ) : null}
 
         {editingCard ? (
-          <div className="mt-5 rounded-3xl border border-cyan-300/20 bg-cyan-300/[0.06] p-4">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-200/80">
-                  Editing catalog card
-                </p>
-                <h4 className="mt-1 text-lg font-black text-slate-50">
-                  {editingCard.name}
-                </h4>
-                <p className="mt-1 text-sm text-slate-500">
-                  Changes here update the shared card record anywhere this card
-                  is used.
-                </p>
-              </div>
-
-              <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-slate-400">
-                {primaryPrintingLabel(editingCard)}
-              </span>
-            </div>
+          <div className="mt-4 rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.06] p-3 sm:p-4">
+            <WorkspaceSectionHeader
+              eyebrow="Edit card"
+              title={editingCard.name}
+              description="Changes update the shared card record everywhere it is used."
+            />
+            <p className="mb-3 mt-2 break-words text-xs text-slate-500">
+              {primaryPrintingLabel(editingCard)}
+            </p>
 
             <ManualCardForm
               value={editForm}
@@ -719,7 +678,7 @@ export function CardLibrary() {
 
         <div
           ref={parentRef}
-          className="mt-5 h-[42rem] overflow-auto rounded-3xl border border-white/10 bg-black/20 p-2"
+          className="workspace-inset mt-4 h-[min(42rem,72dvh)] min-h-80 overflow-auto p-1.5"
         >
           {loading ? (
             <div className="flex h-full items-center justify-center text-sm font-bold text-slate-500">
@@ -728,10 +687,10 @@ export function CardLibrary() {
           ) : cards.length === 0 ? (
             <div className="flex h-full items-center justify-center text-center">
               <div>
-                <p className="text-lg font-black text-slate-300">
+                <p className="text-base font-black text-slate-300">
                   No cards found.
                 </p>
-                <p className="mt-2 text-sm text-slate-500">
+                <p className="mt-1 text-xs text-slate-500">
                   Try changing your filters or add a card with the creator above.
                 </p>
               </div>
@@ -756,21 +715,22 @@ export function CardLibrary() {
                       transform: `translateY(${virtualRow.start}px)`,
                     }}
                   >
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-4 transition hover:bg-white/[0.045]">
-                      <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="rounded-xl border border-white/10 bg-white/[0.025] p-3 transition hover:bg-white/[0.045]">
+                      <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
                         <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2.5 py-1 text-xs font-black text-cyan-100">
+                          <div className="flex min-w-0 items-start gap-2">
+                            <span className="shrink-0 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-2 py-1 text-[0.65rem] font-black text-cyan-100">
                               {card.grade !== null ? `G${card.grade}` : "G?"}
                             </span>
 
-                            <h4 className="min-w-0 truncate text-lg font-black text-slate-50">
+                            <h4 className="min-w-0 break-words text-sm font-black leading-6 text-slate-50">
                               {card.name}
                             </h4>
                           </div>
 
-                          <p className="mt-1 text-sm text-slate-500">
-                            {cardMeta(card)}
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            {cardMeta(card)} · {printingCount(card)} printing
+                            {printingCount(card) === 1 ? "" : "s"}
                           </p>
 
                           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -778,7 +738,7 @@ export function CardLibrary() {
                               card.printings.map((printing) => (
                                 <span
                                   key={printing.id}
-                                  className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[0.7rem] font-bold text-slate-500"
+                                  className="max-w-full break-words rounded-lg border border-white/10 bg-black/20 px-2 py-1 text-[0.65rem] font-bold text-slate-500"
                                 >
                                   {printingLabel(printing) ||
                                     `Printing ${printing.id}`}
@@ -792,21 +752,12 @@ export function CardLibrary() {
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap justify-end gap-2 text-right">
-                          <span className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-bold text-slate-400">
-                            {printingCount(card)} printing
-                            {printingCount(card) === 1 ? "" : "s"}
-                          </span>
-
-                          <span className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-bold text-slate-400">
-                            {formatCardNation(card.nation)}
-                          </span>
-
+                        <div className="flex flex-wrap items-start gap-2 border-t border-white/5 pt-2 lg:border-0 lg:pt-0">
                           <button
                             type="button"
                             onClick={() => startAddingPrinting(card)}
                             disabled={savingPrinting}
-                            className="inline-flex items-center gap-2 rounded-full border border-violet-300/20 bg-violet-300/10 px-3 py-1 text-xs font-bold text-violet-100 transition hover:bg-violet-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="workspace-button inline-flex items-center gap-2 border border-violet-300/20 bg-violet-300/10 px-3 text-xs font-bold text-violet-100 transition hover:bg-violet-300/15 disabled:cursor-not-allowed disabled:opacity-50"
                             title="Add a different set, collector number, or rarity for this card"
                           >
                             <Layers3 className="h-3.5 w-3.5" />
@@ -817,7 +768,7 @@ export function CardLibrary() {
                             type="button"
                             onClick={() => startEditingCard(card)}
                             disabled={savingEdit}
-                            className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="workspace-button inline-flex items-center gap-2 border border-cyan-300/20 bg-cyan-300/10 px-3 text-xs font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
                             title="Edit this card record"
                           >
                             <Pencil className="h-3.5 w-3.5" />
@@ -827,7 +778,7 @@ export function CardLibrary() {
                       </div>
 
                       {card.skill_text ? (
-                        <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-500">
+                        <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-500">
                           {card.skill_text}
                         </p>
                       ) : null}

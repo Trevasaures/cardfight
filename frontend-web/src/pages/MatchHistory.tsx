@@ -5,6 +5,7 @@ import { deleteMatch, getMatchesPage } from "../api/matches";
 import { MatchCard } from "../components/cards/MatchCard";
 import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
+import { WorkspaceSectionHeader } from "../components/layout/WorkspaceSectionHeader";
 import type { Match, MatchFormat } from "../types/api";
 
 type ResultFilter = "All" | "Decided" | "Undecided";
@@ -123,24 +124,44 @@ export function MatchHistory() {
         description="Review recorded Vanguard matches with search and filters applied across the complete battle history."
       />
 
-      <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
-        <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto_auto_auto]">
-          <label className="relative block">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+      <section className="workspace-panel">
+        <WorkspaceSectionHeader
+          eyebrow="History"
+          title="Find a battle"
+          description="Search every recorded matchup, deck, and note."
+          actions={
+            <button
+              type="button"
+              onClick={() =>
+                void loadMatches(pagination.page, pageSize, search, format, result)
+              }
+              disabled={loading}
+              className="workspace-button inline-flex items-center justify-center gap-2 border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-slate-300 transition hover:bg-white/[0.08] disabled:opacity-50"
+            >
+              <RefreshCcw className={`h-3.5 w-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} />
+              Refresh
+            </button>
+          }
+        />
+        <div className="mt-4 grid min-w-0 gap-2 sm:grid-cols-3 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
+          <label className="relative block min-w-0 sm:col-span-3 xl:col-span-1">
+            <span className="sr-only">Search decks or match notes</span>
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search decks or notes..."
-              className="w-full rounded-2xl border border-white/10 bg-black/30 py-3 pl-11 pr-4 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-300/50"
+              className="min-h-10 w-full min-w-0 rounded-xl border border-white/10 bg-black/30 py-2.5 pl-10 pr-3 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-300/50"
             />
           </label>
 
           <select
+            aria-label="Filter by match format"
             value={format}
             onChange={(event) =>
               setFormat(event.target.value as MatchFormat | "All")
             }
-            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50"
+            className="workspace-control w-full min-w-0 border border-white/10 bg-black/30 text-sm font-semibold text-slate-200 outline-none focus:border-cyan-300/50"
           >
             <option value="All">All formats</option>
             <option value="Any">Any</option>
@@ -149,9 +170,10 @@ export function MatchHistory() {
           </select>
 
           <select
+            aria-label="Filter by match result"
             value={result}
             onChange={(event) => setResult(event.target.value as ResultFilter)}
-            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50"
+            className="workspace-control w-full min-w-0 border border-white/10 bg-black/30 text-sm font-semibold text-slate-200 outline-none focus:border-cyan-300/50"
           >
             <option value="All">All results</option>
             <option value="Decided">Decided</option>
@@ -159,9 +181,10 @@ export function MatchHistory() {
           </select>
 
           <select
+            aria-label="Matches per page"
             value={pageSize}
             onChange={(event) => setPageSize(Number(event.target.value))}
-            className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50"
+            className="workspace-control w-full min-w-0 border border-white/10 bg-black/30 text-sm font-semibold text-slate-200 outline-none focus:border-cyan-300/50"
           >
             {PAGE_SIZE_OPTIONS.map((size) => (
               <option key={size} value={size}>
@@ -170,31 +193,17 @@ export function MatchHistory() {
             ))}
           </select>
 
-          <button
-            type="button"
-            onClick={() =>
-              void loadMatches(pagination.page, pageSize, search, format, result)
-            }
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-3 text-sm font-bold text-slate-200 transition hover:bg-white/[0.09]"
-          >
-            <RefreshCcw className="h-4 w-4" />
-            Refresh
-          </button>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
-          <div className="flex flex-wrap gap-3">
-            <span>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500" aria-live="polite">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-slate-400">
               {hasFilters
                 ? `${pagination.total_items} matching battles`
                 : `${pagination.total_items} total matches`}
             </span>
-            <span>•</span>
-            <span>
-              Page {pagination.page} of {pagination.total_pages}
-            </span>
-            <span>•</span>
-            <span>{matches.length} shown on this page</span>
+            <span aria-hidden="true">·</span>
+            <span>{loading ? "Updating results…" : `${matches.length} on this page`}</span>
           </div>
 
           {hasFilters && (
@@ -205,7 +214,7 @@ export function MatchHistory() {
                 setFormat("All");
                 setResult("All");
               }}
-              className="text-cyan-200 transition hover:text-cyan-100"
+              className="rounded-lg px-2 py-1 font-semibold text-cyan-200 transition hover:bg-cyan-300/5 hover:text-cyan-100"
             >
               Clear filters
             </button>
@@ -214,37 +223,40 @@ export function MatchHistory() {
       </section>
 
       {loading ? (
-        <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-slate-400">
+        <div className="workspace-inset mt-4 flex items-center gap-2 p-5 text-sm text-slate-400" role="status">
+          <RefreshCcw className="h-4 w-4 animate-spin motion-reduce:animate-none" />
           Loading matches...
         </div>
       ) : matches.length ? (
-        <section className="mt-6 grid gap-4 lg:grid-cols-2">
+        <section className="mt-4 grid min-w-0 gap-3 lg:grid-cols-2" aria-label="Match results">
           {matches.map((match) => (
             <MatchCard key={match.id} match={match} onDelete={handleDelete} />
           ))}
         </section>
       ) : (
-        <section className="mt-6 rounded-[2rem] border border-dashed border-white/15 bg-white/[0.025] p-10 text-center">
-          <p className="text-lg font-bold text-slate-300">No matches found.</p>
+        <section className="mt-4 rounded-2xl border border-dashed border-white/15 bg-white/[0.025] p-6 text-center">
+          <p className="text-sm font-bold text-slate-300">No matches found.</p>
           <p className="mt-2 text-sm text-slate-500">
             Try changing the filters, or go roll something spicy in Play Lab.
           </p>
         </section>
       )}
 
-      <section className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-[2rem] border border-white/10 bg-slate-950/45 p-4">
+      <nav aria-label="Match history pages" className="workspace-inset mt-4 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 p-3">
         <button
           type="button"
           onClick={() => goToPage(pagination.page - 1)}
           disabled={!pagination.has_prev || loading}
-          className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-3 text-sm font-bold text-slate-200 transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="Previous page"
+          className="workspace-button inline-flex items-center gap-1.5 border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
         >
           <ChevronLeft className="h-4 w-4" />
-          Previous
+          <span className="hidden sm:inline">Previous</span>
         </button>
 
-        <div className="text-sm text-slate-500">
-          Showing{" "}
+        <div className="text-center text-xs text-slate-500">
+          <p className="mb-1 font-semibold text-slate-300">Page {pagination.page} of {pagination.total_pages}</p>
+          <span className="hidden sm:inline">Showing </span>
           <span className="font-bold text-slate-300">
             {pagination.total_items === 0
               ? 0
@@ -267,12 +279,13 @@ export function MatchHistory() {
           type="button"
           onClick={() => goToPage(pagination.page + 1)}
           disabled={!pagination.has_next || loading}
-          className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-3 text-sm font-bold text-slate-200 transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="Next page"
+          className="workspace-button inline-flex items-center gap-1.5 border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Next
+          <span className="hidden sm:inline">Next</span>
           <ChevronRight className="h-4 w-4" />
         </button>
-      </section>
+      </nav>
     </>
   );
 }

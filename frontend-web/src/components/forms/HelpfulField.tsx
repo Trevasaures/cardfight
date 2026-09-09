@@ -3,19 +3,28 @@ import { HelpCircle } from "lucide-react";
 
 type HelpTooltipProps = {
   text: string;
+  label: string;
 };
 
-export function HelpTooltip({ text }: HelpTooltipProps) {
-  return (
-    <span className="group relative inline-flex" tabIndex={0}>
-      <HelpCircle
-        className="h-4 w-4 cursor-help text-slate-500 transition hover:text-cyan-200"
-        aria-hidden="true"
-      />
+export function HelpTooltip({ text, label }: HelpTooltipProps) {
+  const tooltipId = useId();
 
-      <span className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 hidden w-64 -translate-x-1/2 rounded-2xl 
-        border border-white/10 bg-slate-950 px-4 py-3 text-left text-xs font-medium normal-case leading-5 tracking-normal text-slate-300 shadow-2xl 
-        shadow-black/40 group-hover:block group-focus:block">
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        aria-label={`Help for ${label}`}
+        aria-describedby={tooltipId}
+        className="peer inline-flex cursor-help rounded-full text-slate-500 transition hover:text-cyan-200 focus-visible:text-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300"
+      >
+        <HelpCircle className="h-4 w-4" aria-hidden="true" />
+      </button>
+
+      <span
+        id={tooltipId}
+        role="tooltip"
+        className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 hidden w-64 -translate-x-1/2 rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-left text-xs font-medium normal-case leading-5 tracking-normal text-slate-300 shadow-2xl shadow-black/40 peer-hover:block peer-focus-visible:block"
+      >
         {text}
       </span>
     </span>
@@ -36,17 +45,16 @@ export function FieldLabel({
   required = false,
 }: FieldLabelProps) {
   return (
-    <label
-      htmlFor={htmlFor}
+    <div
       className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-500"
     >
-      <span>
+      <label htmlFor={htmlFor}>
         {label}
         {required ? <span className="ml-1 text-cyan-200">*</span> : null}
-      </span>
+      </label>
 
-      <HelpTooltip text={help} />
-    </label>
+      <HelpTooltip text={help} label={label} />
+    </div>
   );
 }
 
@@ -93,7 +101,6 @@ export function FormTextInput({
         readOnly={readOnly}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        title={help}
         className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-300/50 read-only:cursor-default read-only:text-slate-400"
       />
     </div>
@@ -140,7 +147,6 @@ export function FormSelect({
         value={value}
         required={required}
         onChange={(event) => onChange(event.target.value)}
-        title={help}
         className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none focus:border-cyan-300/50"
       >
         <option value="">{placeholder}</option>
