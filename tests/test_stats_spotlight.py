@@ -163,6 +163,58 @@ def test_performance_spotlight_handles_a_deck_without_matches(app_context, clien
     assert payload["insights"] == []
 
 
+def test_recent_match_details_use_the_selected_decks_perspective(client):
+    subject = Deck(name="Drajeweled", type="Standard")
+    opponent = Deck(name="Varga", type="Standard")
+    version = DeckVersion(deck=subject, version_name="Drajeweled 1", is_active=True)
+    db.session.add_all([subject, opponent, version])
+    db.session.flush()
+    played_at = datetime(2026, 9, 17, 18, 30)
+    match = Match(
+        deck1=opponent,
+        deck2=subject,
+        deck2_version=version,
+        winner_id=opponent.id,
+        first_player_id=opponent.id,
+        date_played=played_at,
+        format="Any",
+        notes="Saved the persona ride.\nNeeded more shield on the last turn.",
+    )
+    db.session.add(match)
+    db.session.commit()
+
+    payload = client.get(f"/api/stats/spotlight/{subject.id}").get_json()
+    assert payload["recent_form"]["results"] == [{
+        "match_id": match.id,
+        "date_played": played_at.isoformat(),
+        "opponent_id": opponent.id,
+        "opponent_name": "Varga",
+        "opponent_nation": None,
+        "result": "L",
+        "turn_order": "second",
+        "version_id": version.id,
+        "version_name": "Drajeweled 1",
+        "format": "Any",
+        "notes": match.notes,
+    }]
+
+
+def test_recent_match_details_handle_missing_optional_metadata(client):
+    subject = Deck(name="Drajeweled", type="Standard")
+    opponent = Deck(name="Varga", type="Standard")
+    db.session.add_all([subject, opponent])
+    db.session.flush()
+    db.session.add(Match(deck1=subject, deck2=opponent, winner_id=subject.id))
+    db.session.commit()
+
+    payload = client.get(f"/api/stats/spotlight/{subject.id}").get_json()
+    result = payload["recent_form"]["results"][0]
+    assert result["result"] == "W"
+    assert result["turn_order"] == "unknown"
+    assert result["version_name"] is None
+    assert result["notes"] == ""
+
+
 def test_performance_spotlight_returns_404_for_unknown_deck(client):
     response = client.get("/api/stats/spotlight/999")
 

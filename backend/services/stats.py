@@ -101,6 +101,8 @@ def _match_spotlight_row(match, deck_id: int) -> dict:
         "turn_order": turn_order,
         "version_id": version.id if version else None,
         "version_name": version.version_name if version else None,
+        "format": match.format,
+        "notes": match.notes or "",
     }
 
 

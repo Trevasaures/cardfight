@@ -1,7 +1,30 @@
 from datetime import datetime, timedelta
+from urllib.parse import urlencode
 
 from backend.database import db
 from backend.models import Deck, Match
+
+
+def test_history_accepts_a_deck_name_from_a_deep_link(client):
+    subject = Deck(name='Drajeweled & Friends + "Reborn"', type="Standard")
+    opponent = Deck(name="Varga", type="Standard")
+    other = Deck(name="Luard", type="Stride")
+    db.session.add_all([subject, opponent, other])
+    db.session.flush()
+    db.session.add_all([
+        Match(deck1=subject, deck2=opponent, winner_id=subject.id),
+        Match(deck1=opponent, deck2=subject, winner_id=opponent.id),
+        Match(deck1=other, deck2=opponent, winner_id=other.id),
+    ])
+    db.session.commit()
+
+    query = urlencode({"q": subject.name, "page": 1, "page_size": 12})
+    response = client.get(f"/api/matches?{query}")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["pagination"]["total_items"] == 2
+    assert payload["pagination"]["total_pages"] == 1
+    assert all(subject.id in (match["deck1_id"], match["deck2_id"]) for match in payload["items"])
 
 
 def test_match_history_filters_the_complete_result_set_before_paginating(

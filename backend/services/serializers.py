@@ -176,16 +176,36 @@ def serialize_card_printing(printing):
     }
 
 
-def serialize_card(card, include_printings=True):
+def serialize_cards(cards):
+    """Serialize a bounded page with one printing query, not one per card."""
+    if not cards:
+        return []
+
+    printings_by_card = {card.id: [] for card in cards}
+    printings = CardPrinting.query.filter(
+        CardPrinting.card_id.in_(printings_by_card)
+    ).order_by(CardPrinting.id.asc()).all()
+    for printing in printings:
+        printings_by_card[printing.card_id].append(printing)
+
+    return [
+        serialize_card(card, printing_rows=printings_by_card[card.id])
+        for card in cards
+    ]
+
+
+def serialize_card(card, include_printings=True, *, printing_rows=None):
     if not card:
         return None
 
     printings = []
 
     if include_printings:
+        if printing_rows is None:
+            printing_rows = card.printings.order_by(CardPrinting.id.asc()).all()
         printings = [
             serialize_card_printing(printing)
-            for printing in card.printings.order_by(CardPrinting.id.asc()).all()
+            for printing in printing_rows
         ]
 
     primary_printing = printings[0] if printings else None
