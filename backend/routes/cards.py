@@ -13,7 +13,7 @@ from backend.services.cards import (
     update_card,
     update_card_printing,
 )
-from backend.services.serializers import serialize_card, serialize_card_printing
+from backend.services.serializers import serialize_card, serialize_card_printing, serialize_cards
 from backend.services.card_image_analyzer import analyze_card_image
 from backend.services.card_set_names import (
     CardSetInUseError,
@@ -129,22 +129,23 @@ def create_card_route():
 
 @bp_cards.get("/library")
 def card_library_route():
-    result = list_cards_page(
-        q=request.args.get("q"),
-        nation=request.args.get("nation"),
-        grade=request.args.get("grade"),
-        card_type=request.args.get("card_type"),
-        set_code=request.args.get("set_code"),
-        page=request.args.get("page", 1),
-        page_size=request.args.get("page_size", 250),
-    )
+    try:
+        result = list_cards_page(
+            q=request.args.get("q"),
+            nation=request.args.get("nation"),
+            grade=request.args.get("grade"),
+            card_type=request.args.get("card_type"),
+            set_code=request.args.get("set_code"),
+            page=request.args.get("page", 1),
+            page_size=request.args.get("page_size", 24),
+            sort=request.args.get("sort", "name_asc"),
+        )
+    except ValueError:
+        return _json_error("Invalid card library filters or sort order.", 400)
 
     return jsonify(
         {
-            "items": [
-                serialize_card(card, include_printings=True)
-                for card in result["items"]
-            ],
+            "items": serialize_cards(result["items"]),
             "pagination": result["pagination"],
         }
     )

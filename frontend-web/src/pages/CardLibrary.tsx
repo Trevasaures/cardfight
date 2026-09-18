@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Layers3,
   Pencil,
   RefreshCcw,
@@ -43,8 +45,10 @@ import type {
   Card,
   CardFormOptions,
   CardImageAnalysisResult,
+  CardLibrarySort,
   CardPrinting,
   CardSetOption,
+  PaginatedCardsResponse,
 } from "../types/api";
 import {
   cardNationToApiValue,
@@ -73,6 +77,26 @@ const CARD_TYPE_OPTIONS = [
   "Blitz Order",
   "Set Order",
 ];
+
+const DEFAULT_CATALOG = {
+  q: "",
+  nation: "",
+  grade: "",
+  card_type: "",
+  set_code: "",
+  page: 1,
+  page_size: 24,
+  sort: "name_asc" as CardLibrarySort,
+};
+
+const EMPTY_PAGINATION: PaginatedCardsResponse["pagination"] = {
+  page: 1,
+  page_size: 24,
+  total_items: 0,
+  total_pages: 1,
+  has_next: false,
+  has_prev: false,
+};
 
 function primaryPrintingLabel(card: Card) {
   const printing = card.primary_printing;
@@ -123,13 +147,12 @@ function cardToManualForm(card: Card): ManualCardFormState {
 export function CardLibrary() {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const loadRequestRef = useRef(0);
+  const loadControllerRef = useRef<AbortController | null>(null);
 
   const [cards, setCards] = useState<Card[]>([]);
   const [query, setQuery] = useState("");
-  const [nation, setNation] = useState("");
-  const [grade, setGrade] = useState("");
-  const [cardType, setCardType] = useState("");
-  const [setCode, setSetCode] = useState("");
+  const [catalog, setCatalog] = useState(DEFAULT_CATALOG);
+  const { nation, grade, card_type: cardType, set_code: setCode } = catalog;
 
   const [editingCard, setEditingCard] = useState<Card | null>(null);
   const [addingPrintingCard, setAddingPrintingCard] = useState<Card | null>(
@@ -150,8 +173,9 @@ export function CardLibrary() {
     DEFAULT_CARD_FORM_OPTIONS,
   );
 
-  const [totalItems, setTotalItems] = useState(0);
+  const [pagination, setPagination] = useState(EMPTY_PAGINATION);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [savingPrinting, setSavingPrinting] = useState(false);
   const [savingCreate, setSavingCreate] = useState(false);
@@ -176,9 +200,33 @@ export function CardLibrary() {
   });
 
   const activeFilterCount = useMemo(() => {
-    return [query.trim(), setCode, nation, grade, cardType].filter(Boolean)
+    return [catalog.q, setCode, nation, grade, cardType].filter(Boolean)
       .length;
-  }, [query, setCode, nation, grade, cardType]);
+  }, [catalog.q, setCode, nation, grade, cardType]);
+
+  const searchPending = query.trim() !== catalog.q;
+  const firstItem = pagination.total_items
+    ? (pagination.page - 1) * pagination.page_size + 1
+    : 0;
+  const lastItem = Math.min(pagination.page * pagination.page_size, pagination.total_items);
+  const resultSummary = loading || searchPending
+    ? "Searching the catalog…"
+    : loadFailed
+      ? "Could not load this page. Try refreshing."
+      : `${firstItem}–${lastItem} of ${pagination.total_items.toLocaleString()} ${activeFilterCount ? "matching " : ""}card${pagination.total_items === 1 ? "" : "s"}`;
+
+  function updateCatalog(changes: Partial<typeof DEFAULT_CATALOG>) {
+    setCatalog((current) => ({ ...current, ...changes, page: 1 }));
+  }
+
+  // Typing searches the full catalog after a short pause; paging never downloads it all.
+  useEffect(() => {
+    if (!searchPending) return;
+    const timeout = window.setTimeout(() => {
+      setCatalog((current) => ({ ...current, q: query.trim(), page: 1 }));
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [query, searchPending]);
 
   const editFormIsComplete = useMemo(() => {
     return manualCardFormIsComplete(editForm);
@@ -221,9 +269,9 @@ export function CardLibrary() {
     setPrintingForm((current) =>
       replaceCardSetSelection(current, previousCode, cardSet),
     );
-    setSetCode((current) =>
-      current === previousCode ? cardSet.code : current,
-    );
+    setCatalog((current) => current.set_code === previousCode
+      ? { ...current, set_code: cardSet.code, page: 1 }
+      : current);
   }
 
   function handleSetDeleted(setCode: string) {
@@ -234,7 +282,9 @@ export function CardLibrary() {
     setCreateForm((current) => clearCardSetSelection(current, setCode));
     setEditForm((current) => clearCardSetSelection(current, setCode));
     setPrintingForm((current) => clearCardSetSelection(current, setCode));
-    setSetCode((current) => (current === setCode ? "" : current));
+    setCatalog((current) => current.set_code === setCode
+      ? { ...current, set_code: "", page: 1 }
+      : current);
   }
 
   function rememberFormSet(
@@ -248,38 +298,44 @@ export function CardLibrary() {
 
   const loadCards = useCallback(async () => {
     const requestId = ++loadRequestRef.current;
+    loadControllerRef.current?.abort();
+    const controller = new AbortController();
+    loadControllerRef.current = controller;
     setLoading(true);
+    setLoadFailed(false);
     setError(null);
 
     try {
-      const response = await getCardLibraryPage({
-        q: query.trim() || undefined,
-        nation: nation || undefined,
-        grade: grade || undefined,
-        card_type: cardType || undefined,
-        set_code: setCode || undefined,
-        page: 1,
-        page_size: 500,
-      });
+      const response = await getCardLibraryPage(catalog, controller.signal);
 
-      if (requestId === loadRequestRef.current) {
+      if (requestId === loadRequestRef.current && !controller.signal.aborted) {
         setCards(response.items);
-        setTotalItems(response.pagination.total_items);
+        setPagination(response.pagination);
+        parentRef.current?.scrollTo({ top: 0 });
       }
     } catch (err) {
-      if (requestId === loadRequestRef.current) {
+      if (requestId === loadRequestRef.current && !controller.signal.aborted) {
+        setLoadFailed(true);
         setError(err instanceof Error ? err.message : "Failed to load cards");
       }
     } finally {
-      if (requestId === loadRequestRef.current) {
+      if (requestId === loadRequestRef.current && !controller.signal.aborted) {
         setLoading(false);
       }
     }
-  }, [query, nation, grade, cardType, setCode]);
+  }, [catalog]);
 
   useEffect(() => {
     void loadCards();
+    return () => {
+      loadControllerRef.current?.abort();
+    };
   }, [loadCards]);
+
+  function applySearch() {
+    if (searchPending) updateCatalog({ q: query.trim() });
+    else void loadCards();
+  }
 
   function applyCardAnalysis(result: CardImageAnalysisResult) {
     setCreateForm(cardAnalysisToManualForm(result));
@@ -348,10 +404,7 @@ export function CardLibrary() {
 
   function clearFilters() {
     setQuery("");
-    setNation("");
-    setGrade("");
-    setCardType("");
-    setSetCode("");
+    updateCatalog({ q: "", nation: "", grade: "", card_type: "", set_code: "" });
   }
 
   function startEditingCard(card: Card) {
@@ -506,7 +559,7 @@ export function CardLibrary() {
         <WorkspaceSectionHeader
           eyebrow="Catalog"
           title="Card records"
-          description={`Showing ${cards.length} of ${totalItems} cards${activeFilterCount ? ` · ${activeFilterCount} active filters` : ""}`}
+          description={`${resultSummary}${activeFilterCount ? ` · ${activeFilterCount} active filter${activeFilterCount === 1 ? "" : "s"}` : ""}`}
           actions={
           <button
             type="button"
@@ -529,7 +582,7 @@ export function CardLibrary() {
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
-                void loadCards();
+                applySearch();
               }
             }}
             placeholder="Search name, set, number, rarity, skill..."
@@ -539,7 +592,7 @@ export function CardLibrary() {
 
           <button
             type="button"
-            onClick={loadCards}
+            onClick={applySearch}
             disabled={loading}
             className="workspace-button col-span-2 inline-flex items-center justify-center gap-2 border border-cyan-300/20 bg-cyan-300/10 px-4 text-xs font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-1"
             title="Apply filters"
@@ -551,7 +604,7 @@ export function CardLibrary() {
           <button
             type="button"
             onClick={clearFilters}
-            disabled={!activeFilterCount}
+            disabled={!activeFilterCount && !query.trim()}
             className="workspace-button inline-flex items-center justify-center border border-white/10 bg-white/[0.035] px-3 text-xs font-bold text-slate-300 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
             title="Clear all filters"
           >
@@ -562,7 +615,7 @@ export function CardLibrary() {
           <div className="mt-2 grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,0.65fr)_minmax(0,1fr)]">
           <select
             value={setCode}
-            onChange={(event) => setSetCode(event.target.value)}
+            onChange={(event) => updateCatalog({ set_code: event.target.value })}
             title="Filter by card set"
             className="workspace-control w-full min-w-0"
           >
@@ -576,7 +629,7 @@ export function CardLibrary() {
 
           <select
             value={nation}
-            onChange={(event) => setNation(event.target.value)}
+            onChange={(event) => updateCatalog({ nation: event.target.value })}
             title="Filter by nation"
             className="workspace-control w-full min-w-0"
           >
@@ -589,7 +642,7 @@ export function CardLibrary() {
 
           <select
             value={grade}
-            onChange={(event) => setGrade(event.target.value)}
+            onChange={(event) => updateCatalog({ grade: event.target.value })}
             title="Filter by grade"
             className="workspace-control w-full min-w-0"
           >
@@ -603,7 +656,7 @@ export function CardLibrary() {
 
           <select
             value={cardType}
-            onChange={(event) => setCardType(event.target.value)}
+            onChange={(event) => updateCatalog({ card_type: event.target.value })}
             title="Filter by card type"
             className="workspace-control w-full min-w-0"
           >
@@ -614,6 +667,33 @@ export function CardLibrary() {
             ))}
           </select>
 
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-slate-500">Search and filters cover the entire catalog.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={catalog.sort}
+              onChange={(event) => updateCatalog({ sort: event.target.value as CardLibrarySort })}
+              aria-label="Sort card records"
+              className="workspace-control min-w-0 text-xs"
+            >
+              <option value="name_asc">Name: A–Z</option>
+              <option value="name_desc">Name: Z–A</option>
+              <option value="grade_desc">Grade: high to low</option>
+              <option value="grade_asc">Grade: low to high</option>
+              <option value="newest">Recently added</option>
+              <option value="updated">Recently updated</option>
+            </select>
+            <select
+              value={catalog.page_size}
+              onChange={(event) => updateCatalog({ page_size: Number(event.target.value) })}
+              aria-label="Cards per page"
+              className="workspace-control min-w-0 text-xs"
+            >
+              {[24, 48, 96].map((size) => <option key={size} value={size}>{size} per page</option>)}
+            </select>
           </div>
         </div>
 
@@ -678,11 +758,22 @@ export function CardLibrary() {
 
         <div
           ref={parentRef}
-          className="workspace-inset mt-4 h-[min(42rem,72dvh)] min-h-80 overflow-auto p-1.5"
+          aria-busy={loading || searchPending}
+          aria-label="Card search results"
+          className="workspace-inset mt-4 overflow-auto p-1.5"
+          style={{
+            height: cards.length && !loading && !loadFailed
+              ? `min(42rem, 72dvh, ${rowVirtualizer.getTotalSize() + 12}px)`
+              : "14rem",
+          }}
         >
           {loading ? (
             <div className="flex h-full items-center justify-center text-sm font-bold text-slate-500">
               Loading cards...
+            </div>
+          ) : loadFailed ? (
+            <div className="flex h-full items-center justify-center text-sm text-slate-400">
+              Could not load this page. Use Refresh to try again.
             </div>
           ) : cards.length === 0 ? (
             <div className="flex h-full items-center justify-center text-center">
@@ -789,6 +880,32 @@ export function CardLibrary() {
             </div>
           )}
         </div>
+        <nav aria-label="Card catalog pages" className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3">
+          <p role="status" className="text-xs text-slate-400">{resultSummary}</p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              aria-label="Previous card page"
+              disabled={loading || searchPending || loadFailed || !pagination.has_prev}
+              onClick={() => setCatalog((current) => ({ ...current, page: pagination.page - 1 }))}
+              className="workspace-button inline-flex items-center gap-1 border border-white/10 bg-white/[0.05] px-3 text-xs text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft className="h-4 w-4" /> Previous
+            </button>
+            <span className="text-xs tabular-nums text-slate-400">
+              {loading || searchPending || loadFailed ? "Page …" : `Page ${pagination.page} of ${pagination.total_pages}`}
+            </span>
+            <button
+              type="button"
+              aria-label="Next card page"
+              disabled={loading || searchPending || loadFailed || !pagination.has_next}
+              onClick={() => setCatalog((current) => ({ ...current, page: pagination.page + 1 }))}
+              className="workspace-button inline-flex items-center gap-1 border border-white/10 bg-white/[0.05] px-3 text-xs text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </nav>
       </section>
     </div>
   );

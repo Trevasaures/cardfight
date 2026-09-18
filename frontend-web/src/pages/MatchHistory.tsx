@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight, RefreshCcw, Search } from "lucide-react";
 
 import { deleteMatch, getMatchesPage } from "../api/matches";
@@ -32,7 +33,17 @@ export function MatchHistory() {
     has_prev: false,
   });
 
-  const [search, setSearch] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const search = searchParams.get("q") ?? "";
+
+  function setSearch(value: string) {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      if (value) next.set("q", value);
+      else next.delete("q");
+      return next;
+    }, { replace: true });
+  }
   const [format, setFormat] = useState<MatchFormat | "All">("All");
   const [result, setResult] = useState<ResultFilter>("All");
   const [pageSize, setPageSize] = useState(12);

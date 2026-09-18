@@ -98,6 +98,8 @@ export type SpotlightMatch = {
   turn_order: "first" | "second" | "unknown";
   version_id: number | null;
   version_name: string | null;
+  format: MatchFormat | null;
+  notes: string;
 };
 
 export type SpotlightMatchup = PerformanceRecord & {
@@ -484,9 +486,18 @@ export type PaginatedCardsResponse = {
   };
 };
 
+export type CardLibrarySort =
+  | "name_asc"
+  | "name_desc"
+  | "grade_asc"
+  | "grade_desc"
+  | "newest"
+  | "updated";
+
 export type CardLibraryParams = CardSearchParams & {
   page?: number;
   page_size?: number;
+  sort?: CardLibrarySort;
 };
 
 export type CardSetOption = {

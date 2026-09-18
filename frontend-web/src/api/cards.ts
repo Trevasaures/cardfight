@@ -117,8 +117,9 @@ export function analyzeCardImage(file: File) {
   });
 }
 
-export function getCardLibraryPage(params: CardLibraryParams = {}) {
+export function getCardLibraryPage(params: CardLibraryParams = {}, signal?: AbortSignal) {
   return apiRequest<PaginatedCardsResponse>(
     `/api/cards/library${toQueryString(params)}`,
+    { signal },
   );
 }

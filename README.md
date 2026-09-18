@@ -13,6 +13,9 @@ The project is designed primarily as a personal testing lab. Everything runs loc
 - Records match results, notes, participating deck versions, and matchup history.
 - Provides dashboard summaries, analytics, head-to-head statistics, and rivalry views.
 - Maintains a shared card catalog with individual card printings.
+  - Card Library loads 24 cards per page by default, with 48- and 96-card options.
+  - Search and set/nation/grade/type filters run across the entire catalog, with name, grade, recently added, and recently updated sorting.
+  - The library API caps pages at 100 cards and batches printing lookups for each page. This bounds returned data; very large catalogs may still benefit from full-text search and cursor pagination for deep browsing.
 - Builds and versions deck lists without overwriting earlier builds.
 - Creates a new deck version from an empty list or an exact copy of an older version.
 - Compares two versions to surface card, quantity, zone, printing, and grade-curve changes.

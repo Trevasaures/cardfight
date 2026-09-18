@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties, type ReactNode } from "react";
+import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowRight,
@@ -20,10 +20,12 @@ import {
 import { usePerformanceSpotlightMotion } from "../../animations/usePerformanceSpotlightMotion";
 import { FormatBadge } from "../badges/FormatBadge";
 import { WorkspaceSectionHeader } from "../layout/WorkspaceSectionHeader";
+import { SpotlightMatchDialog } from "./SpotlightMatchDialog";
 import type {
   PerformanceRecord,
   PerformanceSpotlightResponse,
   SpotlightInsight,
+  SpotlightMatch,
   SpotlightMatchup,
 } from "../../types/api";
 import { formatPercent, formatRecord } from "../../utils/format";
@@ -313,7 +315,9 @@ const INSIGHT_TONES: Record<SpotlightInsight["tone"], string> = {
 
 export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
   const rootRef = useRef<HTMLElement | null>(null);
+  const [selectedMatch, setSelectedMatch] = useState<SpotlightMatch | null>(null);
   const { deck, overview, recent_form: recent, turn_order: turnOrder } = spotlight;
+  const historyUrl = `/matches?${new URLSearchParams({ q: deck.name })}`;
   const theme = NATION_THEMES[deck.nation ?? ""] ?? DEFAULT_THEME;
   const style: SpotlightStyle = {
     "--spotlight-primary": theme.primary,
@@ -451,7 +455,7 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
                       Recent decided games
                     </p>
                     <p className="mt-1 text-xs text-slate-400">
-                      Oldest to newest · hover a result for the matchup
+                      Oldest to newest · select a result for match details
                     </p>
                   </div>
                   <span className="text-xs text-slate-500">{spotlight.sample.message}</span>
@@ -460,12 +464,15 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
                 {recent.results.length ? (
                   <div className="mt-3 grid grid-cols-5 gap-2 sm:grid-cols-10">
                     {recent.results.map((result) => (
-                      <div
+                      <button
                         key={result.match_id}
+                        type="button"
                         data-spotlight="result"
-                        title={`${result.result === "W" ? "Win" : "Loss"} vs ${result.opponent_name} · ${conciseDate(result.date_played)} · went ${result.turn_order}`}
+                        onClick={() => setSelectedMatch(result)}
+                        aria-haspopup="dialog"
+                        aria-label={`View ${deck.name}'s ${result.result === "W" ? "win" : "loss"} against ${result.opponent_name} on ${conciseDate(result.date_played)}`}
                         className={[
-                          "group relative flex h-10 items-center justify-center overflow-hidden rounded-lg border text-sm font-black transition hover:-translate-y-1",
+                          "group relative flex h-10 cursor-pointer items-center justify-center overflow-hidden rounded-lg border text-sm font-black transition hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--spotlight-primary)] motion-reduce:transform-none",
                           result.result === "W"
                             ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-200 hover:bg-emerald-300/20"
                             : "border-rose-300/25 bg-rose-300/10 text-rose-200 hover:bg-rose-300/20",
@@ -473,7 +480,7 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
                       >
                         {result.result}
                         <span className="absolute inset-x-1 bottom-1 h-0.5 scale-x-0 rounded-full bg-current transition group-hover:scale-x-100" />
-                      </div>
+                      </button>
                     ))}
                   </div>
                 ) : (
@@ -510,7 +517,7 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
               Plan purchases
             </Link>
             <Link
-              to="/matches"
+              to={historyUrl}
               className="ml-auto inline-flex items-center gap-2 px-2 py-2 text-sm font-bold text-slate-400 transition hover:text-white"
             >
               Open match history
@@ -599,6 +606,14 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
           </div>
         )}
       </section>
+      {selectedMatch ? (
+        <SpotlightMatchDialog
+          match={selectedMatch}
+          deckName={deck.name}
+          historyUrl={historyUrl}
+          onClose={() => setSelectedMatch(null)}
+        />
+      ) : null}
     </section>
   );
 }

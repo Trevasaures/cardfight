@@ -348,13 +348,14 @@ def list_cards_page(
     card_type=None,
     set_code=None,
     page=1,
-    page_size=100,
+    page_size=24,
+    sort="name_asc",
 ):
     query = Card.query
 
     q = _clean_string(q)
 
-    if q and len(q) >= 2:
+    if q:
         like = f"%{q}%"
         query = query.filter(
             or_(
@@ -398,21 +399,31 @@ def list_cards_page(
     try:
         safe_page_size = int(page_size)
     except (TypeError, ValueError):
-        safe_page_size = 100
+        safe_page_size = 24
 
     safe_page = max(safe_page, 1)
-    safe_page_size = min(max(safe_page_size, 1), 500)
+    safe_page_size = min(max(safe_page_size, 1), 100)
+
+    # Only known columns/directions are accepted, with a stable ID tie-breaker.
+    sort_orders = {
+        "name_asc": (Card.name.asc(),),
+        "name_desc": (Card.name.desc(),),
+        "grade_asc": (Card.grade.is_(None), Card.grade.asc(), Card.name.asc()),
+        "grade_desc": (Card.grade.is_(None), Card.grade.desc(), Card.name.asc()),
+        "newest": (Card.created_at.desc(),),
+        "updated": (Card.updated_at.desc(),),
+    }
+    sort_order = sort_orders.get(sort)
+    if sort_order is None:
+        raise ValueError("Invalid card library sort")
 
     total_items = query.count()
     total_pages = max((total_items + safe_page_size - 1) // safe_page_size, 1)
+    safe_page = min(safe_page, total_pages)
     offset = (safe_page - 1) * safe_page_size
 
     cards = (
-        query.order_by(
-            Card.name.asc(),
-            Card.grade.asc(),
-            Card.nation.asc(),
-        )
+        query.order_by(*sort_order, Card.id.asc())
         .offset(offset)
         .limit(safe_page_size)
         .all()
