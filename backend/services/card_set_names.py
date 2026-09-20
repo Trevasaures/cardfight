@@ -31,7 +31,8 @@ SET_CODE_NAMES = {
     "DZ-BT13": "Parallactic Clash",
     "DZ-BT14": "Envoys of the Crimson Moon",
     "DZ-BT15": "Strike of Illusionary Shadows",
-    "DZ-BT16": "Paralactic Dawn",
+    "DZ-BT16": "Parallactic Dawn",
+    "DZ-BT17": "Parallactic Fate",
 }
 
 
