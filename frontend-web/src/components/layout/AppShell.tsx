@@ -1,135 +1,95 @@
-import { useRef } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import {
-  BarChart3,
-  BookOpen,
-  Gamepad2,
-  Hammer,
-  History,
-  Home,
-  LibraryBig,
-  ShoppingCart,
-  Sparkles,
-  Swords,
-  Trophy,
-} from "lucide-react";
-
+import { useEffect, useRef, useState } from "react";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { ArrowUpRight, BarChart3, BookOpen, ChevronRight, Command, Gamepad2, Hammer, History, Home, LibraryBig, Menu, Search, ShoppingCart, Sparkles, Swords, X } from "lucide-react";
 import { useRoutePageReveal } from "../../animations/useRoutePageReveal";
 
 const navGroups = [
-  {
-    label: "Overview",
-    items: [{ to: "/", label: "Dashboard", icon: Home }],
-  },
-  {
-    label: "Cards & Decks",
-    items: [
-      { to: "/decks", label: "Deck Library", icon: BookOpen },
-      { to: "/cards", label: "Card Library", icon: LibraryBig },
-      { to: "/deck-builder", label: "Deck Builder", icon: Hammer },
-      { to: "/order-tracker", label: "Order Tracker", icon: ShoppingCart },
-    ],
-  },
-  {
-    label: "Play Tools",
-    items: [
-      { to: "/play", label: "Play Lab", icon: Gamepad2 },
-      { to: "/nation-quiz", label: "Nation Quiz", icon: Sparkles },
-    ],
-  },
-  {
-    label: "History & Stats",
-    items: [
-      { to: "/matches", label: "Match History", icon: History },
-      { to: "/analytics", label: "Analytics", icon: BarChart3 },
-      { to: "/rivalries", label: "Rivalries", icon: Swords },
-    ],
-  },
+  { label: "Your workspace", items: [
+    { to: "/", label: "Dashboard", icon: Home },
+    { to: "/play", label: "Play Lab", icon: Gamepad2 },
+  ] },
+  { label: "Collection", items: [
+    { to: "/decks", label: "Deck Library", icon: BookOpen },
+    { to: "/cards", label: "Card Library", icon: LibraryBig },
+    { to: "/deck-builder", label: "Deck Builder", icon: Hammer },
+    { to: "/order-tracker", label: "Order Tracker", icon: ShoppingCart },
+  ] },
+  { label: "Insights", items: [
+    { to: "/matches", label: "Match History", icon: History },
+    { to: "/analytics", label: "Analytics", icon: BarChart3 },
+    { to: "/rivalries", label: "Rivalries", icon: Swords },
+    { to: "/nation-quiz", label: "Nation Quiz", icon: Sparkles },
+  ] },
 ];
+const destinations = navGroups.flatMap((group) => group.items);
 
 export function AppShell() {
   const location = useLocation();
-  const navigate = useNavigate();
   const pageRef = useRef<HTMLElement | null>(null);
-
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const current = destinations.find((item) => item.to === location.pathname);
   useRoutePageReveal(pageRef, location.pathname);
 
+  useEffect(() => {
+    document.title = `${current?.label ?? "Dashboard"} · Cardfight Lab`;
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [location.pathname, current?.label]);
+
+  function openSearch() {
+    setQuery("");
+    dialogRef.current?.showModal();
+    searchRef.current?.focus();
+  }
+
+  useEffect(() => {
+    function handleShortcut(event: KeyboardEvent) {
+      if (event.key === "Escape") setMobileOpen(false);
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        openSearch();
+      }
+    }
+    document.addEventListener("keydown", handleShortcut);
+    return () => document.removeEventListener("keydown", handleShortcut);
+  }, []);
+
   return (
-    <div className="min-h-screen">
-      <aside className="fixed left-0 top-0 hidden h-screen w-72 overflow-auto border-r border-white/10 bg-slate-950/70 px-4 py-5 backdrop-blur-xl lg:block">
-        <div className="mb-6 px-1">
-          <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-300/25 bg-cyan-300/10">
-            <Trophy className="h-5 w-5 text-cyan-200" />
-          </div>
+    <div className="app-shell">
+      <a href="#main-content" className="skip-link">Skip to content</a>
+      <aside className={`app-sidebar ${mobileOpen ? "is-open" : ""}`}>
+        <Link to="/" className="brand" onClick={() => setMobileOpen(false)} aria-label="Cardfight Lab home">
+          <span className="brand-mark"><Swords size={23} strokeWidth={1.5} /></span>
+          <span><strong>CARDFIGHT<span className="brand-dot">.</span></strong><small>THE VANGUARD LAB</small></span>
+        </Link>
 
-          <h1 className="text-lg font-bold tracking-tight">
-            Cardfight Lab
-          </h1>
-          </div>
-
-          <p className="mt-3 text-xs leading-5 text-slate-400">
-            Vanguard match tracker and deck testing hub.
-          </p>
-        </div>
-
-        <nav aria-label="Main navigation" className="space-y-5">
-          {navGroups.map((group) => (
-            <div key={group.label}>
-              <p className="mb-2 px-3 text-[0.65rem] font-black uppercase tracking-[0.22em] text-slate-600">
-                {group.label}
-              </p>
-
-              <div className="space-y-1">
-                {group.items.map((item) => {
-                  const Icon = item.icon;
-
-                  return (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      end={item.to === "/"}
-                      className={({ isActive }) =>
-                        [
-                          "flex min-h-10 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-cyan-300",
-                          isActive
-                            ? "bg-cyan-300/15 text-cyan-100 ring-1 ring-cyan-300/20"
-                            : "text-slate-400 hover:bg-white/5 hover:text-slate-100",
-                        ].join(" ")
-                      }
-                    >
-                      <Icon className="h-4 w-4" />
-                      {item.label}
-                    </NavLink>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+        <nav id="main-navigation" aria-label="Main navigation" className="sidebar-nav">
+          {navGroups.map((group) => <div className="nav-group" key={group.label}>
+            <p>{group.label}</p>
+            {group.items.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} end={to === "/"} onClick={() => setMobileOpen(false)} className={({ isActive }) => `nav-item ${isActive ? "is-active" : ""}`}>
+              <Icon size={18} strokeWidth={1.65} /><span>{label}</span><ChevronRight className="nav-chevron" size={14} />
+            </NavLink>)}
+          </div>)}
         </nav>
+        <div className="sidebar-footer"><span className="workspace-avatar">CF</span><div><strong>Your personal lab</strong></div></div>
       </aside>
-
-      <nav aria-label="Mobile navigation" className="flex items-center justify-between gap-3 border-b border-white/10 bg-slate-950/70 px-4 py-3 lg:hidden">
-        <span className="flex shrink-0 items-center gap-2 text-sm font-black text-slate-100">
-          <Trophy aria-hidden="true" className="h-5 w-5 text-cyan-200" />
-          Cardfight Lab
-        </span>
-        <select aria-label="Navigate to" value={location.pathname} onChange={(event) => navigate(event.target.value)} className="workspace-control w-40 text-xs">
-          {navGroups.map((group) => (
-            <optgroup key={group.label} label={group.label}>
-              {group.items.map((item) => <option key={item.to} value={item.to}>{item.label}</option>)}
-            </optgroup>
-          ))}
-        </select>
-      </nav>
-
-      <main
-        ref={pageRef}
-        key={location.pathname}
-        className="min-h-screen px-4 py-6 sm:px-6 lg:ml-72 lg:px-8"
-      >
-        <Outlet />
-      </main>
+      <div className="app-body">
+        <header className="app-topbar">
+          <button className="icon-button mobile-toggle" type="button" aria-label={mobileOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileOpen} aria-controls="main-navigation" onClick={() => setMobileOpen(!mobileOpen)}>{mobileOpen ? <X size={20} /> : <Menu size={20} />}</button>
+          <span className="mobile-page-title" aria-hidden="true">{current?.label ?? "Dashboard"}</span>
+          <button className="quick-search" type="button" aria-label="Jump to a page" onClick={openSearch}><Search size={16} /><span>Jump to a page...</span><kbd><Command size={11} /> K</kbd></button>
+          <Link to="/play" className="topbar-play"><Swords size={16} /><span>Start a match</span><ArrowUpRight size={14} /></Link>
+        </header>
+        <main id="main-content" aria-labelledby="page-title" tabIndex={-1} ref={pageRef} key={location.pathname} className="app-main"><Outlet /></main>
+      </div>
+      <dialog ref={dialogRef} className="command-dialog" aria-label="Jump to a page" onClick={(event) => { if (event.target === event.currentTarget) dialogRef.current?.close(); }}>
+        <div className="command-search"><Search size={20} /><input ref={searchRef} aria-label="Search pages" placeholder="Where would you like to go?" value={query} onChange={(event) => setQuery(event.target.value)} /><button type="button" className="icon-button" aria-label="Close search" onClick={() => dialogRef.current?.close()}><X size={18} /></button></div>
+        <div className="command-results">{destinations.filter((item) => item.label.toLowerCase().includes(query.toLowerCase().trim())).map(({ to, label, icon: Icon }) => <Link to={to} key={to} onClick={() => { dialogRef.current?.close(); setMobileOpen(false); }}><Icon size={18} /><span>{label}</span><ArrowUpRight size={16} /></Link>)}
+          {!destinations.some((item) => item.label.toLowerCase().includes(query.toLowerCase().trim())) && <p className="command-empty">No pages found.</p>}
+        </div><div className="command-hint">Tab to navigate <span>Esc to close</span></div>
+      </dialog>
     </div>
   );
 }

@@ -8,7 +8,6 @@ import {
 } from "../components/cards/RivalryCard";
 import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
-import { WorkspaceSectionHeader } from "../components/layout/WorkspaceSectionHeader";
 import type { Match, MatchFormat } from "../types/api";
 
 type FormatFilter = "All" | MatchFormat;
@@ -154,34 +153,14 @@ export function Rivalries() {
 
   return (
     <>
-      <PageHeader
-        eyebrow="Rivalries"
-        title="Deck vs deck history"
-        description="Compare head-to-head records, follow each series, and revisit the latest result."
-      />
+      <PageHeader title="Rivalries" />
 
       <section
         data-anime="motion-panel"
         className="workspace-panel"
       >
-        <WorkspaceSectionHeader
-          eyebrow="Series"
-          title="Rivalry board"
-          description="Find a pairing by deck, nation, format, or games played."
-          actions={
-            <button
-              type="button"
-              onClick={loadMatches}
-              disabled={loading}
-              className="workspace-button inline-flex items-center justify-center gap-2 border border-white/10 bg-white/[0.05] px-3 text-sm font-semibold text-slate-200 transition hover:bg-white/[0.09] disabled:opacity-40"
-            >
-              <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-          }
-        />
 
-        <div className="workspace-inset mt-4 grid grid-cols-2 overflow-hidden md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)]">
+        <div className="workspace-inset grid grid-cols-2 overflow-hidden md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)]">
           <div className="border-r border-white/10 px-4 py-3">
             <p className="text-[0.6rem] font-bold uppercase tracking-[0.15em] text-slate-500">Pairings</p>
             <p className="mt-1 text-2xl font-black text-white">{totalPairings}</p>
@@ -199,8 +178,8 @@ export function Rivalries() {
           </div>
         </div>
 
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
-          <label className="relative block">
+        <div className="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
+          <label className="relative col-span-2 block min-w-0 xl:col-span-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
               aria-label="Search rivalries by deck or nation"
@@ -238,6 +217,15 @@ export function Rivalries() {
             ))}
           </select>
 
+          <button
+            type="button"
+            onClick={loadMatches}
+            disabled={loading}
+            className="col-span-2 xl:col-span-1 workspace-button inline-flex items-center justify-center gap-2 border border-white/10 bg-white/[0.05] px-3 text-sm font-semibold text-slate-200 transition hover:bg-white/[0.09] disabled:opacity-40"
+          >
+            <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">

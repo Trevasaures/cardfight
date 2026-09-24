@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { CheckCircle2, Dices, RefreshCcw, Save, Shuffle, Swords } from "lucide-react";
 
 import { getDecks } from "../api/decks";
@@ -12,6 +12,7 @@ import { WorkspaceSectionHeader } from "../components/layout/WorkspaceSectionHea
 import { usePersistentState } from "../hooks/usePersistentState";
 import type { Deck, MatchFormat, RandomMatchupResponse } from "../types/api";
 import { formatPercent, formatRecord } from "../utils/format";
+import { nationColor } from "../utils/nations";
 
 type MatchupMode = "random" | "custom";
 
@@ -34,13 +35,15 @@ function MatchupDeckPanel({
       onClick={onClick}
       aria-pressed={selected ?? false}
       aria-label={`Select ${deck.name} as the winner`}
+      style={{ "--nation-color": nationColor(deck.nation) } as CSSProperties}
       className={[
-        "h-full w-full min-w-0 overflow-hidden rounded-2xl border text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300/60",
+        "match-contender h-full w-full min-w-0 overflow-hidden rounded-2xl border text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300/60",
         selected
           ? "border-emerald-300/40 bg-emerald-300/[0.07]"
           : "border-white/10 bg-black/20 hover:border-cyan-300/30 hover:bg-white/[0.04]",
       ].join(" ")}
     >
+      <div className="match-contender-art" aria-hidden="true">{iconPath ? <img src={iconPath} alt="" /> : <Swords size={64} strokeWidth={1} />}</div>
       <div className="flex items-start justify-between gap-3 p-4">
         <div className="flex min-w-0 items-center gap-3">
           <div
@@ -305,16 +308,12 @@ export function PlayLab() {
   return (
     <>
       <PageHeader
-        eyebrow="Play Lab"
-        title="Matchup control center"
-        description="Roll a random Vanguard matchup or build a custom pairing, then log the first player, winner, and notes."
+        title="Play Lab"
       />
 
       <section className="workspace-panel">
           <WorkspaceSectionHeader
-            eyebrow="Setup"
-            title="Choose your matchup"
-            description="Pick the format and let the lab roll, or select two active decks."
+            title="Matchup"
             actions={
               <span className="text-xs text-slate-400">
                 <strong className="text-slate-200">{eligibleDeckCount}</strong> eligible decks
@@ -454,25 +453,18 @@ export function PlayLab() {
                 </div>
               </div>
 
-              <p className="mt-2.5 text-xs text-slate-500">
-                Custom matchups use the selected format pool and active decks only.
-              </p>
             </div>
           )}
           </div>
           {matchup ? (
-            <p className="mt-3 text-xs text-slate-500">
-              Starting another matchup replaces the current draft. Save its result and notes below first.
-            </p>
+            <p className="mt-3 text-xs text-slate-500">A new matchup replaces this unsaved draft.</p>
           ) : null}
       </section>
 
       {matchup ? (
         <section ref={matchupStageRef} className="workspace-panel mt-4">
           <WorkspaceSectionHeader
-            eyebrow="Battle"
-            title="Record your result"
-            description="Click a deck to choose the winner, or leave the match undecided."
+            title="Result"
             actions={
               <div className="flex flex-wrap items-center gap-3">
                 <span className="inline-flex items-center gap-1.5 text-[0.65rem] font-bold text-emerald-200">
@@ -606,9 +598,7 @@ export function PlayLab() {
             />
 
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs text-slate-500">
-                Undecided matches save to history without a win or loss.
-              </p>
+              <p className="text-xs text-slate-500">Undecided results don’t affect win rates.</p>
               <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -637,10 +627,8 @@ export function PlayLab() {
       ) : (
         <section className="mt-4 flex flex-col items-center rounded-2xl border border-dashed border-white/15 bg-white/[0.02] p-6 text-center">
           <Swords className="mb-2 h-5 w-5 text-cyan-200/70" />
-          <p className="text-sm font-bold text-slate-300">Your next battle starts here.</p>
-          <p className="mt-2 text-sm text-slate-500">
-            Roll a matchup or choose two decks above. Your match and notes will stay here when you return.
-          </p>
+          <p className="text-sm font-bold text-slate-300">No matchup selected</p>
+
         </section>
       )}
     </>

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Save, Search, X } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { NATION_COLORS } from "../utils/nations";
 
 import { createDeck, getDeckOptions, getDecks, updateDeck } from "../api/decks";
 import { DeckCard } from "../components/cards/DeckCard";
@@ -37,6 +39,8 @@ function getNationPreviewIcon(
 }
 
 export function DeckLibrary() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedNation = searchParams.get("nation") ?? "";
   const [decks, setDecks] = useState<Deck[]>([]);
   const [options, setOptions] = useState<DeckOptionsResponse>({
     types: ["Standard", "Stride"],
@@ -100,9 +104,9 @@ export function DeckLibrary() {
 
       const matchesActive = showInactive || deck.active;
 
-      return matchesSearch && matchesActive;
+      return matchesSearch && matchesActive && (!selectedNation || deck.nation === selectedNation);
     });
-  }, [decks, search, showInactive]);
+  }, [decks, search, showInactive, selectedNation]);
 
   function openCreateEditor() {
     setMessage(null);
@@ -192,18 +196,16 @@ export function DeckLibrary() {
 
   return (
     <>
-      <PageHeader
-        eyebrow="Deck Library"
-        title="Your testing roster"
-        description="Create, edit, organize, and toggle decks used by Play Lab and match logging."
-      />
+      <PageHeader title="Deck Library" />
 
       <section className="workspace-panel">
-        <WorkspaceSectionHeader
-          eyebrow="Roster"
-          title="Deck profiles"
-          description="Manage deck details and choose what is available for play testing."
-          actions={
+
+        <div className="workspace-inset overflow-hidden">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-white/10 px-3 py-2.5 text-xs text-slate-500 sm:px-4">
+            <span><strong className="mr-1.5 font-black text-slate-100">{decks.length}</strong>Total decks</span>
+            <span><strong className="mr-1.5 font-black text-emerald-100">{activeCount}</strong>Active</span>
+            <span><strong className="mr-1.5 font-black text-slate-300">{inactiveCount}</strong>Inactive</span>
+            <span className="sm:ml-auto">{filteredDecks.length} shown</span>
             <button
               type="button"
               onClick={openCreateEditor}
@@ -212,15 +214,6 @@ export function DeckLibrary() {
               <Plus className="h-4 w-4" />
               Add deck
             </button>
-          }
-        />
-
-        <div className="workspace-inset mt-4 overflow-hidden">
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-white/10 px-3 py-2.5 text-xs text-slate-500 sm:px-4">
-            <span><strong className="mr-1.5 font-black text-slate-100">{decks.length}</strong>Total decks</span>
-            <span><strong className="mr-1.5 font-black text-emerald-100">{activeCount}</strong>Active</span>
-            <span><strong className="mr-1.5 font-black text-slate-300">{inactiveCount}</strong>Inactive</span>
-            <span className="sm:ml-auto">{filteredDecks.length} shown</span>
           </div>
           <div className="grid gap-2 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:p-4">
           <label className="relative block min-w-0">
@@ -249,6 +242,9 @@ export function DeckLibrary() {
           </button>
           </div>
         </div>
+        <div className="nation-filter" aria-label="Filter decks by nation">
+          {["", ...Object.keys(NATION_COLORS)].map((nation) => <button key={nation} type="button" aria-pressed={selectedNation === nation} onClick={() => setSearchParams((current) => { const next = new URLSearchParams(current); if (nation) next.set("nation", nation); else next.delete("nation"); return next; })}>{nation || "All nations"}</button>)}
+        </div>
       </section>
 
       {loading ? (
@@ -264,7 +260,7 @@ export function DeckLibrary() {
       ) : (
         <div className="mt-4 rounded-2xl border border-dashed border-white/15 bg-white/[0.025] p-8 text-center">
           <p className="text-sm font-bold text-slate-300">No decks found.</p>
-          <p className="mt-1 text-xs text-slate-500">Try another search or add a deck to your roster.</p>
+
         </div>
       )}
 
@@ -277,9 +273,7 @@ export function DeckLibrary() {
             className="max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-[1.75rem] border border-white/10 bg-slate-950 p-4 shadow-2xl shadow-black sm:p-5"
           >
             <WorkspaceSectionHeader
-              eyebrow={editingDeck.mode === "create" ? "Create" : "Edit"}
-              title="Deck profile"
-              description={editingDeck.mode === "create" ? "Add a deck to your testing roster." : "Update the identity and availability of this deck."}
+              title={editingDeck.mode === "create" ? "New deck" : "Edit deck"}
               actions={
               <button
                 type="button"

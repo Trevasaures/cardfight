@@ -99,9 +99,7 @@ export function CardCatalogPanel({
       className="min-w-0 rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5"
     >
       <DeckBuilderStepHeader
-        step={2}
-        title="Find or create a card"
-        description="Search the shared catalog first, or create a card when it is missing."
+        title="Cards"
         action={
           <Link
             to="/cards"
@@ -155,13 +153,8 @@ export function CardCatalogPanel({
         <div className="p-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[0.65rem] font-bold uppercase tracking-[0.16em] text-slate-500">
-                Catalog results
-              </p>
-              <p className="mt-0.5 text-xs text-slate-600">
-                {cardResults.length
-                  ? `${cardResults.length} card${cardResults.length === 1 ? "" : "s"} found`
-                  : "Search by name, nation, type, skill, or set"}
+              <p className="text-xs text-slate-500">
+                {cardResults.length ? `${cardResults.length} cards` : "Results"}
               </p>
             </div>
 
@@ -215,8 +208,7 @@ export function CardCatalogPanel({
               ))
             ) : (
               <div className="rounded-xl border border-dashed border-white/15 bg-black/20 px-4 py-5 text-center text-xs leading-5 text-slate-500">
-                Enter at least two characters to search, or use the card creator
-                below.
+                Search cards · 2+ characters
               </div>
             )}
           </div>

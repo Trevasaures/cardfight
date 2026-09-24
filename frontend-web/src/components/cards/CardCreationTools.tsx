@@ -74,18 +74,9 @@ export function CardCreationTools({
         className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3"
       >
         <summary className="cursor-pointer select-none">
-          <span className="text-sm font-black text-slate-100">
-            Review or enter card details
-          </span>
-          <span className="ml-2 hidden text-xs font-semibold text-slate-500 sm:inline">
-            Manual entry
-          </span>
-        </summary>
+          <span className="text-sm font-black text-slate-100">Card details</span>
 
-        <p className="mt-2 text-xs leading-5 text-slate-500">
-          Fill these fields yourself, or review the suggestions produced by the
-          image reader before adding the card to the shared catalog.
-        </p>
+        </summary>
 
         <ManualCardForm
           value={value}

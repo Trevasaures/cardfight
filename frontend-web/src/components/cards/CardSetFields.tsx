@@ -87,7 +87,6 @@ export function CardSetFields({
     <>
       <FormSelect
         label="Card set"
-        help="Choose a saved set to fill its code and name, or add an unlisted release once for reuse everywhere."
         value={selectedSetValue}
         onChange={updateSetSelection}
         placeholder="Choose a card set"
@@ -105,7 +104,6 @@ export function CardSetFields({
         <>
           <FormTextInput
             label="Custom set code"
-            help="The reusable product or set identifier, such as DZ-SS15."
             value={value.set_code}
             onChange={(setCode) =>
               onChange({
@@ -120,7 +118,6 @@ export function CardSetFields({
 
           <FormTextInput
             label="Custom set name"
-            help="The full product name that should be reused with this set code."
             value={value.set_name}
             onChange={(setName) =>
               onChange({
@@ -134,10 +131,7 @@ export function CardSetFields({
           />
 
           <div className="flex flex-col justify-end rounded-2xl border border-dashed border-cyan-300/20 bg-cyan-300/[0.04] p-3 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <p className="text-xs leading-5 text-slate-500">
-              Save this pair once to reuse it in card creation, printing, and
-              image-reader workflows.
-            </p>
+
             <button
               type="button"
               onClick={() => void handleSaveSet()}
@@ -152,7 +146,6 @@ export function CardSetFields({
       ) : (
         <FormTextInput
           label="Set name"
-          help="Filled automatically from the selected set code."
           value={value.set_name}
           onChange={(setName) => onChange({ ...value, set_name: setName })}
           placeholder="Select a card set first"

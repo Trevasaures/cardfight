@@ -46,13 +46,6 @@ const EMPTY_OPTIONS: DeckOptionsResponse = {
 };
 
 const ITEM_FILTERS = [["changes", "Changes"], ["all", "All cards"], ["needed", "Needs cards"], ["incoming", "Incoming"], ["owned", "Ready"]] as const;
-const FILTER_HELP: Record<ItemFilter, string> = {
-  changes: "New cards, replacements, incoming orders, and missing copies.",
-  all: "Every card in this plan, including copies you already have.",
-  needed: "Copies not covered by what is on hand or incoming.",
-  incoming: "Cards with copies on the way. Receive them here when delivered.",
-  owned: "Cards covered by copies on hand, with no copies marked outgoing.",
-};
 
 function matchesItemFilter(item: AcquisitionPlanItem, filter: ItemFilter) {
   return filter === "all" ||
@@ -432,24 +425,25 @@ export function OrderTracker() {
   if (loading) {
     return (
       <>
-        <PageHeader eyebrow="Order Tracker" title="Plan the physical build" description="Loading your purchase workspace." />
+        <PageHeader title="Orders" />
         <div role="status" className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-8 text-slate-400">Loading order tracker...</div>
       </>
     );
   }
 
+  const newPlanAction = (
+    <button type="button" onClick={() => setShowSetup((current) => !current)} aria-expanded={showSetup} aria-controls="new-purchase-plan" className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-cyan-200">
+      {showSetup ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+      {showSetup ? "Close new plan" : "New plan"}
+    </button>
+  );
+
   return (
     <>
-      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-        <PageHeader eyebrow="Order Tracker" title="Turn deck ideas into physical builds" description="Plan your next build, price the cards, and follow each purchase through to delivery." />
-        <button type="button" onClick={() => setShowSetup((current) => !current)} aria-expanded={showSetup} aria-controls="new-purchase-plan" className="mb-4 inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-cyan-200">
-          {showSetup ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-          {showSetup ? "Close new plan" : "New purchase plan"}
-        </button>
-      </div>
+      <PageHeader title="Orders" />
 
       <div className="space-y-4">
-        {showSetup ? (
+      {showSetup ? (
           <div id="new-purchase-plan">
             <OrderTrackerSetup decks={decks} options={options} creating={creating} onCreate={handleCreate} onError={showError} />
           </div>
@@ -458,6 +452,7 @@ export function OrderTracker() {
         {selectedPlan ? (
           <>
             <PurchasePlanWorkspace
+              actions={newPlanAction}
               plans={plans} plan={selectedPlan} loading={loadingPlan} saving={savingPlan}
               onSelect={selectPlan} onChange={setSelectedPlan} onRefresh={refreshSelectedPlan}
               onSave={handleSavePlan} onDelete={handleDeletePlan}
@@ -466,10 +461,10 @@ export function OrderTracker() {
             <section data-anime="motion-panel" aria-label="Add cards from the catalog" className="min-w-0 rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
               <div className="grid gap-3 xl:grid-cols-[minmax(15rem,0.7fr)_minmax(0,1.3fr)] xl:items-center">
                 <div className="flex items-center gap-3">
-                  <span className="shrink-0 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-[0.68rem] font-black uppercase tracking-[0.18em] text-cyan-100">Catalog</span>
+
                   <div>
-                    <h3 className="text-lg font-black text-slate-50">Add to this plan</h3>
-                    <p className="mt-0.5 text-xs text-slate-400">Pick the exact printing you want to purchase.</p>
+                    <h3 className="text-lg font-black text-slate-50">Add cards</h3>
+
                   </div>
                 </div>
                 <div className="flex min-w-0 gap-2">
@@ -478,14 +473,14 @@ export function OrderTracker() {
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                     <input value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") handleSearchCatalog(); }} placeholder="Card name, set, nation..." className="w-full min-w-0 rounded-xl border border-white/10 bg-black/30 py-2.5 pl-9 pr-3 text-sm outline-none placeholder:text-slate-500 focus:border-cyan-300/50" />
                   </label>
-                  <button type="button" onClick={handleSearchCatalog} disabled={searchingCatalog} className="rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2.5 text-xs font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:opacity-50">{searchingCatalog ? "Searching..." : "Search catalog"}</button>
+                  <button type="button" onClick={handleSearchCatalog} disabled={searchingCatalog} className="rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2.5 text-xs font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:opacity-50">{searchingCatalog ? "Searching..." : "Search"}</button>
                   {catalogSearch || catalogResults.length ? <button type="button" aria-label="Clear catalog search" onClick={() => { setCatalogSearch(""); setCatalogResults([]); setCatalogSearched(false); }} className="rounded-xl border border-white/10 px-2.5 text-slate-400 transition hover:bg-white/5"><X className="h-4 w-4" /></button> : null}
                 </div>
               </div>
 
               {catalogResults.length ? (
                 <div className="mt-3 max-h-72 overflow-y-auto rounded-2xl border border-white/10 bg-black/20 p-2">
-                  <p className="px-2 pb-2 pt-1 text-xs text-slate-400">Choose a printing to add one copy. Adjust quantities in the checklist.</p>
+
                   <div className="grid gap-2 md:grid-cols-2 2xl:grid-cols-3">
                     {catalogResults.flatMap((card) => (card.printings.length ? card.printings : [null]).map((printing) => {
                       const lineKey = `${card.id}-${printing?.id ?? "any"}`;
@@ -499,15 +494,15 @@ export function OrderTracker() {
                   </div>
                 </div>
               ) : catalogSearched && !searchingCatalog ? (
-                <p role="status" className="mt-3 rounded-xl border border-dashed border-white/15 p-4 text-sm text-slate-400">No matching cards. Try a different name or set, or <Link to="/cards" className="font-bold text-cyan-200 underline underline-offset-4">create a card in Card Library</Link>.</p>
+                <p role="status" className="mt-3 rounded-xl border border-dashed border-white/15 p-4 text-sm text-slate-400">No cards found. <Link to="/cards" className="font-bold text-cyan-200 underline underline-offset-4">Add a card</Link>.</p>
               ) : null}
             </section>
 
             <section data-anime="motion-panel" aria-label="Purchase checklist" className="min-w-0 rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <span className="shrink-0 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-[0.68rem] font-black uppercase tracking-[0.18em] text-cyan-100">Track</span>
-                  <div><h3 className="text-xl font-black text-slate-50 sm:text-2xl">Purchase checklist</h3><p className="mt-0.5 text-xs text-slate-400">{selectedPlan.plan_type === "existing_deck" ? "Follow the copies staying, leaving, and arriving for your next version." : "Track what you have, what is on the way, and what is left to buy."}</p></div>
+
+                  <div><h3 className="text-xl font-black text-slate-50 sm:text-2xl">Checklist</h3></div>
                 </div>
                 <label className="relative w-full min-w-0 sm:w-72">
                   <span className="sr-only">Search purchase checklist</span>
@@ -531,7 +526,7 @@ export function OrderTracker() {
                   </div>
                 </div>
                 <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-2.5 text-xs text-slate-400">
-                  <p>{FILTER_HELP[itemFilter]}</p>
+
                   <span className="shrink-0 tabular-nums">{filteredItems.length} of {selectedPlan.items.length} card lines</span>
                 </div>
               </div>
@@ -550,13 +545,13 @@ export function OrderTracker() {
               ) : selectedPlan.items.length ? (
                 <div className="mt-3 rounded-2xl border border-dashed border-white/15 bg-black/10 p-6 text-center">
                   <PackageOpen className="mx-auto h-6 w-6 text-slate-500" />
-                  <p className="mt-2 text-sm text-slate-400">{itemSearch.trim() ? "No cards match your search and filter." : itemFilter === "changes" ? "No swaps or purchases are tracked yet. Add a card or view all cards to plan replacements." : "No cards match this filter."}</p>
+                  <p className="mt-2 text-sm text-slate-400">{itemSearch.trim() ? "No cards match your search and filter." : itemFilter === "changes" ? "No changes yet." : "No cards match this filter."}</p>
                   <button type="button" onClick={() => { setItemFilter("all"); setItemSearch(""); }} className="mt-3 rounded-xl border border-cyan-300/20 px-3 py-2 text-xs font-bold text-cyan-100 transition hover:bg-cyan-300/10">Show all cards</button>
                 </div>
               ) : (
                 <div className="mt-3 rounded-2xl border border-dashed border-white/15 bg-black/10 p-8 text-center">
-                  <PackageOpen className="mx-auto h-7 w-7 text-slate-500" /><p className="mt-3 font-bold text-slate-300">This purchase plan is empty</p>
-                  <p className="mt-1 text-sm text-slate-400">Search the catalog above to add cards, or start a new plan from a saved deck version.</p>
+                  <PackageOpen className="mx-auto h-7 w-7 text-slate-500" /><p className="mt-3 font-bold text-slate-300">No cards yet</p>
+
                 </div>
               )}
             </section>
@@ -564,7 +559,8 @@ export function OrderTracker() {
         ) : !plans.length ? (
           <section className="rounded-[1.75rem] border border-dashed border-white/15 bg-white/[0.025] p-8 text-center">
             <Archive className="mx-auto h-8 w-8 text-slate-500" /><h3 className="mt-3 text-xl font-black text-slate-200">No purchase plans yet</h3>
-            <p className="mt-2 text-sm text-slate-400">Choose whether you are building from scratch or upgrading an existing deck above.</p>
+            <div className="mt-4">{newPlanAction}</div>
+
           </section>
         ) : null}
       </div>
