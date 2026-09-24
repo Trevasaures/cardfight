@@ -151,17 +151,14 @@ export function CardSetManager({
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-black text-slate-100">
         <span className="inline-flex items-center gap-2">
           <Settings2 className="h-4 w-4 text-cyan-200" />
-          Manage reusable card sets
+          Card sets
         </span>
         <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[0.65rem] font-bold text-slate-500">
           {sets.length} custom
         </span>
       </summary>
 
-      <p className="mt-3 text-xs leading-5 text-slate-500">
-        Set codes are unique. Renaming updates every linked printing; deletion
-        is limited to unused sets so catalog data cannot be orphaned.
-      </p>
+      <p className="mt-3 text-xs leading-5 text-slate-500">Renaming updates linked printings. Only unused sets can be deleted.</p>
 
       {loading ? (
         <p className="mt-4 text-sm text-slate-500">Loading custom sets...</p>

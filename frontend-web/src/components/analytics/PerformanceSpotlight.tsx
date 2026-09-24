@@ -9,7 +9,6 @@ import {
   Layers3,
   PackageSearch,
   ShieldCheck,
-  Target,
   TrendingDown,
   TrendingUp,
   Trophy,
@@ -381,9 +380,7 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-[0.65rem] font-black uppercase tracking-[0.26em] text-[var(--spotlight-primary)]">
-                    Performance spotlight
-                  </p>
+
                   <FormatBadge type={deck.type} />
                 </div>
                 <h3 className="mt-2 truncate text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl">
@@ -454,9 +451,7 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
                     <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
                       Recent decided games
                     </p>
-                    <p className="mt-1 text-xs text-slate-400">
-                      Oldest to newest · select a result for match details
-                    </p>
+                    <p className="mt-1 text-xs text-slate-400">Oldest → newest</p>
                   </div>
                   <span className="text-xs text-slate-500">{spotlight.sample.message}</span>
                 </div>
@@ -533,8 +528,7 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
           className="workspace-panel min-w-0"
         >
           <WorkspaceSectionHeader
-            eyebrow="Turn order"
-            title="How the deck enters the fight"
+            title="Turn order"
             actions={turnOrder.edge_percentage_points !== null ? (
               <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-bold text-slate-300">
                 {Math.abs(turnOrder.edge_percentage_points).toFixed(1)} pt split
@@ -547,16 +541,7 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
             <TurnOrderCard label="Going second" record={turnOrder.second} accent="secondary" />
           </div>
 
-          <div className="mt-3 flex items-start gap-2 border-t border-white/10 pt-3">
-            <Target className="mt-0.5 h-4 w-4 shrink-0 text-[var(--spotlight-primary)]" />
-            <p className="text-xs leading-5 text-slate-400">
-              {turnOrder.edge_percentage_points === null
-                ? "Log decided games from both turn orders to unlock a reliable comparison."
-                : Math.abs(turnOrder.edge_percentage_points) < 5
-                  ? "Turn order is currently neutral; the two splits are within five percentage points."
-                  : `Recorded performance favors going ${turnOrder.edge_percentage_points > 0 ? "first" : "second"} by ${Math.abs(turnOrder.edge_percentage_points).toFixed(1)} percentage points.`}
-            </p>
-          </div>
+
         </section>
 
         <section
@@ -564,9 +549,7 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
           className="workspace-panel min-w-0"
         >
           <WorkspaceSectionHeader
-            eyebrow="Matchups"
-            title="Head-to-head performance"
-            description={<>Every percentage is {deck.name}&apos;s decided-game win rate against the named opponent.</>}
+            title="Matchups"
           />
 
           <div className="mt-4 grid gap-2 2xl:grid-cols-2">
@@ -577,7 +560,7 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
       </div>
 
       <section data-spotlight="panel" className="workspace-panel">
-        <WorkspaceSectionHeader eyebrow="Signals" title="What deserves your attention" />
+        <WorkspaceSectionHeader title="Insights" />
 
         {spotlight.insights.length ? (
           <div className="mt-4 grid gap-3 lg:grid-cols-2 2xl:grid-cols-4">
@@ -593,7 +576,7 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
                   </p>
                   <span className="shrink-0 text-sm font-black">{insight.value}</span>
                 </div>
-                <h5 className="mt-3 text-base font-black leading-6 text-white">{insight.title}</h5>
+
                 <p className="mt-2 text-sm leading-6 text-slate-400">{insight.body}</p>
               </article>
             ))}
@@ -601,8 +584,7 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
         ) : (
           <div className="mt-5 rounded-2xl border border-dashed border-white/10 p-8 text-center">
             <Layers3 className="mx-auto h-6 w-6 text-slate-600" />
-            <p className="mt-3 font-bold text-slate-300">The spotlight is ready.</p>
-            <p className="mt-1 text-sm text-slate-500">Log a few matches and the signal report will begin finding patterns.</p>
+            <p className="mt-3 font-bold text-slate-300">No match data</p>
           </div>
         )}
       </section>

@@ -34,7 +34,7 @@ export function HelpTooltip({ text, label }: HelpTooltipProps) {
 type FieldLabelProps = {
   htmlFor: string;
   label: string;
-  help: string;
+  help?: string;
   required?: boolean;
 };
 
@@ -53,14 +53,14 @@ export function FieldLabel({
         {required ? <span className="ml-1 text-cyan-200">*</span> : null}
       </label>
 
-      <HelpTooltip text={help} label={label} />
+      {help ? <HelpTooltip text={help} label={label} /> : null}
     </div>
   );
 }
 
 type FormTextInputProps = {
   label: string;
-  help: string;
+  help?: string;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
@@ -114,7 +114,7 @@ type FormSelectOption = {
 
 type FormSelectProps = {
   label: string;
-  help: string;
+  help?: string;
   value: string;
   onChange: (value: string) => void;
   options: FormSelectOption[];

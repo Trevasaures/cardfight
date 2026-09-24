@@ -20,6 +20,7 @@ import {
   updateCardPrinting,
 } from "../api/cards";
 import { CardCreationTools } from "../components/cards/CardCreationTools";
+import { CardArtwork } from "../components/cards/CardArtwork";
 import { CardPrintingForm } from "../components/cards/CardPrintingForm";
 import {
   clearCardSetSelection,
@@ -511,9 +512,7 @@ export function CardLibrary() {
   return (
     <div className="min-w-0">
       <PageHeader
-        eyebrow="Card Library"
-        title="Build and browse your card catalog"
-        description="Create cards manually or from an image, then search, inspect, and correct the shared records used throughout the app."
+          title="Card Library"
       />
 
       <details
@@ -522,9 +521,7 @@ export function CardLibrary() {
       >
         <summary className="cursor-pointer list-none select-none [&::-webkit-details-marker]:hidden">
           <WorkspaceSectionHeader
-            eyebrow="Create"
-            title="Add cards to the library"
-            description="Image reader or manual entry · Available throughout your lab."
+            title="Add cards"
             actions={
               <span className="workspace-button inline-flex w-10 items-center justify-center border border-white/10 bg-white/[0.04] text-cyan-100">
                 <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180 motion-reduce:transition-none" />
@@ -557,8 +554,7 @@ export function CardLibrary() {
         className="workspace-panel min-w-0"
       >
         <WorkspaceSectionHeader
-          eyebrow="Catalog"
-          title="Card records"
+          title="Catalog"
           description={`${resultSummary}${activeFilterCount ? ` · ${activeFilterCount} active filter${activeFilterCount === 1 ? "" : "s"}` : ""}`}
           actions={
           <button
@@ -671,7 +667,7 @@ export function CardLibrary() {
         </div>
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-slate-500">Search and filters cover the entire catalog.</p>
+
           <div className="flex flex-wrap items-center gap-2">
             <select
               value={catalog.sort}
@@ -700,9 +696,7 @@ export function CardLibrary() {
         {addingPrintingCard ? (
           <div className="mt-4 rounded-2xl border border-violet-300/20 bg-violet-300/[0.06] p-3 sm:p-4">
             <WorkspaceSectionHeader
-              eyebrow="New printing"
-              title={addingPrintingCard.name}
-              description="A separate set, number, or rarity with its own deck usage and pricing."
+              title={`New printing · ${addingPrintingCard.name}`}
               className="mb-3"
             />
 
@@ -734,9 +728,7 @@ export function CardLibrary() {
         {editingCard ? (
           <div className="mt-4 rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.06] p-3 sm:p-4">
             <WorkspaceSectionHeader
-              eyebrow="Edit card"
-              title={editingCard.name}
-              description="Changes update the shared card record everywhere it is used."
+              title={`Edit · ${editingCard.name}`} description="Updates this card in every deck."
             />
             <p className="mb-3 mt-2 break-words text-xs text-slate-500">
               {primaryPrintingLabel(editingCard)}
@@ -781,9 +773,7 @@ export function CardLibrary() {
                 <p className="text-base font-black text-slate-300">
                   No cards found.
                 </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Try changing your filters or add a card with the creator above.
-                </p>
+
               </div>
             </div>
           ) : (
@@ -806,8 +796,9 @@ export function CardLibrary() {
                       transform: `translateY(${virtualRow.start}px)`,
                     }}
                   >
-                    <div className="rounded-xl border border-white/10 bg-white/[0.025] p-3 transition hover:bg-white/[0.045]">
-                      <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+                    <div className="catalog-card-row rounded-xl border border-white/10 bg-white/[0.025] p-3 transition hover:bg-white/[0.045]">
+                      <CardArtwork card={card} />
+                      <div className="grid min-w-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
                         <div className="min-w-0">
                           <div className="flex min-w-0 items-start gap-2">
                             <span className="shrink-0 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-2 py-1 text-[0.65rem] font-black text-cyan-100">

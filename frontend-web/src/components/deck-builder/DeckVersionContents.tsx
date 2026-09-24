@@ -232,14 +232,7 @@ export function DeckVersionContents({
       className="min-w-0 rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5"
     >
       <DeckBuilderStepHeader
-        step={3}
-        title={
-          "Deck Build" +
-          (currentVersion?.version_name
-            ? ` - ${currentVersion.version_name}`
-            : "")
-        }
-        description="Add cards to a zone, then tune quantities and printings below."
+        title={currentVersion?.version_name ?? "Deck list"}
         action={
           rules ? (
             <div
@@ -325,9 +318,6 @@ export function DeckVersionContents({
           <div className="mb-2.5">
             <p className="text-[0.65rem] font-bold uppercase tracking-[0.16em] text-slate-500">
               Add a card
-            </p>
-            <p className="mt-0.5 truncate text-xs text-slate-600">
-              Choose from the current Step 2 search results.
             </p>
           </div>
 
@@ -627,9 +617,7 @@ export function DeckVersionContents({
             <p className="font-black text-slate-300">
               No deck version selected.
             </p>
-            <p className="mt-2 text-sm text-slate-500">
-              Create a version for the selected deck, then start adding cards.
-            </p>
+            <p className="mt-2 text-sm text-slate-500">Create a version to add cards.</p>
           </div>
         )}
       </div>

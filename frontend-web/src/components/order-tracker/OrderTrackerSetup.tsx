@@ -139,16 +139,10 @@ export function OrderTrackerSetup({
   return (
     <section className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
       <div className="flex items-center gap-3">
-        <span className="shrink-0 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-[0.68rem] font-black uppercase tracking-[0.18em] text-cyan-100">
-          New plan
-        </span>
+
         <div className="min-w-0">
-          <h3 className="text-xl font-black text-slate-50 sm:text-2xl">
-            Plan your next build
-          </h3>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Choose what you are buying for, then set your starting list.
-          </p>
+          <h3 className="text-xl font-black text-slate-50 sm:text-2xl">New plan</h3>
+
         </div>
       </div>
 
@@ -172,12 +166,8 @@ export function OrderTrackerSetup({
             <PackagePlus className="h-4 w-4" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-sm font-black text-slate-100">
-              New physical build
-            </span>
-            <span className="mt-1 block text-xs leading-5 text-slate-400">
-              Buy a fresh deck or another copy. No cards are assumed owned.
-            </span>
+            <span className="block text-sm font-black text-slate-100">New build</span>
+            <span className="mt-1 block text-xs leading-5 text-slate-400">Ownership starts at zero.</span>
           </span>
           <span
             className={[
@@ -206,12 +196,8 @@ export function OrderTrackerSetup({
             <Wrench className="h-4 w-4" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-sm font-black text-slate-100">
-              Upgrade an existing deck
-            </span>
-            <span className="mt-1 block text-xs leading-5 text-slate-400">
-              Keep your current copies and plan the cards being added or replaced.
-            </span>
+            <span className="block text-sm font-black text-slate-100">Upgrade deck</span>
+            <span className="mt-1 block text-xs leading-5 text-slate-400">Keep existing copies.</span>
           </span>
           <span
             className={[
@@ -283,8 +269,8 @@ export function OrderTrackerSetup({
             >
               <Sparkles className="h-4 w-4 shrink-0" />
               {planType === "new_build"
-                ? "Start with an empty list"
-                : "Track only new purchases"}
+                ? "Empty list"
+                : "New purchases only"}
             </button>
 
             <button
@@ -389,26 +375,24 @@ export function OrderTrackerSetup({
           <p className="mt-3 text-xs leading-5 text-slate-500" aria-live="polite">
             {listSource === "deck_version"
               ? planType === "existing_deck"
-                ? "Current-version cards start owned. Track replacements here, then publish a new version when the build is ready."
-                : "Only the card list is copied. Ownership starts at zero so you can price a separate physical build."
+                ? "Current-version cards start owned."
+                : "Copies the list; ownership starts at zero."
               : planType === "existing_deck"
-                ? "Your current deck stays as it is. Add only the new cards you want to purchase."
-                : "No deck or version is required. Add cards from the catalog after creating this plan."}
+                ? "New purchases only; existing deck unchanged."
+                : "Starts with an empty list."}
           </p>
         </div>
       </div>
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-slate-500">
-          Quantities, printing choices, and prices can be updated as you go.
-        </p>
+
         <button
           type="button"
           onClick={submit}
           disabled={creating}
           className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-cyan-300 px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {creating ? "Creating plan..." : "Create purchase plan"}
+          {creating ? "Creating plan..." : "Create plan"}
           <ArrowRight className="h-4 w-4" />
         </button>
       </div>

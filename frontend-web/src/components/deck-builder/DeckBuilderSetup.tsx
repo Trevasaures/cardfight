@@ -131,9 +131,7 @@ export function DeckBuilderSetup({
       className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5"
     >
       <DeckBuilderStepHeader
-        step={1}
-        title="Choose a deck and version"
-        description="Set the exact workspace you want to edit."
+        title="Deck & version"
         action={
           <button
             type="button"
@@ -232,7 +230,7 @@ export function DeckBuilderSetup({
               </div>
             ) : (
               <p className="text-sm text-slate-500">
-                Choose a deck to see its identity and record.
+                No deck selected.
               </p>
             )}
           </div>
@@ -243,11 +241,8 @@ export function DeckBuilderSetup({
             <div className="col-span-2 flex min-w-[10rem] items-center gap-2.5 lg:col-span-1">
               <Layers3 className="h-4 w-4 text-cyan-200" />
               <div>
-                <p className="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-slate-500">
-                  Version
-                </p>
                 <h4 className="text-sm font-black text-slate-100">
-                  Deck list version
+                  Version
                 </h4>
               </div>
             </div>
@@ -446,11 +441,7 @@ export function DeckBuilderSetup({
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-cyan-200/70">
-                    Edit current version details
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    This renames {currentVersion.version_name}; it does not create
-                    a separate build.
+                    Edit version
                   </p>
                 </div>
                 <button
@@ -466,7 +457,6 @@ export function DeckBuilderSetup({
               <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
                 <FormTextInput
                   label="Version name"
-                  help="The saved label shown anywhere this deck version is selected."
                   value={editVersionName}
                   onChange={onEditVersionNameChange}
                   placeholder="Version name"
@@ -475,7 +465,6 @@ export function DeckBuilderSetup({
 
                 <FormTextInput
                   label="Version notes"
-                  help="Optional notes describing this deck list or the changes being tested."
                   value={editVersionNotes}
                   onChange={onEditVersionNotesChange}
                   placeholder="Version notes"
@@ -504,14 +493,7 @@ export function DeckBuilderSetup({
                   <Plus className="h-4 w-4 shrink-0 text-violet-200" />
                   <div>
                     <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-violet-200/80">
-                      {versions.length
-                        ? "New separate version"
-                        : "First deck version"}
-                    </p>
-                    <p className="mt-1 truncate text-xs text-slate-500">
-                      {versions.length
-                        ? "Create an empty build or copy an existing list; the current version stays unchanged."
-                        : "Name the first build, then start adding its cards."}
+New version
                     </p>
                   </div>
                 </div>
@@ -536,17 +518,15 @@ export function DeckBuilderSetup({
                 }
               >
                 <FormTextInput
-                  label="New version name"
-                  help="Required. Use a distinct label such as Post Set 5 or Testing Build."
+                  label="Name"
                   value={newVersionName}
                   onChange={onNewVersionNameChange}
-                  placeholder="Required version name"
+                  placeholder="Version name"
                   required
                 />
 
                 <FormTextInput
-                  label="New version notes"
-                  help="Optional notes explaining what changed or what you plan to test."
+                  label="Notes"
                   value={newVersionNotes}
                   onChange={onNewVersionNotesChange}
                   placeholder="What is this build for?"
@@ -555,7 +535,7 @@ export function DeckBuilderSetup({
                 {versions.length ? (
                   <FormSelect
                     label="Start from"
-                    help="Start empty or copy every card, quantity, printing, zone, and sort order from an older version."
+                    help="Copies the full list; the source stays unchanged."
                     value={newVersionSourceId}
                     onChange={onNewVersionSourceIdChange}
                     placeholder="An empty deck list"
@@ -580,9 +560,7 @@ export function DeckBuilderSetup({
                   }
                 >
                   <Plus className="h-4 w-4" />
-                  {newVersionSourceId
-                    ? "Create copied version"
-                    : "Create empty version"}
+                  Create version
                 </button>
               </div>
             </div>

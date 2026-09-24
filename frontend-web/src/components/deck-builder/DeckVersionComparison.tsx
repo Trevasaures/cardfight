@@ -279,15 +279,9 @@ export function DeckVersionComparison({
     >
       <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-4 p-5 [&::-webkit-details-marker]:hidden">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-violet-200/80">
-            Optional analysis
-          </p>
-          <h3 className="mt-1 text-xl font-black text-slate-50">
-            Compare deck versions
-          </h3>
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-            Open Version Lab to inspect card, quantity, printing, and grade-curve changes.
-          </p>
+
+          <h3 className="mt-1 text-xl font-black text-slate-50">Compare versions</h3>
+
         </div>
 
         <div className="flex items-center gap-2 text-violet-100">
@@ -302,13 +296,8 @@ export function DeckVersionComparison({
 
       {availableBaselines.length === 0 ? (
         <div className="mt-5 rounded-3xl border border-dashed border-white/15 bg-black/20 p-6 text-center">
-          <p className="font-black text-slate-300">
-            Create a second version to unlock comparisons.
-          </p>
-          <p className="mt-2 text-sm text-slate-500">
-            Copy this build, make a few changes, then return here to see the
-            exact difference.
-          </p>
+          <p className="font-black text-slate-300">Add a second version to compare.</p>
+
         </div>
       ) : (
         <>
@@ -522,9 +511,7 @@ export function DeckVersionComparison({
                     <p className="font-black text-emerald-100">
                       These versions have identical card lists.
                     </p>
-                    <p className="mt-2 text-sm text-emerald-100/50">
-                      Names and notes can differ without changing the deck build.
-                    </p>
+
                   </div>
                 )}
               </div>

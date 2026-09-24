@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import { ArrowRight, RefreshCcw, Sparkles } from "lucide-react";
 
 import { PageHeader } from "../components/layout/PageHeader";
-import { WorkspaceSectionHeader } from "../components/layout/WorkspaceSectionHeader";
 import { usePersistentState } from "../hooks/usePersistentState";
 
 const NATIONS = {
@@ -332,34 +331,28 @@ export function NationQuiz() {
 
   return (
     <>
-      <PageHeader
-        eyebrow="Nation Quiz"
-        title="Find your Vanguard nation"
-        description="Answer a few playstyle questions and get a just-for-fun Standard nation recommendation."
-      />
+      <PageHeader title="Nation Quiz" />
 
       <section
         data-anime="motion-panel"
         className="workspace-panel overflow-hidden"
       >
-        <WorkspaceSectionHeader eyebrow="Discover" title="Nation Compass" description={answers.length > 0 ? `Progress saved locally · ${answers.length}/${QUESTIONS.length} answered` : "Find your playstyle in Standard / D-Series."} actions={
-          <button
-            type="button"
-            onClick={resetQuiz}
-            className="workspace-button border border-white/10 bg-white/[0.05] text-slate-200 hover:bg-white/[0.09]"
-          >
-            <RefreshCcw className="h-4 w-4" />
-            Reset
-          </button>
-        } />
 
-        <div className="pt-4">
-          <div role="progressbar" aria-label="Quiz completed" aria-valuenow={progressPct} aria-valuemin={0} aria-valuemax={100} className="h-1.5 overflow-hidden rounded-full bg-white/10">
+        <div className="flex items-center gap-4">
+          <div role="progressbar" aria-label="Quiz completed" aria-valuenow={progressPct} aria-valuemin={0} aria-valuemax={100} className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/10">
             <div
               className="h-full rounded-full bg-cyan-300/80 transition-[width] duration-300 motion-reduce:transition-none"
               style={{ width: `${progressPct}%` }}
             />
           </div>
+          <button
+            type="button"
+            onClick={resetQuiz}
+            className="workspace-button inline-flex shrink-0 items-center gap-2 px-3 border border-white/10 bg-white/[0.05] text-slate-200 hover:bg-white/[0.09]"
+          >
+            <RefreshCcw className="h-4 w-4" />
+            Reset
+          </button>
         </div>
 
         {!complete ? (
@@ -372,10 +365,6 @@ export function NationQuiz() {
               <h4 className="mt-2 text-xl font-black text-slate-50 sm:text-2xl">
                 {currentQuestion.prompt}
               </h4>
-
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-                {currentQuestion.description}
-              </p>
 
               <div className="mt-4 grid gap-2">
                 {currentQuestion.options.map((option, index) => (
@@ -409,14 +398,8 @@ export function NationQuiz() {
             <aside className="workspace-inset p-4">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-cyan-200" />
-                <p className="text-sm font-black text-slate-100">
-                  Live leaning
-                </p>
+                <p className="text-sm font-black text-slate-100">Affinity</p>
               </div>
-
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                Your current top nations will show here while you answer.
-              </p>
 
               <div className="mt-5 space-y-3">
                 {ranked.map((row) => {

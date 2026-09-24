@@ -52,7 +52,6 @@ export function CardPrintingForm({
 
         <FormTextInput
           label="Card number"
-          help="The collector number that uniquely identifies this printing."
           value={value.card_number}
           onChange={(fieldValue) => updateField("card_number", fieldValue)}
           placeholder="Example: DZ-BT01/001EN"
@@ -61,7 +60,6 @@ export function CardPrintingForm({
 
         <FormTextInput
           label="Rarity"
-          help="The rarity of this exact printing, such as RRR, SR, FFR, or PR."
           value={value.rarity}
           onChange={(fieldValue) => updateField("rarity", fieldValue)}
           placeholder="Example: SR"

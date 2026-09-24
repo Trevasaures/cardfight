@@ -71,7 +71,6 @@ export function ManualCardForm({
       <div className={`${isEditing ? "mt-4" : ""} grid gap-3 sm:grid-cols-2`}>
         <FormTextInput
           label="Card name"
-          help="The printed name of the card, exactly as you want it to appear in the deck list."
           value={value.name}
           onChange={(fieldValue) => updateField("name", fieldValue)}
           placeholder="Example: Blangdmire"
@@ -80,7 +79,6 @@ export function ManualCardForm({
 
         <FormSelect
           label="Grade"
-          help="The card grade. Most Vanguard units are grade 0, 1, 2, or 3. Some formats may include grade 4 units."
           value={value.grade}
           onChange={(fieldValue) => updateField("grade", fieldValue)}
           placeholder="Choose a grade"
@@ -93,7 +91,6 @@ export function ManualCardForm({
 
         <FormSelect
           label="Nation"
-          help="Choose the printed nation, a dual-nation combination, or Nationless for cards that can be used in any deck."
           value={value.nation}
           onChange={(fieldValue) => updateField("nation", fieldValue)}
           placeholder="Choose a nation"
@@ -109,7 +106,6 @@ export function ManualCardForm({
 
         <FormSelect
           label="Card type"
-          help="The card category, such as Normal Unit, Trigger Unit, G Unit, Normal Order, Blitz Order, or Set Order."
           value={value.card_type}
           onChange={(fieldValue) => updateField("card_type", fieldValue)}
           placeholder="Choose a card type"
@@ -130,7 +126,6 @@ export function ManualCardForm({
 
         <FormTextInput
           label="Card number"
-          help="The collector or card number within the set. This helps identify the exact printing."
           value={value.card_number}
           onChange={(fieldValue) => updateField("card_number", fieldValue)}
           placeholder="Example: DZ-BT01/001"
@@ -139,7 +134,6 @@ export function ManualCardForm({
 
         <FormTextInput
           label="Rarity"
-          help="The rarity for this printing, such as C, R, RR, RRR, ORRR, SEC, FFR, or SP."
           value={value.rarity}
           onChange={(fieldValue) => updateField("rarity", fieldValue)}
           placeholder="Example: RRR"
@@ -164,10 +158,6 @@ export function ManualCardForm({
         {isEditing ? "Save card changes" : "Create card"}
       </button>
 
-      <p className="mt-3 text-xs leading-5 text-slate-500">
-        All fields marked with <span className="text-cyan-200">*</span> are
-        required so each card entry can identify the exact printing.
-      </p>
     </div>
   );
 }

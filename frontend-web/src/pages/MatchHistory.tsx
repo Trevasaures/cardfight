@@ -6,7 +6,6 @@ import { deleteMatch, getMatchesPage } from "../api/matches";
 import { MatchCard } from "../components/cards/MatchCard";
 import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
-import { WorkspaceSectionHeader } from "../components/layout/WorkspaceSectionHeader";
 import type { Match, MatchFormat } from "../types/api";
 
 type ResultFilter = "All" | "Decided" | "Undecided";
@@ -129,33 +128,12 @@ export function MatchHistory() {
 
   return (
     <>
-      <PageHeader
-        eyebrow="Match History"
-        title="Logged battles"
-        description="Review recorded Vanguard matches with search and filters applied across the complete battle history."
-      />
+      <PageHeader title="Match History" />
 
       <section className="workspace-panel">
-        <WorkspaceSectionHeader
-          eyebrow="History"
-          title="Find a battle"
-          description="Search every recorded matchup, deck, and note."
-          actions={
-            <button
-              type="button"
-              onClick={() =>
-                void loadMatches(pagination.page, pageSize, search, format, result)
-              }
-              disabled={loading}
-              className="workspace-button inline-flex items-center justify-center gap-2 border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-slate-300 transition hover:bg-white/[0.08] disabled:opacity-50"
-            >
-              <RefreshCcw className={`h-3.5 w-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} />
-              Refresh
-            </button>
-          }
-        />
-        <div className="mt-4 grid min-w-0 gap-2 sm:grid-cols-3 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
-          <label className="relative block min-w-0 sm:col-span-3 xl:col-span-1">
+
+        <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto]">
+          <label className="relative col-span-2 block min-w-0 sm:col-span-4 xl:col-span-1">
             <span className="sr-only">Search decks or match notes</span>
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
@@ -204,6 +182,17 @@ export function MatchHistory() {
             ))}
           </select>
 
+          <button
+            type="button"
+            onClick={() =>
+              void loadMatches(pagination.page, pageSize, search, format, result)
+            }
+            disabled={loading}
+            className="workspace-button inline-flex items-center justify-center gap-2 border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-slate-300 transition hover:bg-white/[0.08] disabled:opacity-50"
+          >
+            <RefreshCcw className={`h-3.5 w-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} />
+            Refresh
+          </button>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500" aria-live="polite">
@@ -247,9 +236,7 @@ export function MatchHistory() {
       ) : (
         <section className="mt-4 rounded-2xl border border-dashed border-white/15 bg-white/[0.025] p-6 text-center">
           <p className="text-sm font-bold text-slate-300">No matches found.</p>
-          <p className="mt-2 text-sm text-slate-500">
-            Try changing the filters, or go roll something spicy in Play Lab.
-          </p>
+
         </section>
       )}
 

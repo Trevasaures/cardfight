@@ -395,9 +395,7 @@ export function AcquisitionItemRow({
         </div>
       </div>
       {hasChanges ? (
-        <p className="mt-2 text-[0.65rem] text-cyan-200/75">
-          Totals reflect saved values. Save or discard edits to use the other actions.
-        </p>
+        <p className="mt-2 text-[0.65rem] text-cyan-200/75">Save or discard edits to continue.</p>
       ) : null}
     </article>
   );

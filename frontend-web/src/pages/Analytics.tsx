@@ -145,34 +145,14 @@ export function Analytics() {
 
   return (
     <>
-      <PageHeader
-        eyebrow="Analytics · Performance Spotlight"
-        title="See what the record is really saying"
-        description="Explore a deck's form, matchups, and turn-order split to decide what to test next."
-      />
+      <PageHeader title="Analytics" />
 
       <section
         data-anime="motion-panel"
         className="workspace-panel"
       >
-        <WorkspaceSectionHeader
-          eyebrow="Focus"
-          title="Choose a deck"
-          description="Your spotlight selection is remembered when you return."
-          actions={
-            <button
-              type="button"
-              onClick={() => void refreshSpotlight()}
-              disabled={!selectedDeckId || loadingSpotlight}
-              className="workspace-button inline-flex items-center justify-center gap-2 border border-white/10 bg-white/[0.05] px-3 text-sm font-semibold text-slate-300 transition hover:bg-white/[0.09] disabled:opacity-40"
-            >
-              <RefreshCcw className={`h-4 w-4 ${loadingSpotlight ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-          }
-        />
 
-        <div className="mt-4 flex flex-col gap-3 border-t border-white/10 pt-3 xl:flex-row xl:items-center">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
           <label className="relative block min-w-0 xl:w-72 xl:shrink-0">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
             <input
@@ -217,6 +197,15 @@ export function Analytics() {
               Active only
             </button>
             <span className="ml-auto text-xs text-slate-500">{filteredRows.length} decks</span>
+            <button
+              type="button"
+              onClick={() => void refreshSpotlight()}
+              disabled={!selectedDeckId || loadingSpotlight}
+              className="workspace-button inline-flex items-center justify-center gap-2 border border-white/10 bg-white/[0.05] px-3 text-sm font-semibold text-slate-300 transition hover:bg-white/[0.09] disabled:opacity-40"
+            >
+              <RefreshCcw className={`h-4 w-4 ${loadingSpotlight ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
           </div>
         </div>
 
@@ -289,9 +278,7 @@ export function Analytics() {
       {rankedRows.length ? (
         <section data-anime="motion-panel" className="workspace-panel mt-4">
           <WorkspaceSectionHeader
-            eyebrow="Field"
-            title="Performance board"
-            description="Ranked by decided-game win rate, with sample size beside every result."
+            title="Standings"
           />
 
           <div className="mt-4 grid gap-2 lg:grid-cols-2 2xl:grid-cols-3">

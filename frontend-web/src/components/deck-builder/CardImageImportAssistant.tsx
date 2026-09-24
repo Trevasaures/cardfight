@@ -76,18 +76,10 @@ export function CardImageImportAssistant({
     <details className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
       <summary className="flex cursor-pointer list-none items-start justify-between gap-3 select-none [&::-webkit-details-marker]:hidden">
         <div>
-          <h4 className="font-black text-slate-100">
-            Card image import assistant
-          </h4>
-          <p className="mt-1 text-xs leading-5 text-slate-500">
-            Drop a card image, analyze it, then apply the suggested fields to the
-            form below.
-          </p>
+          <h4 className="font-black text-slate-100">Import image</h4>
+
         </div>
 
-        <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-bold text-cyan-100">
-          MVP
-        </span>
       </summary>
 
       <div
@@ -132,10 +124,7 @@ export function CardImageImportAssistant({
             <p className="text-sm font-bold text-slate-200">
               {selectedFile ? selectedFile.name : "Drop image here"}
             </p>
-            <p className="mt-1 text-xs leading-5 text-slate-500">
-              Use a clear PNG, JPG, or WEBP card image if possible. Cropped,
-              low-resolution, or tilted images may be harder to analyze.
-            </p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">PNG, JPG, or WEBP · Max 8 MB</p>
 
             <div className="mt-3 flex flex-wrap gap-2">
               <label

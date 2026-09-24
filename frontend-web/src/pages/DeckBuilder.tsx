@@ -832,20 +832,8 @@ export function DeckBuilder() {
   return (
     <div ref={builderRef}>
       <PageHeader
-        eyebrow="Deck Builder"
-        title="Build and version your decks"
-        description="Create deck versions, add card entries, and start turning match history into real deck testing data."
+        title="Deck Builder"
       />
-
-      <div className="mb-5 inline-flex max-w-full items-center gap-2.5 rounded-full border border-emerald-300/15 bg-emerald-300/[0.05] px-3 py-2">
-        <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.65)]" />
-        <p className="truncate text-xs font-bold text-emerald-100">
-          Workspace restores automatically
-        </p>
-        <p className="hidden text-xs text-slate-500 lg:block">
-          Deck, version, comparison, and unsaved details are remembered here.
-        </p>
-      </div>
 
       <div className="space-y-4">
         <DeckBuilderSetup
