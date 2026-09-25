@@ -19,6 +19,28 @@ test("copied formatting becomes plain text with meaningful paragraph breaks", ()
   );
 });
 
+test("encoded formatting and mixed-case attributes preserve card comparisons", () => {
+  const pasted =
+    '&lt;DIV&gt;<SPAN class="ability"><STRONG>[CONT]</STRONG></SPAN>: Power &lt; 5000 &amp; grade &gt; 1.<BR/>&lt;plain text&gt;&lt;/DIV&gt;';
+  assert.equal(
+    normalizeCardText(pasted),
+    "[CONT]: Power < 5000 & grade > 1.\n<plain text>",
+  );
+});
+
+test("nested formatting is fully removed before text is saved again", () => {
+  const pasted =
+    "<b<b>>[AUTO]</b</b>>: Draw a card.<di<b>v>Next ability.</div>";
+  const cleaned = "[AUTO]: Draw a card.\nNext ability.";
+  assert.equal(normalizeCardText(pasted), cleaned);
+  assert.equal(normalizeCardText(cleaned), cleaned);
+});
+
+test("unknown markup remains literal text for React to escape", () => {
+  const text = '<iframe title="card notes">Power < 5000</iframe>';
+  assert.equal(normalizeCardText(text), text);
+});
+
 test("cleans whitespace while preserving ability punctuation, Unicode and paragraphs", () => {
   const text =
     " \u200b[AUTO](VC):  COST [Soul Blast (1)], draw a card.\r\n\r\n\r\n  [1/Turn] “Name” gets +10000/★+1.\t\n";
