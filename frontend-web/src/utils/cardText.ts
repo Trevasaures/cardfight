@@ -37,7 +37,8 @@ export function normalizeCardText(value: string | null | undefined): string {
       // Keep paragraph boundaries while removing known presentation tags.
       .replace(/<br\s*\/?\s*>/gi, "\n")
       .replace(/<\/?(?:p|div|li|ul|ol)\b[^>]*>/gi, "\n")
-      .replace(/<\/?(?:span|strong|em|b|i|u)\b[^>]*>/gi, "")
+      // Remove all tag delimiters so unhandled tags (for example <iframe>) cannot survive.
+      .replace(/[<>]/g, "")
       // Marketplace exports may contain literal escapes and doubled CSV quotes.
       .replace(/\\r\\n|\\[rn]/g, "\n")
       .replace(/\\t/g, " ")
