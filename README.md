@@ -10,6 +10,7 @@ The project is designed primarily as a personal testing lab. Everything runs loc
 
 - Maintains Standard and Stride deck records, nations, formats, and win/loss statistics.
 - Generates random matchups and chooses a first player in the Play Lab.
+- Playtests saved versions on a solo Vanguard field with opening hands, mulligans, turns, and manual card effects.
 - Records match results, notes, participating deck versions, and matchup history.
 - Provides dashboard summaries, analytics, head-to-head statistics, and rivalry views.
 - Maintains a shared card catalog with individual card printings.
@@ -36,6 +37,22 @@ A typical session looks like this:
 4. Clone that version when testing a new build so the original remains available.
 5. Use Play Lab to choose a matchup and record the result.
 6. Review the dashboard, analytics, match history, and rivalry pages over time.
+
+## Hand Lab
+
+Cards can include optional **Ability text** in the create/edit forms in Card Library and Deck Builder. Save card effects or a description once per card; its text is shared by all decks and appears in the Hand Lab inspector. Click a card's name in Card Library to expand its text. Copied text is cleaned when leaving the field and saving: extra whitespace, escaped/doubled quotes, common HTML entities, and line-break markup become readable plain text. Existing text gets the same formatting when displayed. Line breaks are preserved, and clearing the field removes the saved text.
+
+Open **Hand Lab** from the sidebar or a selected version in Deck Builder. Choose first or second and a grade 0 starter, then deal five and resolve one mulligan. A ride-deck starter is selected by default; main-deck starters are removed before shuffling. Incomplete lists can be used as long as five main-deck cards remain. Printing choices and every physical copy are retained.
+
+The solo playmat includes the vanguard, five rear-guard circles, guardian circle, deck, ride deck, soul, damage, drop, order, crest, bind, G zone, tokens, reserve, and reveal area. Drag cards from your hand, an occupied circle, a pile, or the zone inspector onto a highlighted destination. Drop onto the hand to return cards; dropping onto the deck puts them on the bottom. The deck pile always drags its top card. Select multiple cards before dragging to move a group into a pile; unit circles accept one card. Release outside a valid destination or press Escape to cancel. The field and page scroll near their edges while dragging. Mouse, pen, and touch use the same pointer interaction; scroll from the spaces around cards on touch screens. Clicking a zone only inspects it; the **Move** menu remains available for keyboard use and precise deck-top placement. Riding moves the old vanguard into soul; calling over a rear-guard sends the old unit to drop. Click an occupied unit circle to inspect and select its unit for rest/stand and bonus controls. The inspector also supports deck searches and returning cards to the top or bottom. **Undo** restores up to 80 previous table states, including deck order and checks.
+
+Advance through Stand, Draw, Ride, Main, Battle, and End. Entering Draw draws one card for either starting order. Going first skips the first turn's Battle phase; going second begins on the theoretical opponent's turn. **Start my turn** stands your units. Ending your turn clears temporary power and critical bonuses. Drive and damage checks reveal one card and wait for you to resolve its effects, then send it to hand or damage. Draws, discards, soul charges, reveals, shuffling, rest/stand, damage flips, energy (0–10), and power/critical adjustments are also available manually.
+
+This is a sandbox, not a rules engine or an opponent AI. Ride costs, ability timing, grade restrictions, triggers, heals, persona ride, energy generation, crest abilities, token creation beyond the saved reserve, and win/loss conditions are not automated. Use **Flip** on damage cards for Counter-Blast/Counter-Charge, move soul cards to drop for Soul-Blast, and use the available zones for other effects. Card text and base stats come from the saved library; missing power displays as a dash. On narrow screens, the playmat and hand scroll within their own containers.
+
+The mulligan follows the [official Vanguard setup sequence](https://en.cf-vanguard.com/howto/v-series/): returned cards go to the bottom, replacements are drawn, then the remaining deck is shuffled. Keeping the hand does not shuffle.
+
+Deck selection is remembered locally. Playtest sessions are temporary and do not alter saved lists or match statistics.
 
 ## Technology stack
 
@@ -382,6 +399,13 @@ Run frontend linting and a production build:
 cd frontend-web
 npm run lint
 npm run build
+```
+
+Run the Hand Lab regression tests with Node.js 22.12+ (CI uses Node.js 24):
+
+```bash
+cd frontend-web
+npm test
 ```
 
 The production build is written to `frontend-web/dist/`.

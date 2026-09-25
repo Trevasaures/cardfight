@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   CheckCircle2,
   Copy,
@@ -8,6 +9,7 @@ import {
   RefreshCcw,
   Save,
   ShieldAlert,
+  Shuffle,
   Trash2,
   X,
 } from "lucide-react";
@@ -133,15 +135,26 @@ export function DeckBuilderSetup({
       <DeckBuilderStepHeader
         title="Deck & version"
         action={
-          <button
-            type="button"
-            onClick={onRefreshDecks}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-bold text-slate-300 transition hover:bg-white/[0.09] hover:text-slate-100"
-            title="Refresh the deck list from the backend"
-          >
-            <RefreshCcw className="h-4 w-4" />
-            <span className="hidden sm:inline">Refresh decks</span>
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {currentVersion && (
+              <Link
+                to={`/hand-lab?deck=${currentVersion.deck_id}&version=${currentVersion.id}`}
+                className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-xs font-bold text-cyan-100 transition hover:bg-cyan-300/15"
+              >
+                <Shuffle className="h-4 w-4" />
+                Hand Lab
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={onRefreshDecks}
+              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-bold text-slate-300 transition hover:bg-white/[0.09] hover:text-slate-100"
+              title="Refresh the deck list from the backend"
+            >
+              <RefreshCcw className="h-4 w-4" />
+              <span className="hidden sm:inline">Refresh decks</span>
+            </button>
+          </div>
         }
       />
 

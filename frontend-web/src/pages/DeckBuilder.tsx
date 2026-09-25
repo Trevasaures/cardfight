@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useDeckBuilderMotion } from "../animations/useDeckBuilderMotion";
+import { normalizeCardText } from "../utils/cardText";
 import {
   addCardPrinting,
   analyzeCardImage,
@@ -503,6 +504,7 @@ export function DeckBuilder() {
       grade: selectedCard.grade !== null ? String(selectedCard.grade) : "",
       nation: cardNationToFormValue(selectedCard.nation),
       card_type: selectedCard.card_type,
+      skill_text: normalizeCardText(selectedCard.skill_text),
       set_selection: printing?.set_code ?? "",
       set_code: printing?.set_code ?? "",
       set_name: printing?.set_name ?? "",
@@ -665,7 +667,7 @@ export function DeckBuilder() {
 
   async function handleSaveCardForm() {
     if (!manualCardIsComplete) {
-      setError("All manual card fields are required before saving a card.");
+      setError("Complete the required fields before saving a card.");
       return;
     }
 
@@ -678,6 +680,7 @@ export function DeckBuilder() {
         grade: newCard.grade,
         nation: cardNationToApiValue(newCard.nation),
         card_type: newCard.card_type,
+        skill_text: newCard.skill_text,
       };
 
       if (cardFormMode === "edit" && selectedCard) {

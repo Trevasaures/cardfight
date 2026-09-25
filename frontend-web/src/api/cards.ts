@@ -1,4 +1,5 @@
 import { apiRequest } from "./client";
+import { normalizeCardText } from "../utils/cardText";
 import type {
   Card,
   CardFormOptions,
@@ -76,14 +77,17 @@ export function getCard(cardId: number) {
 export function createCard(payload: CreateCardPayload) {
   return apiRequest<Card>("/api/cards", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, skill_text: normalizeCardText(payload.skill_text) }),
   });
 }
 
 export function updateCard(cardId: number, payload: UpdateCardPayload) {
   return apiRequest<Card>(`/api/cards/${cardId}`, {
     method: "PATCH",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      ...payload,
+      ...(payload.skill_text !== undefined ? { skill_text: normalizeCardText(payload.skill_text) } : {}),
+    }),
   });
 }
 

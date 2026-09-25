@@ -11,6 +11,7 @@ import { MatchHistory } from "./pages/MatchHistory";
 import { OrderTracker } from "./pages/OrderTracker";
 import { Analytics } from "./pages/Analytics";
 import { Rivalries } from "./pages/Rivalries";
+import { HandLab } from "./pages/HandLab";
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
       <Route element={<AppShell />}>
         <Route index element={<Dashboard />} />
         <Route path="/play" element={<PlayLab />} />
+        <Route path="/hand-lab" element={<HandLab />} />
         <Route path="/decks" element={<DeckLibrary />} />
         <Route path="/cards" element={<CardLibrary />} />
         <Route path="/deck-builder" element={<DeckBuilder />} />

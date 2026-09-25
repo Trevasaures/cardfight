@@ -1416,6 +1416,23 @@ button:disabled  {
   gap: 16px;
 }
 
+.catalog-card-title {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.catalog-card-title > span { min-width: 0; overflow-wrap: anywhere; }
+.catalog-card-title > svg { margin-top: 5px; color: #898177; transition: transform .15s; }
+.catalog-card-title[aria-expanded="true"] > svg { transform: rotate(180deg); }
+.catalog-card-title:hover { color: #e5c594; }
+.catalog-card-title:focus-visible { outline: 2px solid #dfb56d; outline-offset: 4px; border-radius: 3px; }
+.catalog-card-details { min-width: 0; border-top: 1px solid #ffffff10; padding-top: 12px; }
+.card-ability-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.8; color: #aaa6a2; }
+
 .catalog-artwork  {
   display: flex;
   flex-direction: column;

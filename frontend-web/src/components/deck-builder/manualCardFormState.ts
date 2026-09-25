@@ -10,6 +10,7 @@ export type ManualCardFormState = {
   grade: string;
   nation: string;
   card_type: string;
+  skill_text: string;
   set_selection: string;
   set_code: string;
   set_name: string;
@@ -22,6 +23,7 @@ export const EMPTY_MANUAL_CARD_FORM: ManualCardFormState = {
   grade: "",
   nation: "",
   card_type: "Normal Unit",
+  skill_text: "",
   set_selection: "",
   set_code: "",
   set_name: "",
@@ -85,6 +87,7 @@ export function cardAnalysisToManualForm(
     grade: result.fields.grade,
     nation: result.fields.nation,
     card_type: result.fields.card_type || "Normal Unit",
+    skill_text: "",
     set_selection: result.fields.set_code,
     set_code: result.fields.set_code,
     set_name: result.fields.set_name,
