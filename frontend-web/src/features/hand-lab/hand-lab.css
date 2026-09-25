@@ -1,0 +1,143 @@
+.hand-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 14px;
+}
+.hand-source > label {
+  flex: 1 1 200px;
+}
+.hand-source label {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  color: #a0a1b1;
+  font-size: 11px;
+  font-weight: 600;
+}
+.hand-source select {
+  width: 100%;
+  min-width: 0;
+  color: #eeebe6;
+  font-size: 13px;
+  font-weight: 500;
+}
+.hand-source-actions {
+  display: flex;
+  gap: 8px;
+}
+.hand-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid #ffffff15;
+  border-radius: 8px;
+  background: #ffffff05;
+  color: #c5c4d0;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+.hand-button:hover {
+  background: #ffffff0c;
+}
+.hand-button:disabled,
+.hand-table button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+  transform: none;
+}
+.hand-table {
+  overflow: hidden;
+  padding: 22px;
+  border: 1px solid #ffffff13;
+  border-radius: 24px;
+  background:
+    radial-gradient(
+      ellipse at 50% 20%,
+      color-mix(in srgb, var(--hand-nation) 9%, transparent),
+      transparent 65%
+    ),
+    #111219;
+}
+.hand-table-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.hand-phase {
+  padding: 4px 9px;
+  border: 1px solid #dfb56d30;
+  border-radius: 20px;
+  color: #e8c892;
+  background: #dfb56d0a;
+  font-size: 10px;
+}
+.hand-grade {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: #0b0c12e6;
+  color: #f1e4cd;
+  font-size: 10px;
+  font-weight: 700;
+}
+.hand-empty {
+  display: flex;
+  min-height: 250px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+  color: #9293a4;
+  font-size: 13px;
+}
+.hand-empty > svg {
+  color: #dfb56d;
+  opacity: 0.6;
+}
+.hand-error {
+  padding: 16px;
+  border: 1px solid #ef71713b;
+  border-radius: 12px;
+  background: #ef71710a;
+  color: #f6b3b3;
+  font-size: 13px;
+}
+.hand-practice-notice {
+  padding: 10px 14px;
+  border-left: 2px solid #dfb56d88;
+  background: #dfb56d08;
+  color: #c6b085;
+  font-size: 12px;
+}
+.hand-loading {
+  display: flex;
+  min-height: 250px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #9293a4;
+  font-size: 13px;
+}
+@media (max-width: 599px) {
+  .hand-table {
+    padding: 16px;
+    border-radius: 20px;
+  }
+  .hand-source > label {
+    flex-basis: 100%;
+  }
+  .hand-source-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

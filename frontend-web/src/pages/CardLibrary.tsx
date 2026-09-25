@@ -21,6 +21,8 @@ import {
 } from "../api/cards";
 import { CardCreationTools } from "../components/cards/CardCreationTools";
 import { CardArtwork } from "../components/cards/CardArtwork";
+import { CardAbilityText } from "../components/cards/CardAbilityText";
+import { normalizeCardText } from "../utils/cardText";
 import { CardPrintingForm } from "../components/cards/CardPrintingForm";
 import {
   clearCardSetSelection,
@@ -137,6 +139,7 @@ function cardToManualForm(card: Card): ManualCardFormState {
     grade: card.grade !== null ? String(card.grade) : "",
     nation: cardNationToFormValue(card.nation),
     card_type: card.card_type,
+    skill_text: normalizeCardText(card.skill_text),
     set_selection: printing?.set_code ?? "",
     set_code: printing?.set_code ?? "",
     set_name: printing?.set_name ?? "",
@@ -151,6 +154,7 @@ export function CardLibrary() {
   const loadControllerRef = useRef<AbortController | null>(null);
 
   const [cards, setCards] = useState<Card[]>([]);
+  const [expandedCardId, setExpandedCardId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [catalog, setCatalog] = useState(DEFAULT_CATALOG);
   const { nation, grade, card_type: cardType, set_code: setCode } = catalog;
@@ -369,7 +373,7 @@ export function CardLibrary() {
 
   async function createCatalogCard() {
     if (!createFormIsComplete) {
-      setError("All card fields are required before creating this card.");
+      setError("Complete the required fields before creating this card.");
       return;
     }
 
@@ -382,6 +386,7 @@ export function CardLibrary() {
         grade: createForm.grade,
         nation: cardNationToApiValue(createForm.nation),
         card_type: createForm.card_type,
+        skill_text: createForm.skill_text,
         set_code: createForm.set_code,
         set_name: createForm.set_name,
         card_number: createForm.card_number,
@@ -469,7 +474,7 @@ export function CardLibrary() {
     if (!editingCard) return;
 
     if (!editFormIsComplete) {
-      setError("All edit fields are required before saving this card.");
+      setError("Complete the required fields before saving this card.");
       return;
     }
 
@@ -482,6 +487,7 @@ export function CardLibrary() {
         grade: editForm.grade,
         nation: cardNationToApiValue(editForm.nation),
         card_type: editForm.card_type,
+        skill_text: editForm.skill_text,
       });
 
       const savedPrinting = editingCard.primary_printing
@@ -806,7 +812,16 @@ export function CardLibrary() {
                             </span>
 
                             <h4 className="min-w-0 break-words text-sm font-black leading-6 text-slate-50">
-                              {card.name}
+                              <button
+                                type="button"
+                                className="catalog-card-title"
+                                aria-expanded={expandedCardId === card.id}
+                                aria-controls={`card-details-${card.id}`}
+                                onClick={() => setExpandedCardId(expandedCardId === card.id ? null : card.id)}
+                              >
+                                <span>{card.name}</span>
+                                <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                              </button>
                             </h4>
                           </div>
 
@@ -857,13 +872,14 @@ export function CardLibrary() {
                             Edit
                           </button>
                         </div>
+                        <div
+                          id={`card-details-${card.id}`}
+                          hidden={expandedCardId !== card.id}
+                          className="catalog-card-details lg:col-span-2"
+                        >
+                          <CardAbilityText text={card.skill_text} />
+                        </div>
                       </div>
-
-                      {card.skill_text ? (
-                        <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-500">
-                          {card.skill_text}
-                        </p>
-                      ) : null}
                     </div>
                   </article>
                 );

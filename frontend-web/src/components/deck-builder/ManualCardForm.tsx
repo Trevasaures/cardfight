@@ -1,9 +1,11 @@
+import { useId } from "react";
 import { Pencil, Plus, RotateCcw } from "lucide-react";
 
-import { FormSelect, FormTextInput } from "../forms/HelpfulField";
+import { FieldLabel, FormSelect, FormTextInput } from "../forms/HelpfulField";
 import type { ManualCardFormState } from "./manualCardFormState";
 import type { CardFormOptions, CardSetOption } from "../../types/api";
 import { NATIONLESS_CARD_OPTION } from "../../utils/cards";
+import { normalizeCardText } from "../../utils/cardText";
 import { CardSetFields } from "../cards/CardSetFields";
 
 type CardFormMode = "create" | "edit";
@@ -32,6 +34,7 @@ export function ManualCardForm({
   onSetSaved,
 }: ManualCardFormProps) {
   const isEditing = mode === "edit";
+  const abilityTextId = useId();
 
   const nationOptions = value.nation && !options.nations.includes(value.nation)
     ? [value.nation, ...options.nations]
@@ -139,6 +142,20 @@ export function ManualCardForm({
           placeholder="Example: RRR"
           required
         />
+
+        <div className="sm:col-span-2">
+          <FieldLabel htmlFor={abilityTextId} label="Ability text (optional)" />
+          <textarea
+            id={abilityTextId}
+            value={value.skill_text}
+            onChange={(event) => updateField("skill_text", event.target.value)}
+            onBlur={(event) => updateField("skill_text", normalizeCardText(event.target.value))}
+            placeholder="Card effects or a short description…"
+            rows={5}
+            disabled={disabled}
+            className="w-full resize-y rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm leading-6 text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-300/50 disabled:opacity-50"
+          />
+        </div>
       </div>
 
       <button

@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { ArrowUpRight, BarChart3, BookOpen, ChevronRight, Command, Gamepad2, Hammer, History, Home, LibraryBig, Menu, Search, ShoppingCart, Sparkles, Swords, X } from "lucide-react";
+import { ArrowUpRight, BarChart3, BookOpen, ChevronRight, Command, Gamepad2, Hammer, History, Home, LibraryBig, Menu, Search, ShoppingCart, Shuffle, Sparkles, Swords, X } from "lucide-react";
 import { useRoutePageReveal } from "../../animations/useRoutePageReveal";
 
 const navGroups = [
   { label: "Your workspace", items: [
     { to: "/", label: "Dashboard", icon: Home },
     { to: "/play", label: "Play Lab", icon: Gamepad2 },
+    { to: "/hand-lab", label: "Hand Lab", icon: Shuffle },
   ] },
   { label: "Collection", items: [
     { to: "/decks", label: "Deck Library", icon: BookOpen },
