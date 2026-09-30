@@ -10,6 +10,11 @@ import urllib3
 from backend.services.image_processing import MAX_IMAGE_BYTES, validate_image_size
 
 
+ALLOWED_IMAGE_HOSTS = {
+    "images.ygoprodeck.com",
+}
+
+
 def _public_destination(url):
     if not isinstance(url, str) or len(url) > 2048:
         raise ValueError("Enter a public HTTP or HTTPS image URL.")
@@ -25,6 +30,8 @@ def _public_destination(url):
         ):
             raise ValueError
         hostname = parts.hostname.encode("idna").decode("ascii")
+        if hostname not in ALLOWED_IMAGE_HOSTS:
+            raise ValueError
         addresses = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
         ips = [ipaddress.ip_address(entry[4][0]) for entry in addresses]
         if not ips or any(not ip.is_global or ip.is_multicast for ip in ips):
