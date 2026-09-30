@@ -25,8 +25,8 @@ def import_image():
         image = prepare_image(data)
     except RequestEntityTooLarge:
         return jsonify(error="Image file is too large. Maximum size is 8 MB."), 413
-    except ValueError as exc:
-        return jsonify(error=str(exc)), 400
+    except ValueError:
+        return jsonify(error="Invalid image input."), 400
     return jsonify(serialize_image(image)), 201
 
 
