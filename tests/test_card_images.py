@@ -13,6 +13,10 @@ from backend.services.card_images import prepare_image
 from backend.services.image_processing import MAX_IMAGE_BYTES, decode_image
 
 
+IMAGE_HOST = "images.ygoprodeck.com"
+IMAGE_URL = f"https://{IMAGE_HOST}/card.jpeg"
+
+
 def image_bytes(color="navy", image_format="PNG", size=(500, 700)):
     output = BytesIO()
     Image.new("RGB", size, color).save(output, format=image_format)
@@ -236,15 +240,16 @@ class RemoteResponse:
         self.status = status
         self.headers = headers or {}
         self.data = data if data is not None else image_bytes(image_format="JPEG")
+        self.closed = False
 
     def stream(self, *_args, **_kwargs):
         yield self.data
 
     def close(self):
-        pass
+        self.closed = True
 
 
-def mock_remote(monkeypatch, responses):
+def mock_remote(monkeypatch, responses, requests=None):
     calls = []
     monkeypatch.setattr(
         remote_images.socket,
@@ -258,13 +263,16 @@ def mock_remote(monkeypatch, responses):
         def __init__(self, address, **kwargs):
             calls.append((address, kwargs))
 
-        def request(self, *_args, **_kwargs):
+        def request(self, method, target, **kwargs):
+            if requests is not None:
+                requests.append((method, target, kwargs))
             return responses.pop(0)
 
         def close(self):
             pass
 
     monkeypatch.setattr(remote_images.urllib3, "HTTPSConnectionPool", Pool)
+    monkeypatch.setattr(remote_images.urllib3, "HTTPConnectionPool", Pool)
     return calls
 
 
@@ -274,17 +282,15 @@ def test_url_import_downloads_and_converts_once_with_redirect_validation(
     calls = mock_remote(
         monkeypatch,
         [
-            RemoteResponse(302, {"Location": "https://cdn.example.com/card.jpeg"}),
+            RemoteResponse(302, {"Location": "/final.jpeg"}),
             RemoteResponse(),
         ],
     )
-    response = client.post(
-        "/api/card-images", json={"url": "https://example.com/card.jpeg"}
-    )
+    response = client.post("/api/card-images", json={"url": IMAGE_URL})
     assert response.status_code == 201
     assert len(calls) == 2
     assert calls[1][0] == "93.184.215.14"
-    assert calls[1][1]["assert_hostname"] == "cdn.example.com"
+    assert calls[1][1]["assert_hostname"] == IMAGE_HOST
     assert client.get(response.get_json()["image_url"]).status_code == 200
     assert (
         len(calls) == 2
@@ -296,8 +302,8 @@ def test_url_import_downloads_and_converts_once_with_redirect_validation(
     [
         None,
         "file:///etc/passwd",
-        "https://user:pass@example.com/x",
-        "https://example.com:5000/x",
+        f"https://user:pass@{IMAGE_HOST}/x",
+        f"https://{IMAGE_HOST}:5000/x",
     ],
 )
 def test_invalid_url_inputs_are_rejected(client, url):
@@ -308,6 +314,7 @@ def test_invalid_url_inputs_are_rejected(client, url):
     "address", ["127.0.0.1", "10.0.0.1", "169.254.169.254", "::1", "::ffff:127.0.0.1"]
 )
 def test_url_import_rejects_private_destinations(monkeypatch, address):
+    calls = mock_remote(monkeypatch, [])
     monkeypatch.setattr(
         remote_images.socket,
         "getaddrinfo",
@@ -316,7 +323,8 @@ def test_url_import_rejects_private_destinations(monkeypatch, address):
         ],
     )
     with pytest.raises(ValueError, match="public image URL"):
-        remote_images.download_image("https://example.com/card.jpeg")
+        remote_images.download_image(IMAGE_URL)
+    assert calls == [], "Reject the resolved address before opening a connection"
 
 
 def test_url_redirects_limits_and_http_failures_do_not_store_images(
@@ -330,11 +338,140 @@ def test_url_redirects_limits_and_http_failures_do_not_store_images(
         [RemoteResponse(data=b"<html>Error</html>")],
         [RemoteResponse(302, {"Location": "/loop"}) for _ in range(4)],
     ]:
-        mock_remote(monkeypatch, responses)
+        expected_requests = len(responses)
+        calls = mock_remote(monkeypatch, responses)
         assert (
-            client.post(
-                "/api/card-images", json={"url": "https://example.com/x"}
-            ).status_code
-            == 400
+            client.post("/api/card-images", json={"url": IMAGE_URL}).status_code == 400
         )
+        assert len(calls) == expected_requests, "Exercise the response checks"
     assert CardImage.query.count() == 0
+
+
+@pytest.mark.parametrize(
+    "url,target",
+    [
+        (IMAGE_URL, "/card.jpeg"),
+        (f"http://{IMAGE_HOST}/card.jpeg", "/card.jpeg"),
+        (f"https://{IMAGE_HOST}", "/"),
+        (f"https://{IMAGE_HOST}/café.jpeg", "/caf%C3%A9.jpeg"),
+        (
+            f"https://{IMAGE_HOST}/card%20name.jpeg?w=500&label=G%203#preview",
+            "/card%20name.jpeg?w=500&label=G%203",
+        ),
+        (
+            f"https://{IMAGE_HOST}/card.jpeg?source=https://example.com/art",
+            "/card.jpeg?source=https://example.com/art",
+        ),
+    ],
+)
+def test_request_uses_only_origin_form_and_the_validated_connection(
+    monkeypatch, url, target
+):
+    requests = []
+    response = RemoteResponse()
+    calls = mock_remote(monkeypatch, [response], requests)
+    assert remote_images.download_image(url) == response.data
+    assert response.closed
+    assert calls[0][0] == "93.184.215.14"
+    port = 80 if url.startswith("http:") else 443
+    assert calls[0][1]["port"] == port
+    if port == 443:
+        assert calls[0][1]["server_hostname"] == IMAGE_HOST
+        assert calls[0][1]["assert_hostname"] == IMAGE_HOST
+    method, sent_target, options = requests[0]
+    assert (method, sent_target) == ("GET", target)
+    assert options["headers"]["Host"] == IMAGE_HOST
+    assert options["assert_same_host"] is True
+    assert options["redirect"] is False
+    assert options["retries"] is False
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com/card.jpeg",
+        f"https://{IMAGE_HOST}.example.com/card.jpeg",
+        f"https://{IMAGE_HOST}@example.com/card.jpeg",
+        f"https://{IMAGE_HOST}:0/card.jpeg",
+        f"ftp://{IMAGE_HOST}/card.jpeg",
+        f"//{IMAGE_HOST}/card.jpeg",
+        f" {IMAGE_URL}",
+        f"https://{IMAGE_HOST}/card\r\nHeader:injected",
+        f"https://{IMAGE_HOST}/card\t.jpeg",
+        f"https://{IMAGE_HOST}/card\x00.jpeg",
+        f"https://{IMAGE_HOST}\\@example.com/card.jpeg",
+    ],
+)
+def test_unapproved_or_ambiguous_urls_fail_before_dns(client, monkeypatch, url):
+    def unexpected_dns(*_args, **_kwargs):
+        pytest.fail("Invalid input must not reach DNS")
+
+    monkeypatch.setattr(remote_images.socket, "getaddrinfo", unexpected_dns)
+    response = client.post("/api/card-images", json={"url": url})
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "Invalid image input."}
+    assert CardImage.query.count() == 0
+
+
+@pytest.mark.parametrize("path", ["//example.com/x", "///example.com/x"])
+def test_authority_like_paths_never_reach_the_http_client(monkeypatch, path):
+    calls = mock_remote(monkeypatch, [])
+    with pytest.raises(ValueError, match="direct image URL"):
+        remote_images.download_image(f"https://{IMAGE_HOST}{path}")
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        "https://example.com/card.jpeg",
+        "//127.0.0.1/card.jpeg",
+        "http://169.254.169.254/latest/meta-data/",
+        f"https://{IMAGE_HOST}:5000/card.jpeg",
+        f"https://{IMAGE_HOST}//example.com/card.jpeg",
+        "/card\r\n.jpeg",
+        "\\\\example.com/card.jpeg",
+    ],
+)
+def test_redirects_cannot_bypass_destination_or_target_checks(
+    client, monkeypatch, location
+):
+    response = RemoteResponse(302, {"Location": location})
+    calls = mock_remote(monkeypatch, [response])
+    result = client.post("/api/card-images", json={"url": IMAGE_URL})
+    assert result.status_code == 400
+    assert len(calls) == 1, "No connection to the redirect destination"
+    assert response.closed
+    assert CardImage.query.count() == 0
+
+
+def test_dns_is_pinned_per_hop_and_rechecked_after_a_redirect(monkeypatch):
+    calls = mock_remote(monkeypatch, [RemoteResponse(302, {"Location": "/next"})])
+    resolutions = []
+
+    def resolve(host, port, **_kwargs):
+        resolutions.append((host, port))
+        address = "93.184.215.14" if len(resolutions) == 1 else "127.0.0.1"
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, port))]
+
+    monkeypatch.setattr(remote_images.socket, "getaddrinfo", resolve)
+    with pytest.raises(ValueError, match="public image URL"):
+        remote_images.download_image(IMAGE_URL)
+    assert resolutions == [(IMAGE_HOST, 443), (IMAGE_HOST, 443)]
+    assert len(calls) == 1
+    assert calls[0][0] == "93.184.215.14"
+
+
+def test_mixed_public_and_private_dns_answers_are_rejected(monkeypatch):
+    calls = mock_remote(monkeypatch, [])
+    monkeypatch.setattr(
+        remote_images.socket,
+        "getaddrinfo",
+        lambda *_a, **_k: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 443))
+            for address in ["93.184.215.14", "10.0.0.1"]
+        ],
+    )
+    with pytest.raises(ValueError, match="public image URL"):
+        remote_images.download_image(IMAGE_URL)
+    assert calls == []

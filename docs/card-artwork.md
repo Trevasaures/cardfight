@@ -1,6 +1,6 @@
 # Card artwork
 
-Card details in Card Library and Deck Builder accept a public image URL or a
+Card details in Card Library and Deck Builder accept an approved public image URL or a
 JPEG, PNG, or WebP upload. Import shows a preview; Save attaches it to the card's
 primary printing. Add printing can also attach artwork to a new printing.
 Removing artwork is a draft change until Save. Failed imports leave the previous
@@ -10,9 +10,12 @@ preview intact. Card details and their primary printing save in one transaction.
 
 - `backend/services/image_processing.py` shares upload limits and image encoding
   with the existing card image analyzer. Artwork import does not invoke analysis.
-- `backend/services/remote_images.py` downloads bounded public HTTP(S) resources.
-  Each redirect is validated and connections use the validated IP with the
-  original TLS hostname. Imports do not forward cookies or use environment proxies.
+- `backend/services/remote_images.py` downloads bounded public HTTP(S) resources
+  from `ALLOWED_IMAGE_HOSTS` (currently `images.ygoprodeck.com`). Each redirect is
+  validated and connections use the validated IP with the original TLS hostname.
+  The HTTP client receives a validated path/query target, never the supplied URL.
+  Imports do not forward cookies or use environment proxies. Other sources can
+  be uploaded as files; review additional hosts before extending the allowlist.
 - `backend/services/card_images.py` applies orientation and generates variants
   once. Detail images fit within 1200 × 1680; thumbnails within 240 × 336. Neither
   variant is upscaled. A smaller original can remain the detail image when its

@@ -1,9 +1,10 @@
 """Bounded downloads from public image URLs, without proxy or cookie forwarding."""
 
 import ipaddress
+import re
 import socket
 from time import monotonic
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 import urllib3
 
@@ -15,18 +16,30 @@ ALLOWED_IMAGE_HOSTS = {
 }
 
 
-def _public_destination(url):
-    if not isinstance(url, str) or len(url) > 2048:
+def _validate_url_text(url):
+    # urlsplit silently removes some control characters. Reject ambiguous input
+    # before parsing, including redirect locations, rather than normalizing it.
+    if (
+        not isinstance(url, str)
+        or not url
+        or len(url) > 2048
+        or re.search(r"[\x00-\x20\x7f\\]", url)
+    ):
         raise ValueError("Enter a public HTTP or HTTPS image URL.")
+
+
+def _public_destination(url):
+    _validate_url_text(url)
     try:
         parts = urlsplit(url)
-        port = parts.port or (443 if parts.scheme == "https" else 80)
+        default_port = 443 if parts.scheme == "https" else 80
+        port = parts.port if parts.port is not None else default_port
         if (
             parts.scheme not in {"http", "https"}
             or not parts.hostname
             or parts.username is not None
             or parts.password is not None
-            or port != (443 if parts.scheme == "https" else 80)
+            or port != default_port
         ):
             raise ValueError
         hostname = parts.hostname.encode("idna").decode("ascii")
@@ -41,10 +54,23 @@ def _public_destination(url):
     return parts, hostname, port, str(ips[0])
 
 
+def _request_target(parts):
+    """Build an origin-form target; the validated pool owns the destination."""
+    path = quote(parts.path or "/", safe="/%:@!$&'()*+,;=-._~")
+    query = quote(parts.query, safe="/?%:@!$&'()*+,;=-._~")
+    target = path + ("?" + query if query else "")
+    # Only one leading slash: no absolute URL, network-path authority, backslash,
+    # whitespace, or request-line controls can reach the HTTP client's URL slot.
+    if not re.fullmatch(r"/(?!/)[A-Za-z0-9/%.~_!$&'()*+,;=:@?\-]*", target):
+        raise ValueError("Use a direct image URL, or upload the image file.")
+    return target
+
+
 def download_image(url: str) -> bytes:
     deadline = monotonic() + 20
     for _ in range(4):
         parts, hostname, port, address = _public_destination(url)
+        target = _request_target(parts)
         # Connect to the validated address, while keeping the original TLS name.
         # This avoids resolving the hostname again after the public-address check.
         pool = (
@@ -54,22 +80,20 @@ def download_image(url: str) -> bytes:
             if parts.scheme == "https"
             else urllib3.HTTPConnectionPool(address, port=port)
         )
-        path = parts.path or "/"
-        if parts.query:
-            path += "?" + parts.query
         response = None
         try:
             if monotonic() >= deadline:
                 raise ValueError("Image download timed out. Upload the file instead.")
             response = pool.request(
                 "GET",
-                path,
+                target,
                 headers={
                     "Host": hostname,
                     "Accept": "image/*",
                     "User-Agent": "CardfightLab/1.0",
                 },
                 redirect=False,
+                assert_same_host=True,
                 retries=False,
                 preload_content=False,
                 timeout=urllib3.Timeout(connect=3, read=5),
@@ -78,6 +102,7 @@ def download_image(url: str) -> bytes:
                 location = response.headers.get("Location")
                 if not location:
                     raise ValueError("Image URL redirected without a destination.")
+                _validate_url_text(location)
                 url = urljoin(url, location)
                 continue
             if response.status != 200:
