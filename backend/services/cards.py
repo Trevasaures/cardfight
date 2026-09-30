@@ -11,6 +11,7 @@ from sqlalchemy import or_
 
 from backend.database import db
 from backend.models import Card, CardPrinting, DeckCard
+from backend.services.card_images import checked_image_id, touch_images
 from backend.services.card_set_names import (
     list_set_options,
     lookup_set_name,
@@ -64,6 +65,7 @@ PRINTING_FIELDS = {
     "card_number",
     "rarity",
     "image_url",
+    "image_id",
     "product_url",
     "source",
     "external_id",
@@ -209,6 +211,7 @@ def _printing_payload(payload):
         "card_number": _normalize_printing_value(payload.get("card_number")) or None,
         "rarity": _normalize_printing_value(payload.get("rarity")) or None,
         "image_url": _clean_string(payload.get("image_url")),
+        "image_id": checked_image_id(payload.get("image_id")),
         "product_url": _clean_string(payload.get("product_url")),
         "source": _clean_string(payload.get("source")) or "manual",
         "external_id": _clean_string(payload.get("external_id")),
@@ -550,6 +553,7 @@ def create_card(payload):
 
     if printing_data:
         db.session.add(CardPrinting(card_id=card.id, **printing_data))
+        touch_images(printing_data.get("image_id"))
         remember_custom_set(
             printing_data.get("set_code"),
             printing_data.get("set_name"),
@@ -602,6 +606,28 @@ def update_card(card_id, payload):
             exclude_printing_id=printing.id,
         )
 
+    # Card details and the primary printing (including artwork) save together.
+    # Validate both before committing so a failed image/printing cannot partially save.
+    if "printing" in payload:
+        printing_payload = payload["printing"]
+        if not isinstance(printing_payload, dict):
+            raise ValueError("Printing must be a JSON object")
+        try:
+            primary = (
+                min(printings, key=lambda printing: printing.id) if printings else None
+            )
+            if primary:
+                update_card_printing(
+                    primary.id, printing_payload, commit=False, card_name=next_name
+                )
+            else:
+                add_card_printing(
+                    card.id, printing_payload, commit=False, card_name=next_name
+                )
+        except (ValueError, LookupError):
+            db.session.rollback()
+            raise
+
     for field_name, value in next_values.items():
         setattr(card, field_name, value)
 
@@ -609,7 +635,7 @@ def update_card(card_id, payload):
     return card
 
 
-def add_card_printing(card_id, payload):
+def add_card_printing(card_id, payload, *, commit=True, card_name=None):
     if not isinstance(payload, dict):
         raise ValueError("Request body must be a JSON object")
 
@@ -617,25 +643,27 @@ def add_card_printing(card_id, payload):
     printing_data = _printing_payload(payload)
 
     _raise_if_duplicate_printing(
-        name=card.name,
+        name=card_name or card.name,
         set_code=printing_data.get("set_code"),
         card_number=printing_data.get("card_number"),
         rarity=printing_data.get("rarity"),
     )
 
     printing = CardPrinting(card_id=card.id, **printing_data)
+    touch_images(printing_data.get("image_id"))
 
     db.session.add(printing)
     remember_custom_set(
         printing_data.get("set_code"),
         printing_data.get("set_name"),
     )
-    db.session.commit()
+    if commit:
+        db.session.commit()
 
     return printing
 
 
-def update_card_printing(printing_id, payload):
+def update_card_printing(printing_id, payload, *, commit=True, card_name=None):
     if not isinstance(payload, dict):
         raise ValueError("Request body must be a JSON object")
 
@@ -648,6 +676,7 @@ def update_card_printing(printing_id, payload):
         "card_number": printing.card_number,
         "rarity": printing.rarity,
         "image_url": printing.image_url,
+        "image_id": printing.image_id,
         "product_url": printing.product_url,
         "source": printing.source,
         "external_id": printing.external_id,
@@ -659,6 +688,8 @@ def update_card_printing(printing_id, payload):
 
         if field_name in {"set_code", "card_number", "rarity"}:
             next_values[field_name] = _normalize_printing_value(payload.get(field_name)) or None
+        elif field_name == "image_id":
+            next_values[field_name] = checked_image_id(payload.get(field_name))
         elif field_name == "source":
             next_values[field_name] = _clean_string(payload.get(field_name)) or "manual"
         else:
@@ -669,13 +700,14 @@ def update_card_printing(printing_id, payload):
         next_values["set_name"] = mapped_set_name
 
     _raise_if_duplicate_printing(
-        name=card.name,
+        name=card_name or card.name,
         set_code=next_values.get("set_code"),
         card_number=next_values.get("card_number"),
         rarity=next_values.get("rarity"),
         exclude_printing_id=printing.id,
     )
 
+    touch_images(printing.image_id, next_values.get("image_id"))
     for field_name, value in next_values.items():
         setattr(printing, field_name, value)
 
@@ -684,5 +716,6 @@ def update_card_printing(printing_id, payload):
         next_values.get("set_name"),
     )
 
-    db.session.commit()
+    if commit:
+        db.session.commit()
     return printing

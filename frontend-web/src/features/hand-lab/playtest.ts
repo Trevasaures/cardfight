@@ -1,3 +1,4 @@
+import { emptyRules, type RuleState } from "./rules/types.ts";
 import type { DeckCardEntry } from "../../types/api.ts";
 import {
   dealHand,
@@ -31,8 +32,14 @@ export const ZONES = {
   token: "Tokens",
   reserve: "Reserve",
   reveal: "Reveal",
+  gauge: "AutoMOD",
 } as const;
 export type Zone = keyof typeof ZONES;
+export const ATTACK_CIRCLES: readonly Zone[] = [
+  "frontLeft",
+  "vanguard",
+  "frontRight",
+];
 export const CIRCLES: Zone[] = [
   "frontLeft",
   "vanguard",
@@ -52,6 +59,9 @@ export type CardChange =
   | "flip"
   | "power+"
   | "power-"
+  | "power+2k"
+  | "power-2k"
+  | "power+100m"
   | "critical+"
   | "critical-";
 export type Phase =
@@ -77,6 +87,8 @@ export type TableSession = {
   active: "you" | "opponent";
   phase: Phase;
   energy: number;
+  rules: RuleState;
+  attackerKey: string | null;
   check: { key: string; kind: "drive" | "damage" } | null;
   log: string[];
 };
@@ -129,7 +141,8 @@ export function startTable(
         : entry.zone === "other"
           ? "reserve"
           : entry.zone;
-    zones[zone].push(copy);
+    // Unused G units start face down; face-up counts can then drive manual bonuses.
+    zones[zone].push(zone === "g" ? { ...copy, faceDown: true } : copy);
   }
   if (starterKey) {
     // Set the starter aside before dealing so it cannot also appear in the hand.
@@ -153,6 +166,8 @@ export function startTable(
     active: first ? "you" : "opponent",
     phase: "mulligan",
     energy: 0,
+    rules: emptyRules(),
+    attackerKey: null,
     check: null,
     log: ["Dealt five."],
   };
@@ -236,6 +251,20 @@ export function moveCards(
   // Remove each physical copy everywhere before inserting it at its destination.
   for (const zone of Object.keys(ZONES) as Zone[])
     zones[zone] = zones[zone].filter((card) => !moved.has(card.key));
+
+  // Soul is stored bottom-to-top. Uncover the next card only when the current
+  // vanguard leaves, before inserting the outgoing card (which may itself enter soul).
+  // Removing several cards at once skips every selected copy in the stack.
+  if (
+    to !== "vanguard" &&
+    session.zones.vanguard.some((card) => moved.has(card.key))
+  ) {
+    const uncovered = zones.soul.at(-1);
+    if (uncovered) {
+      zones.soul = zones.soul.slice(0, -1);
+      zones.vanguard = [fresh(uncovered)];
+    }
+  }
   if (CIRCLES.includes(to)) {
     // Riding keeps the previous vanguard in soul; calling over a rear-guard retires it.
     const replaced = zones[to];
@@ -253,12 +282,22 @@ export function moveCards(
       ? card
       : fresh(card);
   });
+  // Charged or manually added soul goes beneath the existing stack. Only riding
+  // puts the former vanguard immediately under its replacement.
   zones[to] =
-    position === "top" ? [...cards, ...zones[to]] : [...zones[to], ...cards];
+    to === "soul" || position === "top"
+      ? [...cards, ...zones[to]]
+      : [...zones[to], ...cards];
   return record(
     {
       ...session,
       zones,
+      // A retired or removed attacker must not own the next drive check.
+      attackerKey: ATTACK_CIRCLES.some((zone) =>
+        zones[zone].some((card) => card.key === session.attackerKey),
+      )
+        ? session.attackerKey
+        : null,
       check:
         session.check && moved.has(session.check.key) ? null : session.check,
     },
@@ -286,11 +325,54 @@ export function shuffleDeck(
   );
 }
 
+/** Apply one additive bonus atomically, including multi-unit effects and undo. */
+export function changePower(
+  session: TableSession,
+  keys: readonly string[],
+  amount: number,
+): TableSession {
+  if (session.phase === "mulligan" || !Number.isSafeInteger(amount) || !amount)
+    return session;
+  const targets = [...new Set(keys)].flatMap((key) => {
+    const found = findCard(session, key);
+    return found ? [found.card] : [];
+  });
+  if (
+    !targets.length ||
+    targets.some((card) => !Number.isSafeInteger(card.power + amount))
+  )
+    return session;
+
+  const selected = new Set(targets.map((card) => card.key));
+  const zones = { ...session.zones };
+  for (const zone of Object.keys(ZONES) as Zone[])
+    zones[zone] = zones[zone].map((card) =>
+      selected.has(card.key) ? { ...card, power: card.power + amount } : card,
+    );
+  return record(
+    { ...session, zones },
+    `${amount > 0 ? "+" : ""}${amount.toLocaleString()} power · ${targets.length} ${targets.length === 1 ? "card" : "cards"}.`,
+  );
+}
+
 export function changeCards(
   session: TableSession,
   keys: readonly string[],
   change: CardChange,
 ): TableSession {
+  // Presets and custom/group effects share the same integer validation and update.
+  switch (change) {
+    case "power+":
+      return changePower(session, keys, 5000);
+    case "power-":
+      return changePower(session, keys, -5000);
+    case "power+2k":
+      return changePower(session, keys, 2000);
+    case "power-2k":
+      return changePower(session, keys, -2000);
+    case "power+100m":
+      return changePower(session, keys, 100_000_000);
+  }
   if (
     session.phase === "mulligan" ||
     !keys.some((key) => findCard(session, key))
@@ -306,10 +388,6 @@ export function changeCards(
           return { ...card, rested: !card.rested };
         case "flip":
           return { ...card, faceDown: !card.faceDown };
-        case "power+":
-          return { ...card, power: card.power + 5000 };
-        case "power-":
-          return { ...card, power: card.power - 5000 };
         case "critical+":
           return { ...card, critical: card.critical + 1 };
         case "critical-":
@@ -322,28 +400,87 @@ export function changeCards(
 export function changeEnergy(
   session: TableSession,
   delta: number,
+  limit = 10,
 ): TableSession {
-  if (session.phase === "mulligan") return session;
-  const energy = Math.min(10, Math.max(0, session.energy + delta));
+  if (
+    session.phase === "mulligan" || !Number.isSafeInteger(delta) ||
+    ![10, 15].includes(limit)
+  ) return session;
+  const energy = Math.min(limit, Math.max(0, session.energy + delta));
   return energy === session.energy
     ? session
     : record({ ...session, energy }, `Energy ${energy}.`);
 }
 
+export function canAttack(session: TableSession, key: string): boolean {
+  const found = findCard(session, key);
+  return Boolean(
+    session.active === "you" &&
+      session.phase === "battle" &&
+      !session.check &&
+      found &&
+      ATTACK_CIRCLES.includes(found.zone) &&
+      !found.card.rested &&
+      !found.card.faceDown,
+  );
+}
+
+/** Rest explicitly, rather than toggling: extra drive checks must never stand a unit. */
+function restAttacker(session: TableSession, key: string): TableSession {
+  const { zone } = findCard(session, key)!;
+  return {
+    ...session,
+    attackerKey: key,
+    zones: {
+      ...session.zones,
+      [zone]: session.zones[zone].map((card) =>
+        card.key === key ? { ...card, rested: true } : card,
+      ),
+    },
+  };
+}
+
+export function attackCard(session: TableSession, key: string): TableSession {
+  if (!canAttack(session, key)) return session;
+  const { zone } = findCard(session, key)!;
+  // Checks remain separate so on-attack effects can be resolved before revealing a card.
+  return record(restAttacker(session, key), `Attack · ${ZONES[zone]}.`);
+}
+
+export function getDriveAttacker(
+  session: TableSession,
+  key = session.attackerKey ?? session.zones.vanguard[0]?.key,
+): { card: TableCard; zone: Zone } | undefined {
+  const found = key ? findCard(session, key) : undefined;
+  return found && ATTACK_CIRCLES.includes(found.zone) && !found.card.faceDown
+    ? found
+    : undefined;
+}
+
 export function beginCheck(
   session: TableSession,
   kind: "drive" | "damage",
+  attackerKey?: string,
 ): TableSession {
   // Leave the revealed card pending while the player applies its effects manually.
   if (
     session.phase === "mulligan" ||
     session.check ||
+    session.rules.pending.length > 0 ||
     !session.zones.deck.length
   )
     return session;
+  let next = session;
+  if (kind === "drive") {
+    if (session.active !== "you" || session.phase !== "battle") return session;
+    const attacker = getDriveAttacker(session, attackerKey);
+    if (!attacker) return session;
+    // Remember the source across repeated checks, including manual rear-guard checks.
+    next = restAttacker(session, attacker.card.key);
+  }
   const key = session.zones.deck[0].key;
   return record(
-    { ...takeTop(session, "reveal"), check: { key, kind } },
+    { ...takeTop(next, "reveal"), check: { key, kind } },
     `${kind === "drive" ? "Drive" : "Damage"} check.`,
   );
 }
@@ -359,13 +496,21 @@ export function resolveCheck(session: TableSession): TableSession {
 }
 
 export function nextPhase(session: TableSession): TableSession {
-  // A pending check must be resolved before progressing the turn.
-  if (session.phase === "mulligan" || session.check) return session;
+  // Resolve checks and queued abilities before advancing past their turn.
+  if (
+    session.phase === "mulligan" || session.check || session.rules.pending.length
+  ) return session;
   if (session.active === "opponent") {
     // The opponent has no simulated field; this transition starts the next solo turn.
     const zones = { ...session.zones };
-    for (const zone of CIRCLES)
-      zones[zone] = zones[zone].map((card) => ({ ...card, rested: false }));
+    // Damage-trigger bonuses expire at the opponent's turn boundary as well.
+    for (const zone of Object.keys(ZONES) as Zone[])
+      zones[zone] = zones[zone].map((card) => ({
+        ...card,
+        power: 0,
+        critical: 0,
+        rested: CIRCLES.includes(zone) ? false : card.rested,
+      }));
     return record(
       {
         ...session,
@@ -373,6 +518,7 @@ export function nextPhase(session: TableSession): TableSession {
         active: "you",
         turn: session.turn + 1,
         phase: "stand",
+        attackerKey: null,
       },
       `Your turn ${session.turn + 1}. Stood units.`,
     );
@@ -386,14 +532,14 @@ export function nextPhase(session: TableSession): TableSession {
         critical: 0,
       }));
     return record(
-      { ...session, zones, active: "opponent" },
+      { ...session, zones, active: "opponent", attackerKey: null },
       "Opponent's turn. Cleared turn bonuses.",
     );
   }
   let phase = PHASES[PHASES.indexOf(session.phase) + 1];
   // Both starting orders draw, but the first player skips their first battle phase.
   if (phase === "battle" && session.first && session.turn === 1) phase = "end";
-  const next = { ...session, phase };
+  const next = { ...session, phase, attackerKey: null };
   return record(
     phase === "draw" ? takeTop(next, "hand") : next,
     `${phase[0].toUpperCase()}${phase.slice(1)} phase${phase === "draw" && !session.zones.deck.length ? " · deck empty" : ""}.`,

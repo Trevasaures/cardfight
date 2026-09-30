@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 import { Pencil, Plus, RotateCcw } from "lucide-react";
 
 import { FieldLabel, FormSelect, FormTextInput } from "../forms/HelpfulField";
@@ -7,6 +7,7 @@ import type { CardFormOptions, CardSetOption } from "../../types/api";
 import { NATIONLESS_CARD_OPTION } from "../../utils/cards";
 import { normalizeCardText } from "../../utils/cardText";
 import { CardSetFields } from "../cards/CardSetFields";
+import { CardArtworkInput } from "../cards/CardArtworkInput";
 
 type CardFormMode = "create" | "edit";
 
@@ -35,10 +36,12 @@ export function ManualCardForm({
 }: ManualCardFormProps) {
   const isEditing = mode === "edit";
   const abilityTextId = useId();
+  const [importingArtwork, setImportingArtwork] = useState(false);
 
-  const nationOptions = value.nation && !options.nations.includes(value.nation)
-    ? [value.nation, ...options.nations]
-    : options.nations;
+  const nationOptions =
+    value.nation && !options.nations.includes(value.nation)
+      ? [value.nation, ...options.nations]
+      : options.nations;
   const cardTypeOptions =
     value.card_type && !options.card_types.includes(value.card_type)
       ? [value.card_type, ...options.card_types]
@@ -100,10 +103,7 @@ export function ManualCardForm({
           required
           options={nationOptions.map((nation) => ({
             value: nation,
-            label:
-              nation === NATIONLESS_CARD_OPTION
-                ? "Nationless"
-                : nation,
+            label: nation === NATIONLESS_CARD_OPTION ? "Nationless" : nation,
           }))}
         />
 
@@ -149,11 +149,21 @@ export function ManualCardForm({
             id={abilityTextId}
             value={value.skill_text}
             onChange={(event) => updateField("skill_text", event.target.value)}
-            onBlur={(event) => updateField("skill_text", normalizeCardText(event.target.value))}
+            onBlur={(event) =>
+              updateField("skill_text", normalizeCardText(event.target.value))
+            }
             placeholder="Card effects or a short description…"
             rows={5}
             disabled={disabled}
             className="w-full resize-y rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm leading-6 text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-300/50 disabled:opacity-50"
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <CardArtworkInput
+            value={value.artwork}
+            disabled={disabled}
+            onChange={(artwork) => onChange({ ...value, artwork })}
+            onBusyChange={setImportingArtwork}
           />
         </div>
       </div>
@@ -161,7 +171,7 @@ export function ManualCardForm({
       <button
         type="button"
         onClick={onSubmit}
-        disabled={disabled || !canSubmit}
+        disabled={disabled || importingArtwork || !canSubmit}
         className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
         title={
           canSubmit
@@ -171,10 +181,13 @@ export function ManualCardForm({
             : "Complete all required fields before saving"
         }
       >
-        {isEditing ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+        {isEditing ? (
+          <Pencil className="h-4 w-4" />
+        ) : (
+          <Plus className="h-4 w-4" />
+        )}
         {isEditing ? "Save card changes" : "Create card"}
       </button>
-
     </div>
   );
 }

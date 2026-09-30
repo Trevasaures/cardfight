@@ -3,11 +3,14 @@ import test from "node:test";
 import type { DeckCardEntry } from "../src/types/api.ts";
 import { seededRandom } from "../src/features/hand-lab/engine.ts";
 import {
+  attackCard,
   beginCheck,
+  canAttack,
   canDropCards,
   changeCards,
   changeEnergy,
   finishMulligan,
+  getDriveAttacker,
   listCopies,
   moveCards,
   nextPhase,
@@ -37,6 +40,11 @@ const entries = [
 const fresh = (first = true) =>
   startTable(entries, first, "10:0", seededRandom(13));
 const ready = (first = true) => finishMulligan(fresh(first), []);
+const battleReady = () => {
+  let session = nextPhase(ready(false));
+  for (let i = 0; i < 4; i++) session = nextPhase(session);
+  return session;
+};
 const inventory = (session: TableSession) =>
   Object.values(session.zones)
     .flat()
@@ -161,8 +169,104 @@ test("movement handles duplicate selections, occupied circles, and deck top/bott
   assert.deepEqual(inventory(bottom), inventory(initial));
 });
 
+test("temporary rides from hand or drop uncover the prior vanguard when moved away", () => {
+  for (const source of ["hand", "drop"] as const) {
+    let base = ready();
+    for (const key of ["11:0", "12:0", "13:0"])
+      base = moveCards(base, [key], "vanguard");
+    const form = base.zones.hand[0].key;
+    if (source === "drop") base = moveCards(base, [form], "drop");
+    const covered = moveCards(base, [form], "vanguard");
+    const attacked = attackCard({ ...covered, phase: "battle" }, form);
+    const previous = JSON.stringify(attacked);
+    const returned = moveCards(attacked, [form], "bind");
+
+    assert.equal(returned.zones.vanguard[0].key, "13:0");
+    assert.equal(returned.zones.vanguard[0].rested, false);
+    assert.equal(returned.zones.bind.at(-1)?.key, form);
+    assert.deepEqual(
+      returned.zones.soul.map((card) => card.key),
+      ["10:0", "11:0", "12:0"],
+    );
+    assert.equal(returned.attackerKey, null);
+    assert.deepEqual(inventory(returned), inventory(base));
+    assert.equal(
+      JSON.stringify(attacked),
+      previous,
+      "undo retains the entire covered stack",
+    );
+  }
+});
+
+test("charging and blasting soul preserve the next vanguard in stack order", () => {
+  let session = moveCards(ready(), ["13:0"], "vanguard");
+  const form = session.zones.hand[0].key;
+  session = moveCards(session, [form], "vanguard");
+  const charged = session.zones.deck[0].key;
+  session = takeTop(session, "soul");
+  assert.deepEqual(
+    session.zones.soul.map((card) => card.key),
+    [charged, "10:0", "13:0"],
+  );
+  session = moveCards(session, [charged], "drop");
+  assert.equal(
+    session.zones.vanguard[0].key,
+    form,
+    "soul blast does not replace the active vanguard",
+  );
+  session = moveCards(session, [form], "hand");
+  assert.equal(session.zones.vanguard[0].key, "13:0");
+  session = moveCards(session, ["13:0"], "deck", "bottom");
+  assert.equal(session.zones.vanguard[0].key, "10:0");
+  assert.equal(session.zones.deck.at(-1)?.key, "13:0");
+});
+
+test("uncovering skips selected soul copies and leaves an exhausted stack empty", () => {
+  const initial = ready();
+  let session = moveCards(initial, ["11:0"], "vanguard");
+  session = moveCards(session, ["12:0"], "vanguard");
+  session = moveCards(session, ["12:0", "11:0"], "drop");
+  assert.equal(session.zones.vanguard[0].key, "10:0");
+  assert.equal(session.zones.soul.length, 0);
+  session = moveCards(session, ["10:0"], "soul");
+  assert.equal(
+    session.zones.vanguard.length,
+    0,
+    "a moved vanguard cannot uncover itself",
+  );
+  assert.deepEqual(session.zones.soul.map((card) => card.key), ["10:0"]);
+  assert.deepEqual(inventory(session), inventory(initial));
+});
+
+test("riding a soul card and moving the vanguard into soul never duplicates a copy", () => {
+  let session = moveCards(ready(), ["11:0"], "vanguard");
+  session = moveCards(session, ["12:0"], "vanguard");
+  const original = inventory(session);
+  session = moveCards(session, ["10:0"], "vanguard");
+  assert.deepEqual(session.zones.soul.map((card) => card.key), ["11:0", "12:0"]);
+  session = moveCards(session, ["10:0"], "soul");
+  assert.equal(session.zones.vanguard[0].key, "12:0");
+  assert.deepEqual(session.zones.soul.map((card) => card.key), ["10:0", "11:0"]);
+  assert.deepEqual(inventory(session), original);
+});
+
+test("2k and 5k power adjustments combine and clear at the turn boundary", () => {
+  const initial = ready();
+  const key = initial.zones.vanguard[0].key;
+  let session = changeCards(initial, [key], "power+2k");
+  session = changeCards(session, [key], "power+");
+  assert.equal(session.zones.vanguard[0].power, 7000);
+  session = changeCards(session, [key], "power-2k");
+  assert.equal(session.zones.vanguard[0].power, 5000);
+  session = changeCards(session, [key], "power-");
+  session = changeCards(session, [key], "power-2k");
+  assert.equal(session.zones.vanguard[0].power, -2000);
+  assert.equal(initial.zones.vanguard[0].power, 0);
+  assert.equal(nextPhase({ ...session, phase: "end" }).zones.vanguard[0].power, 0);
+});
+
 test("checks reveal one copy, wait for resolution, and route to the right zone", () => {
-  const initial = ready(false);
+  const initial = battleReady();
   const checked = beginCheck(initial, "damage");
   assert.equal(checked.zones.reveal[0].key, initial.zones.deck[0].key);
   assert.equal(beginCheck(checked, "drive"), checked);
@@ -171,7 +275,7 @@ test("checks reveal one copy, wait for resolution, and route to the right zone",
   assert.equal(resolved.zones.damage.length, 1);
   assert.equal(resolved.check, null);
   const driven = resolveCheck(beginCheck(resolved, "drive"));
-  assert.equal(driven.zones.hand.length, 6);
+  assert.equal(driven.zones.hand.length, initial.zones.hand.length + 1);
   assert.deepEqual(inventory(driven), inventory(initial));
   const manual = moveCards(checked, [checked.check!.key], "bind");
   assert.equal(
@@ -179,6 +283,167 @@ test("checks reveal one copy, wait for resolution, and route to the right zone",
     null,
     "manual effect resolution must not leave a stuck check",
   );
+});
+
+test("attacking rests only the chosen front-row unit without revealing or mutating the prior snapshot", () => {
+  for (const zone of ["vanguard", "frontLeft", "frontRight"] as const) {
+    let initial = battleReady();
+    if (zone !== "vanguard") {
+      initial = moveCards(initial, [initial.zones.hand[0].key], zone);
+    }
+    const key = initial.zones[zone][0].key;
+    initial = changeCards(initial, [key], "power+");
+    const previous = JSON.stringify(initial);
+    const attacked = attackCard(initial, key);
+
+    assert.equal(canAttack(initial, key), true);
+    assert.equal(attacked.zones[zone][0].rested, true);
+    assert.equal(attacked.zones[zone][0].power, 5000);
+    assert.equal(attacked.attackerKey, key);
+    assert.equal(attacked.check, null);
+    assert.deepEqual(attacked.zones.deck, initial.zones.deck);
+    assert.deepEqual(attacked.zones.reveal, initial.zones.reveal);
+    assert.deepEqual(inventory(attacked), inventory(initial));
+    assert.equal(
+      JSON.stringify(initial),
+      previous,
+      "undo can restore the prior snapshot",
+    );
+    if (zone !== "vanguard")
+      assert.equal(attacked.zones.vanguard[0].rested, false);
+
+    assert.equal(
+      attackCard(attacked, key),
+      attacked,
+      "a rested unit cannot attack again",
+    );
+    const stood = changeCards(attacked, [key], "rest");
+    assert.equal(attackCard(stood, key).zones[zone][0].rested, true);
+  }
+});
+
+test("attacks require a standing front-row unit during your battle phase with no pending check", () => {
+  const initial = battleReady();
+  const key = initial.zones.vanguard[0].key;
+  const blocked: TableSession[] = [
+    fresh(),
+    ready(),
+    { ...initial, phase: "main" },
+    { ...initial, active: "opponent" },
+    changeCards(initial, [key], "flip"),
+    beginCheck(initial, "damage"),
+  ];
+  for (const session of blocked) {
+    assert.equal(canAttack(session, key), false);
+    assert.equal(attackCard(session, key), session);
+  }
+  assert.equal(attackCard(initial, "missing"), initial);
+  const handKey = initial.zones.hand[0].key;
+  assert.equal(attackCard(initial, handKey), initial);
+  for (const zone of [
+    "backLeft",
+    "backCenter",
+    "backRight",
+    "guardian",
+  ] as const) {
+    const called = moveCards(initial, [handKey], zone);
+    assert.equal(attackCard(called, handKey), called);
+  }
+});
+
+test("direct and repeated vanguard drive checks rest the vanguard without toggling it back to stand", () => {
+  const initial = battleReady();
+  const previous = JSON.stringify(initial);
+  const first = beginCheck(initial, "drive");
+  assert.equal(first.zones.vanguard[0].rested, true);
+  assert.equal(first.attackerKey, initial.zones.vanguard[0].key);
+  assert.equal(first.check?.key, initial.zones.deck[0].key);
+  assert.equal(
+    beginCheck(first, "drive"),
+    first,
+    "resolve each check before revealing another",
+  );
+  const second = beginCheck(resolveCheck(first), "drive");
+  assert.equal(second.zones.vanguard[0].rested, true);
+  assert.equal(second.check?.key, initial.zones.deck[1].key);
+  const resolved = resolveCheck(second);
+  assert.equal(resolved.zones.hand.length, initial.zones.hand.length + 2);
+  assert.deepEqual(inventory(resolved), inventory(initial));
+  assert.equal(JSON.stringify(initial), previous);
+});
+
+test("optional rear-guard drive checks keep their source across checks and leave the vanguard standing", () => {
+  const initial = battleReady();
+  const key = initial.zones.hand[0].key;
+  const called = moveCards(initial, [key], "frontLeft");
+  const attacked = attackCard(called, key);
+  assert.equal(
+    attacked.check,
+    null,
+    "rear-guard attacks never start a drive check automatically",
+  );
+  assert.equal(getDriveAttacker(attacked)?.card.key, key);
+  const first = beginCheck(attacked, "drive");
+  const second = beginCheck(resolveCheck(first), "drive");
+  assert.equal(second.zones.frontLeft[0].rested, true);
+  assert.equal(second.zones.vanguard[0].rested, false);
+  assert.equal(second.attackerKey, key);
+  assert.deepEqual(inventory(second), inventory(initial));
+
+  const direct = beginCheck(called, "drive", key);
+  assert.equal(direct.zones.frontLeft[0].rested, true);
+  assert.equal(direct.zones.vanguard[0].rested, false);
+  const vanguardKey = called.zones.vanguard[0].key;
+  const switched = beginCheck(resolveCheck(direct), "drive", vanguardKey);
+  assert.equal(switched.attackerKey, vanguardKey);
+  assert.equal(switched.zones.vanguard[0].rested, true);
+});
+
+test("blocked drive checks and damage checks do not rest any unit", () => {
+  const initial = battleReady();
+  const key = initial.zones.vanguard[0].key;
+  const blocked: TableSession[] = [
+    fresh(),
+    ready(),
+    { ...initial, active: "opponent" },
+    changeCards(initial, [key], "flip"),
+    moveCards(initial, [key], "soul"),
+    moveCards(
+      initial,
+      initial.zones.deck.map((card) => card.key),
+      "drop",
+    ),
+    beginCheck(initial, "damage"),
+  ];
+  for (const session of blocked) {
+    assert.equal(beginCheck(session, "drive"), session);
+  }
+  assert.equal(beginCheck(initial, "drive", "missing"), initial);
+  const handKey = initial.zones.hand[0].key;
+  assert.equal(beginCheck(initial, "drive", handKey), initial);
+  const backRow = moveCards(initial, [handKey], "backLeft");
+  assert.equal(beginCheck(backRow, "drive", handKey), backRow);
+  const damage = beginCheck(ready(false), "damage");
+  assert.equal(damage.check?.kind, "damage");
+  assert.equal(damage.zones.vanguard[0].rested, false);
+  assert.equal(damage.attackerKey, null);
+});
+
+test("leaving battle or removing the attacking unit clears the drive-check source", () => {
+  const initial = battleReady();
+  const key = initial.zones.hand[0].key;
+  const attacked = attackCard(moveCards(initial, [key], "frontRight"), key);
+  assert.equal(nextPhase(attacked).attackerKey, null);
+  assert.equal(moveCards(attacked, [key], "drop").attackerKey, null);
+  assert.equal(moveCards(attacked, [key], "backRight").attackerKey, null);
+  const replaced = moveCards(
+    attacked,
+    [attacked.zones.hand[0].key],
+    "frontRight",
+  );
+  assert.equal(replaced.attackerKey, null);
+  assert.equal(getDriveAttacker(replaced)?.zone, "vanguard");
+  assert.equal(attacked.attackerKey, key, "undo retains the original attacker");
 });
 
 test("damage flips and resource adjustments preserve cards; energy stays in range", () => {

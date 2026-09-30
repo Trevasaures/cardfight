@@ -10,14 +10,7 @@ from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
 from backend.services.card_set_names import lookup_set_name
-
-MAX_IMAGE_BYTES = 8 * 1024 * 1024
-
-ALLOWED_IMAGE_TYPES = {
-    "image/jpeg",
-    "image/png",
-    "image/webp",
-}
+from backend.services.image_processing import encode_image, read_image_upload
 
 RARITY_VALUES = {
     "C",
@@ -94,9 +87,7 @@ def _make_bottom_crop_bytes(image_bytes: bytes):
                 Image.Resampling.LANCZOS,
             )
 
-            output = BytesIO()
-            enlarged.save(output, format="JPEG", quality=95)
-            return output.getvalue()
+            return encode_image(enlarged, "JPEG", quality=95)
     except UnidentifiedImageError:
         return None
 
@@ -457,24 +448,8 @@ def _analyze_with_openai(image_bytes: bytes, mimetype: str):
 
 
 def analyze_card_image(image_file: FileStorage | None):
-    if image_file is None:
-        raise ValueError("image file is required.")
-
-    if not image_file.filename:
-        raise ValueError("image filename is required.")
-
-    content_type = image_file.mimetype or ""
-
-    if content_type not in ALLOWED_IMAGE_TYPES:
-        raise ValueError("image must be a PNG, JPG, JPEG, or WEBP file.")
-
-    image_bytes = image_file.read(MAX_IMAGE_BYTES + 1)
-
-    if not image_bytes:
-        raise ValueError("image file is empty.")
-
-    if len(image_bytes) > MAX_IMAGE_BYTES:
-        raise ValueError("image file is too large. Maximum size is 8 MB.")
+    image_bytes = read_image_upload(image_file)
+    content_type = image_file.mimetype
 
     provider = os.getenv("CARD_IMAGE_ANALYZER_PROVIDER", "mock").strip().lower()
 
