@@ -1,4 +1,5 @@
 import { Layers3 } from "lucide-react";
+import { useState } from "react";
 
 import { FormTextInput } from "../forms/HelpfulField";
 import type { CardFormOptions, CardSetOption } from "../../types/api";
@@ -7,6 +8,7 @@ import {
   type CardPrintingFormState,
 } from "./cardPrintingFormState";
 import { CardSetFields } from "./CardSetFields";
+import { CardArtworkInput } from "./CardArtworkInput";
 
 type CardPrintingFormProps = {
   value: CardPrintingFormState;
@@ -28,11 +30,9 @@ export function CardPrintingForm({
   onSetSaved,
 }: CardPrintingFormProps) {
   const canSubmit = cardPrintingFormIsComplete(value);
+  const [importingArtwork, setImportingArtwork] = useState(false);
 
-  function updateField(
-    field: keyof CardPrintingFormState,
-    fieldValue: string,
-  ) {
+  function updateField(field: keyof CardPrintingFormState, fieldValue: string) {
     onChange({
       ...value,
       [field]: fieldValue,
@@ -67,6 +67,15 @@ export function CardPrintingForm({
         />
       </div>
 
+      <div className="mt-4">
+        <CardArtworkInput
+          value={value.artwork}
+          disabled={disabled}
+          onChange={(artwork) => onChange({ ...value, artwork })}
+          onBusyChange={setImportingArtwork}
+        />
+      </div>
+
       <div className="mt-4 flex flex-wrap justify-end gap-3">
         <button
           type="button"
@@ -80,7 +89,7 @@ export function CardPrintingForm({
         <button
           type="button"
           onClick={onSubmit}
-          disabled={disabled || !canSubmit}
+          disabled={disabled || importingArtwork || !canSubmit}
           className="inline-flex items-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
           title={
             canSubmit

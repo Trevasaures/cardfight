@@ -1,5 +1,6 @@
 import { apiRequest } from "./client";
 import { normalizeCardText } from "../utils/cardText";
+import type { CardArtworkValue } from "../components/cards/cardArtworkState";
 import type {
   Card,
   CardFormOptions,
@@ -30,11 +31,7 @@ export function getManagedCardSets() {
   return apiRequest<ManagedCardSet[]>("/api/cards/sets");
 }
 
-export function updateCardSet(
-  currentCode: string,
-  code: string,
-  name: string,
-) {
+export function updateCardSet(currentCode: string, code: string, name: string) {
   return apiRequest<ManagedCardSet>(
     `/api/cards/sets/${encodeURIComponent(currentCode)}`,
     {
@@ -77,7 +74,10 @@ export function getCard(cardId: number) {
 export function createCard(payload: CreateCardPayload) {
   return apiRequest<Card>("/api/cards", {
     method: "POST",
-    body: JSON.stringify({ ...payload, skill_text: normalizeCardText(payload.skill_text) }),
+    body: JSON.stringify({
+      ...payload,
+      skill_text: normalizeCardText(payload.skill_text),
+    }),
   });
 }
 
@@ -86,7 +86,9 @@ export function updateCard(cardId: number, payload: UpdateCardPayload) {
     method: "PATCH",
     body: JSON.stringify({
       ...payload,
-      ...(payload.skill_text !== undefined ? { skill_text: normalizeCardText(payload.skill_text) } : {}),
+      ...(payload.skill_text !== undefined
+        ? { skill_text: normalizeCardText(payload.skill_text) }
+        : {}),
     }),
   });
 }
@@ -121,9 +123,25 @@ export function analyzeCardImage(file: File) {
   });
 }
 
-export function getCardLibraryPage(params: CardLibraryParams = {}, signal?: AbortSignal) {
+export function getCardLibraryPage(
+  params: CardLibraryParams = {},
+  signal?: AbortSignal,
+) {
   return apiRequest<PaginatedCardsResponse>(
     `/api/cards/library${toQueryString(params)}`,
     { signal },
   );
+}
+
+export function importCardArtwork(source: File | string, signal?: AbortSignal) {
+  const body =
+    typeof source === "string"
+      ? JSON.stringify({ url: source })
+      : new FormData();
+  if (body instanceof FormData) body.set("image", source as File);
+  return apiRequest<CardArtworkValue>("/api/card-images", {
+    method: "POST",
+    body,
+    signal,
+  });
 }

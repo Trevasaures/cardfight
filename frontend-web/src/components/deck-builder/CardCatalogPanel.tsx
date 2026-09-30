@@ -225,6 +225,7 @@ export function CardCatalogPanel({
           </summary>
 
           <ManualCardForm
+            key={selectedCardId}
             value={newCard}
             mode={cardFormMode}
             onChange={onNewCardChange}

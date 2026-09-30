@@ -1,0 +1,153 @@
+.card-artwork-editor {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border, #ffffff15);
+  border-radius: 1rem;
+  background: #0002;
+}
+.card-artwork-preview {
+  width: 76px;
+  aspect-ratio: 5 / 7;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid #d6b67640;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  color: #d6b676;
+  background: #0d0e12;
+}
+.card-artwork-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.card-artwork-controls {
+  flex: 1;
+  min-width: 0;
+}
+.card-artwork-controls label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+.card-artwork-controls label span,
+.card-artwork-buttons span {
+  color: #9ca3b4;
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+.card-artwork-url {
+  display: flex;
+  gap: 0.5rem;
+}
+.card-artwork-url input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #ffffff1a;
+  background: #0c0d11;
+  border-radius: 0.65rem;
+  padding: 0.65rem 0.8rem;
+  font-size: 0.85rem;
+}
+.card-artwork-url input:focus {
+  outline: 1px solid #d6b676;
+}
+.card-artwork-buttons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.card-artwork-editor .workspace-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding-inline: 0.8rem;
+  border: 1px solid #ffffff1a;
+  font-size: 0.75rem;
+}
+.card-artwork-error {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: #fca5a5;
+}
+.card-artwork-editor button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.card-artwork-zoom {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: zoom-in;
+}
+.card-artwork-dialog {
+  margin: auto;
+  padding: 1rem;
+  width: min(540px, 95vw);
+  max-height: 94dvh;
+  border: 1px solid #d6b67660;
+  border-radius: 1rem;
+  color: #f1ede5;
+  background: #101116;
+}
+.card-artwork-dialog::backdrop {
+  background: #000b;
+  backdrop-filter: blur(5px);
+}
+.card-artwork-dialog-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+}
+.card-artwork-dialog > img {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 78dvh;
+  display: block;
+  margin: auto;
+  object-fit: contain;
+  border-radius: 0.5rem;
+}
+.catalog-card-details-artwork {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.catalog-card-details-artwork > .catalog-artwork {
+  width: 130px;
+  height: auto;
+  aspect-ratio: 5 / 7;
+  flex-shrink: 0;
+}
+@media (max-width: 480px) {
+  .catalog-card-details-artwork {
+    flex-direction: column;
+  }
+  .card-artwork-editor {
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.7rem;
+  }
+  .card-artwork-preview {
+    width: 48px;
+  }
+  .card-artwork-url {
+    flex-wrap: wrap;
+  }
+  .card-artwork-url input {
+    width: 100%;
+    flex-basis: 100%;
+  }
+}

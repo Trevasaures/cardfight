@@ -4,6 +4,7 @@ import type {
   CardSetOption,
 } from "../../types/api";
 import { NATIONLESS_CARD_OPTION } from "../../utils/cards";
+import type { CardArtworkValue } from "../cards/cardArtworkState";
 
 export type ManualCardFormState = {
   name: string;
@@ -11,6 +12,7 @@ export type ManualCardFormState = {
   nation: string;
   card_type: string;
   skill_text: string;
+  artwork: CardArtworkValue | null;
   set_selection: string;
   set_code: string;
   set_name: string;
@@ -24,6 +26,7 @@ export const EMPTY_MANUAL_CARD_FORM: ManualCardFormState = {
   nation: "",
   card_type: "Normal Unit",
   skill_text: "",
+  artwork: null,
   set_selection: "",
   set_code: "",
   set_name: "",
@@ -88,6 +91,7 @@ export function cardAnalysisToManualForm(
     nation: result.fields.nation,
     card_type: result.fields.card_type || "Normal Unit",
     skill_text: "",
+    artwork: null,
     set_selection: result.fields.set_code,
     set_code: result.fields.set_code,
     set_name: result.fields.set_name,

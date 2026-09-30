@@ -296,6 +296,8 @@ export type CardPrinting = {
   card_number: string | null;
   rarity: string | null;
   image_url: string | null;
+  image_id: string | null;
+  thumbnail_url: string | null;
   product_url: string | null;
   source: string;
   external_id: string | null;
@@ -346,6 +348,7 @@ export type CreateCardPayload = {
   card_number?: string | null;
   rarity?: string | null;
   image_url?: string | null;
+  image_id?: string | null;
   product_url?: string | null;
 
   printing?: CreateCardPrintingPayload;
@@ -359,6 +362,7 @@ export type CreateCardPrintingPayload = {
   card_number?: string | null;
   rarity?: string | null;
   image_url?: string | null;
+  image_id?: string | null;
   product_url?: string | null;
   source?: string;
   external_id?: string | null;

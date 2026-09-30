@@ -285,7 +285,7 @@ export function HandLab() {
             Loading deck…
           </div>
         ) : currentVersion ? (
-          // Changing the source remounts the table, clearing its temporary session and drag state.
+          // Remount transient UI, then recover a matching game from the tab's session store.
           <HandWorkspace
             key={`${currentVersion.id}:${currentVersion.updated_at}:${reload}`}
             version={currentVersion}

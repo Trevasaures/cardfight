@@ -1,6 +1,13 @@
 const API_BASE_URL =
   import.meta.env.VITE_CARDFIGHT_API_URL ?? "http://127.0.0.1:5000";
 
+// Stored artwork is served by Flask, which may be on a different origin from Vite.
+export function apiAssetUrl(path: string) {
+  return path.startsWith("/api/")
+    ? `${API_BASE_URL.replace(/\/$/, "")}${path}`
+    : path;
+}
+
 type ApiRequestOptions = RequestInit;
 
 export async function apiRequest<T>(

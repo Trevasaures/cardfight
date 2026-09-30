@@ -5,26 +5,27 @@ import {
   Check,
   Eye,
   Layers3,
-  Minus,
-  Plus,
   RotateCcw,
   Shuffle,
   Swords,
   Undo2,
-  Zap,
 } from "lucide-react";
-import { CardAbilityText } from "../../components/cards/CardAbilityText";
+import { CardArtwork } from "../../components/cards/CardArtwork";
 import type { DeckVersion } from "../../types/api";
 import { nationColor } from "../../utils/nations";
 import type { CardCopy } from "./engine";
 import {
+  ATTACK_CIRCLES,
+  attackCard,
   beginCheck,
+  canAttack,
   canDropCards,
   changeCards,
   changeEnergy,
   CIRCLES,
   findCard,
   finishMulligan,
+  getDriveAttacker,
   listCopies,
   moveCards,
   nextPhase,
@@ -39,14 +40,31 @@ import {
   type Zone,
 } from "./playtest";
 import { useCardDrag } from "./useCardDrag";
+import { usePlaytestSession } from "./usePlaytestSession";
+import { MAX_UNDO_STATES } from "./sessionStore";
 import { PlaytestCard } from "./PlaytestCard";
 import { PlaytestZone } from "./PlaytestZone";
+import { ResourceZone } from "./ResourceZone";
+import { BattleStatus } from "./BattleStatus";
+import { PowerControls } from "./PowerControls";
+import { applyPowerEffect } from "./powerEffects";
+import { CardInspector } from "./CardInspector";
 import { SelectedCardActions } from "./SelectedCardActions";
+import { RuleControls } from "./rules/RuleControls";
+import { applyRules, effectiveGrade, energyLimit } from "./rules";
 import { CardDragPreview } from "./CardDragPreview";
 import "./playtest.css";
 
 type Props = { version: DeckVersion; copies: CardCopy[] };
-type History = { past: TableSession[]; present: TableSession | null };
+const LARGE_PILES: readonly Zone[] = [
+  "deck",
+  "drop",
+  "soul",
+  "bind",
+  "g",
+  "reserve",
+  "gauge",
+];
 
 function getNextPhaseLabel(session: TableSession | null): string {
   if (!session) return "";
@@ -63,8 +81,6 @@ function getNextPhaseLabel(session: TableSession | null): string {
 }
 
 export function HandTable({ version, copies }: Props) {
-  const [history, setHistory] = useState<History>({ past: [], present: null });
-  const [first, setFirst] = useState(true);
   const inventory = useMemo(() => {
     try {
       return { cards: listCopies(version.cards), error: "" };
@@ -76,6 +92,9 @@ export function HandTable({ version, copies }: Props) {
       };
     }
   }, [version]);
+  const { history, savedStarterKey, backedUp, notice, saveHistory } =
+    usePlaytestSession(version, inventory.cards);
+  const [first, setFirst] = useState(history.present?.first ?? true);
   const entries = new Map(version.cards.map((entry) => [entry.id, entry]));
   const starters = inventory.cards
     .filter((copy) => {
@@ -90,8 +109,10 @@ export function HandTable({ version, copies }: Props) {
         Number(entries.get(b.entryId)?.zone === "ride") -
         Number(entries.get(a.entryId)?.zone === "ride"),
     );
-  const [starter, setStarter] = useState(starters[0]?.key ?? "");
-  const [setup, setSetup] = useState(true);
+  const [starter, setStarter] = useState(
+    history.present ? (savedStarterKey ?? "") : (starters[0]?.key ?? ""),
+  );
+  const [setup, setSetup] = useState(!history.present);
   const [selected, setSelected] = useState<string[]>([]);
   const [inspected, setInspected] = useState<Zone>("ride");
   const [destination, setDestination] = useState<Zone | "deckTop">("drop");
@@ -100,6 +121,8 @@ export function HandTable({ version, copies }: Props) {
   const [announcement, setAnnouncement] = useState("");
   const tableRef = useRef<HTMLElement>(null);
   const session = history.present;
+  const ruleContext = session ? { session, entries } : null;
+  const energyMax = ruleContext ? energyLimit(ruleContext) : 10;
   const playing = Boolean(session && session.phase !== "mulligan");
   const selection = session
     ? selected.flatMap((key) => {
@@ -109,6 +132,14 @@ export function HandTable({ version, copies }: Props) {
     : [];
   const focused = selection.at(-1);
   const focusedEntry = focused && entries.get(focused.card.entryId);
+  const selectedAttacker =
+    selection.length === 1 && focused && ATTACK_CIRCLES.includes(focused.zone)
+      ? focused.card
+      : undefined;
+  const driveAttacker =
+    session && getDriveAttacker(session, selectedAttacker?.key);
+  const driveAttackerName =
+    driveAttacker && entries.get(driveAttacker.card.entryId)?.card?.name;
   const checkCard =
     session?.check && findCard(session, session.check.key)?.card;
   const checkEntry = checkCard && entries.get(checkCard.entryId);
@@ -121,9 +152,13 @@ export function HandTable({ version, copies }: Props) {
 
   function apply(next: TableSession, clear = true) {
     if (!session || next === session) return;
+    next = applyRules(session, next, entries);
     // Store full snapshots so undo restores deck order, checks, and temporary bonuses.
     // Keep at most 80 previous states; repeated no-op actions do not consume history.
-    setHistory({ past: [...history.past.slice(-79), session], present: next });
+    saveHistory({
+      past: [...history.past.slice(-(MAX_UNDO_STATES - 1)), session],
+      present: next,
+    });
     if (clear) setSelected([]);
     setAnnouncement(next.log.at(-1) ?? "Table updated.");
   }
@@ -131,7 +166,7 @@ export function HandTable({ version, copies }: Props) {
   function newGame() {
     try {
       const next = startTable(version.cards, first, starter || null);
-      setHistory({ past: [], present: next });
+      saveHistory({ past: [], present: next }, starter || null);
       setSelected([]);
       setSetup(false);
       setError("");
@@ -148,7 +183,7 @@ export function HandTable({ version, copies }: Props) {
   function undo() {
     const previous = history.past.at(-1);
     if (!previous) return;
-    setHistory({ past: history.past.slice(0, -1), present: previous });
+    saveHistory({ past: history.past.slice(0, -1), present: previous });
     setSelected([]);
     setAnnouncement("Last action undone.");
   }
@@ -167,6 +202,18 @@ export function HandTable({ version, copies }: Props) {
     );
   }
 
+  function restUnit(card: TableCard) {
+    if (!session || !playing || setup || drag) return;
+    const found = findCard(session, card.key);
+    if (!found || !CIRCLES.includes(found.zone)) return;
+    // Double-click targets only this copy, even when several cards were selected.
+    apply(changeCards(session, [card.key], "rest"), false);
+    setSelected([card.key]);
+    setAnnouncement(
+      `${entries.get(card.entryId)?.card?.name ?? "Unit"} ${card.rested ? "stood" : "rested"}.`,
+    );
+  }
+
   function move(to: Zone, position: "top" | "bottom" = "bottom") {
     if (!session) return;
     if (CIRCLES.includes(to) && selected.length > 1) {
@@ -174,6 +221,11 @@ export function HandTable({ version, copies }: Props) {
       return;
     }
     apply(moveCards(session, selected, to, position));
+  }
+
+  function attackSelectedCard() {
+    if (!session || !selectedAttacker) return;
+    apply(attackCard(session, selectedAttacker.key), false);
   }
 
   function openZone(zone: Zone) {
@@ -229,7 +281,10 @@ export function HandTable({ version, copies }: Props) {
         draggedKeys={drag?.keys ?? []}
         draggable={playing && !setup}
         dropClassName={dropClass(zone)}
+        soul={zone === "vanguard" ? session?.zones.soul : undefined}
+        soulDropClassName={zone === "vanguard" ? dropClass("soul") : undefined}
         onOpen={openZone}
+        onRest={restUnit}
         onDragStart={(event, card, hidden) =>
           start(event, dragKeys(card), hidden)
         }
@@ -244,22 +299,94 @@ export function HandTable({ version, copies }: Props) {
         card={card}
         entry={entries.get(card.entryId)}
         index={index}
+        effectiveGrade={
+          ruleContext
+            ? effectiveGrade(ruleContext, card, compact ? inspected : "hand")
+            : undefined
+        }
         compact={compact}
         selected={selected.includes(card.key)}
         draggable={playing && !setup}
         dragging={Boolean(drag?.keys.includes(card.key))}
         disabled={!playing && inspected !== "hand" && compact}
         onSelect={selectCard}
-        onDragStart={(event, card) => start(event, dragKeys(card))}
+        onRest={
+          compact && CIRCLES.includes(inspected) && playing && !setup
+            ? restUnit
+            : undefined
+        }
+        onDragStart={(event, card) =>
+          start(event, dragKeys(card), card.faceDown)
+        }
+      />
+    );
+  }
+
+  function resourceZone(zone: "damage" | "soul") {
+    return (
+      <ResourceZone
+        zone={zone}
+        cards={session?.zones[zone] ?? []}
+        entries={entries}
+        selected={selected}
+        draggedKeys={drag?.keys ?? []}
+        playing={playing && !setup}
+        canCharge={drawable && !setup}
+        dropClassName={dropClass(zone)}
+        onOpen={openZone}
+        onSelect={(card) => {
+          setInspected(zone);
+          setQuery("");
+          selectCard(card);
+        }}
+        onUse={(card) => {
+          if (!session || !playing || setup) return;
+          // These shortcuts target one physical copy, regardless of the current selection.
+          if (zone === "damage") {
+            apply(changeCards(session, [card.key], "flip"), false);
+            setAnnouncement(
+              card.faceDown ? "Counter charged 1." : "Counter blasted 1.",
+            );
+          } else {
+            apply(moveCards(session, [card.key], "drop"));
+            setAnnouncement("Soul blasted 1.");
+          }
+        }}
+        onCharge={() => {
+          if (!session || !drawable || setup) return;
+          apply(takeTop(session, "soul"));
+          setInspected("soul");
+          setQuery("");
+        }}
+        onDragStart={(event, card) =>
+          start(event, dragKeys(card), card.faceDown)
+        }
       />
     );
   }
 
   const nextLabel = getNextPhaseLabel(session);
-  const inspectedCards = (session?.zones[inspected] ?? []).filter((card) =>
+  const zoneCards = session?.zones[inspected] ?? [];
+  // Show the card immediately beneath the vanguard first in the soul browser.
+  const orderedCards =
+    inspected === "soul" ? [...zoneCards].reverse() : zoneCards;
+  const inspectedCards = orderedCards.filter((card) =>
     (entries.get(card.entryId)?.card?.name ?? "")
       .toLowerCase()
       .includes(query.toLowerCase()),
+  );
+  const inspectingUnit = CIRCLES.includes(inspected);
+  const selectedCardDetails = focused && focusedEntry?.card && (
+    <CardInspector
+      card={focused.card}
+      entry={focusedEntry}
+      zone={focused.zone}
+      effectiveGrade={
+        ruleContext
+          ? effectiveGrade(ruleContext, focused.card, focused.zone)
+          : undefined
+      }
+    />
   );
 
   return (
@@ -312,6 +439,11 @@ export function HandTable({ version, copies }: Props) {
           )}
         </div>
       </div>
+      {notice && (
+        <p className="hand-practice-notice" role="status">
+          {notice}
+        </p>
+      )}
       {setup && (
         <div className="pt-setup">
           <div className="pt-turn-choice" role="group" aria-label="Turn order">
@@ -381,42 +513,72 @@ export function HandTable({ version, copies }: Props) {
         </div>
       )}
       {playing && (
-        <div className="pt-turn-bar">
-          <strong>
-            {session!.active === "you"
-              ? `Your turn ${session!.turn}`
-              : "Opponent's turn"}
-          </strong>
-          <div className="pt-phases" aria-label="Turn phases">
-            {PHASES.map((phase) => (
-              <span
-                key={phase}
-                aria-current={
-                  session!.active === "you" && session!.phase === phase
-                    ? "step"
-                    : undefined
-                }
-              >
-                {phase}
-              </span>
-            ))}
-          </div>
-          <button
-            type="button"
-            className="cinema-button"
-            onClick={() => apply(nextPhase(session!))}
-            disabled={Boolean(session!.check) || setup}
-          >
-            {nextLabel}
-            <ArrowRight size={14} />
-          </button>
-        </div>
+        <>
+          <BattleStatus
+            session={session!}
+            disabled={setup}
+            energyMax={energyMax}
+            nextLabel={nextLabel}
+            onAdvance={() => apply(nextPhase(session!))}
+            onInspect={openZone}
+            onEnergy={(delta) => apply(changeEnergy(session!, delta, energyMax), false)}
+          />
+          <RuleControls
+            context={ruleContext!}
+            disabled={setup}
+            onApply={(next) => apply(next, false)}
+            onInspect={openZone}
+          />
+          <PowerControls
+            session={session!}
+            selected={selected}
+            disabled={setup}
+            onApply={(effect) =>
+              apply(applyPowerEffect(session!, selected, effect), false)
+            }
+          />
+        </>
       )}
       <div
         className={`pt-layout ${setup && session ? "is-paused" : ""}`}
         inert={setup && session ? true : undefined}
       >
         <div className="pt-board-column">
+          {session?.check && (
+            <div className="pt-check" role="status">
+              {checkEntry?.card && (
+                <CardArtwork
+                  card={checkEntry.card}
+                  printing={checkEntry.printing}
+                />
+              )}
+              <span className="pt-check-info">
+                <small>
+                  {session.check.kind === "drive"
+                    ? "Drive check"
+                    : "Damage check"}
+                </small>
+                <strong>{checkEntry?.card?.name}</strong>
+                <small>
+                  {checkEntry?.card?.trigger_type ||
+                    (checkEntry?.card?.card_type
+                      .toLowerCase()
+                      .includes("trigger")
+                      ? "Trigger unit"
+                      : "No trigger")}{" "}
+                  · effects manual
+                </small>
+              </span>
+              <button
+                type="button"
+                className="cinema-button"
+                onClick={() => apply(resolveCheck(session))}
+              >
+                To {session.check.kind === "drive" ? "hand" : "damage"}
+                <ArrowRight size={14} />
+              </button>
+            </div>
+          )}
           <div
             className="pt-board-scroll"
             data-drag-scroll
@@ -425,16 +587,15 @@ export function HandTable({ version, copies }: Props) {
             aria-label="Playmat"
           >
             <div className="pt-mat">
-              <div className="pt-side">
-                {(["ride", "soul", "damage"] as Zone[]).map(zoneButton)}
-              </div>
+              {resourceZone("damage")}
               <div className="pt-field">
                 {zoneButton("guardian")}
                 {CIRCLES.map(zoneButton)}
               </div>
               <div className="pt-side">
-                {(["deck", "drop", "reveal"] as Zone[]).map(zoneButton)}
+                {(["ride", "deck", "drop", "reveal"] as Zone[]).map(zoneButton)}
               </div>
+              {resourceZone("soul")}
               <div className="pt-aux">
                 {(
                   ["crest", "order", "bind", "g", "token", "reserve"] as Zone[]
@@ -458,39 +619,40 @@ export function HandTable({ version, copies }: Props) {
                 className="hand-button"
                 disabled={
                   !drawable ||
+                  !driveAttacker ||
                   Boolean(session?.check) ||
+                  Boolean(session?.rules.pending.length) ||
                   session?.active !== "you" ||
                   session?.phase !== "battle"
                 }
                 onClick={() => {
-                  apply(beginCheck(session!, "drive"));
+                  apply(beginCheck(session!, "drive", driveAttacker?.card.key));
                   setInspected("reveal");
                 }}
+                title={
+                  driveAttackerName
+                    ? `Drive check · ${driveAttackerName}`
+                    : "Drive check"
+                }
               >
                 <Swords size={14} />
-                Drive check
+                {driveAttacker && driveAttacker.zone !== "vanguard"
+                  ? "Rear-guard drive"
+                  : "Drive check"}
               </button>
               <button
                 type="button"
                 className="hand-button"
-                disabled={!drawable || Boolean(session?.check)}
+                disabled={
+                  !drawable || Boolean(session?.check) ||
+                  Boolean(session?.rules.pending.length)
+                }
                 onClick={() => {
                   apply(beginCheck(session!, "damage"));
                   setInspected("reveal");
                 }}
               >
                 Damage check
-              </button>
-              <button
-                type="button"
-                className="hand-button"
-                disabled={!drawable}
-                onClick={() => {
-                  apply(takeTop(session!, "soul"));
-                  setInspected("soul");
-                }}
-              >
-                Soul charge
               </button>
               <button
                 type="button"
@@ -514,57 +676,7 @@ export function HandTable({ version, copies }: Props) {
                 Shuffle deck
               </button>
             </div>
-            <div className="pt-energy" aria-label="Energy">
-              <Zap size={14} />
-              <button
-                type="button"
-                disabled={!playing || !session?.energy}
-                onClick={() => apply(changeEnergy(session!, -1), false)}
-                aria-label="Spend one energy"
-              >
-                <Minus size={13} />
-              </button>
-              <strong>
-                {session?.energy ?? 0}
-                <small> / 10</small>
-              </strong>
-              <button
-                type="button"
-                disabled={!playing || session?.energy === 10}
-                onClick={() => apply(changeEnergy(session!, 1), false)}
-                aria-label="Gain one energy"
-              >
-                <Plus size={13} />
-              </button>
-            </div>
           </div>
-          {session?.check && (
-            <div className="pt-check" role="status">
-              <span>
-                <strong>
-                  {session.check.kind === "drive" ? "Drive" : "Damage"}
-                </strong>{" "}
-                · {checkEntry?.card?.name}
-                <small>
-                  {checkEntry?.card?.trigger_type ||
-                    (checkEntry?.card?.card_type
-                      .toLowerCase()
-                      .includes("trigger")
-                      ? "Trigger unit"
-                      : "No trigger")}{" "}
-                  · effects manual
-                </small>
-              </span>
-              <button
-                type="button"
-                className="cinema-button"
-                onClick={() => apply(resolveCheck(session))}
-              >
-                To {session.check.kind === "drive" ? "hand" : "damage"}
-                <ArrowRight size={14} />
-              </button>
-            </div>
-          )}
           <div className="pt-hand-header">
             <span>
               Hand <strong>{session?.zones.hand.length ?? 0}</strong>
@@ -599,94 +711,95 @@ export function HandTable({ version, copies }: Props) {
             )}
           </div>
         </div>
-        <aside className="pt-inspector" aria-label="Zone inspector">
-          <div className="pt-inspector-header">
-            <label className="sr-only" htmlFor="pt-zone-select">
-              Inspect zone
-            </label>
-            <select
-              id="pt-zone-select"
-              className="workspace-control"
-              value={inspected}
-              onChange={(event) => {
-                setInspected(event.target.value as Zone);
-                setQuery("");
-              }}
-            >
-              {(Object.keys(ZONES) as Zone[]).map((zone) => (
-                <option key={zone} value={zone}>
-                  {ZONES[zone]} · {session?.zones[zone].length ?? 0}
-                </option>
-              ))}
-            </select>
-          </div>
-          {inspected === "deck" && (
-            <div className="pt-inspector-tools">
-              <p className="pt-hint">Deck order · top first</p>
-              <button
-                type="button"
-                className="hand-button"
-                disabled={!canShuffle}
-                onClick={shuffleMainDeck}
-                aria-label="Shuffle inspected deck"
+        <aside
+          className={`pt-inspector ${LARGE_PILES.includes(inspected) ? "is-browsing-pile" : ""}`}
+          aria-label="Zone inspector"
+        >
+          {!inspectingUnit && selectedCardDetails}
+          <div className="pt-inspector-browser">
+            <div className="pt-inspector-header">
+              <label className="sr-only" htmlFor="pt-zone-select">
+                Inspect zone
+              </label>
+              <select
+                id="pt-zone-select"
+                className="workspace-control"
+                value={inspected}
+                onChange={(event) => {
+                  setInspected(event.target.value as Zone);
+                  setQuery("");
+                }}
               >
-                <Shuffle size={13} />
-                Shuffle
-              </button>
+                {(Object.keys(ZONES) as Zone[]).map((zone) => (
+                  <option key={zone} value={zone}>
+                    {ZONES[zone]} · {session?.zones[zone].length ?? 0}
+                  </option>
+                ))}
+              </select>
             </div>
-          )}
-          {(inspected === "deck" ||
-            (session?.zones[inspected].length ?? 0) > 8) && (
-            <input
-              className="workspace-control"
-              aria-label={
-                inspected === "deck" ? "Search deck" : "Search inspected zone"
-              }
-              placeholder="Find a card…"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          )}
-          <div
-            className={`pt-zone-list ${dropClass(inspected)}`}
-            data-drop-zone={inspected}
-            data-drag-scroll
-            role="group"
-            aria-label={`${ZONES[inspected]} cards`}
-          >
-            {inspectedCards.length ? (
-              inspectedCards.map((card, index) => cardButton(card, index, true))
-            ) : (
-              <span className="pt-zone-empty">
-                {query ? "No matches" : "Empty"}
-              </span>
+            {inspected === "deck" && (
+              <div className="pt-inspector-tools">
+                <p className="pt-hint">Deck order · top first</p>
+                <button
+                  type="button"
+                  className="hand-button"
+                  disabled={!canShuffle}
+                  onClick={shuffleMainDeck}
+                  aria-label="Shuffle inspected deck"
+                >
+                  <Shuffle size={13} />
+                  Shuffle
+                </button>
+              </div>
             )}
-          </div>
-          {focusedEntry?.card && (
-            <div className="pt-card-detail">
-              <strong>{focusedEntry.card.name}</strong>
-              <span>
-                G{focusedEntry.card.grade ?? "?"} ·{" "}
-                {focusedEntry.card.power?.toLocaleString() ?? "—"} ·{" "}
-                {ZONES[focused!.zone]}
-              </span>
-              {Boolean(focused!.card.power || focused!.card.critical) && (
-                <span>
-                  Bonus: {focused!.card.power >= 0 ? "+" : ""}
-                  {focused!.card.power.toLocaleString()} /{" "}
-                  {focused!.card.critical >= 0 ? "+" : ""}
-                  {focused!.card.critical}★
+            {inspected === "soul" && (
+              <p className="pt-hint">Stack order · top first</p>
+            )}
+            {(inspected === "deck" ||
+              (session?.zones[inspected].length ?? 0) > 8) && (
+              <input
+                className="workspace-control"
+                aria-label={
+                  inspected === "deck" ? "Search deck" : "Search inspected zone"
+                }
+                placeholder="Find a card…"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            )}
+            <div
+              key={inspected}
+              className={`pt-zone-list ${dropClass(inspected)}`}
+              data-drop-zone={inspected}
+              data-drag-scroll
+              role="group"
+              aria-label={`${ZONES[inspected]} cards`}
+            >
+              {inspectedCards.length ? (
+                inspectedCards.map((card, index) =>
+                  cardButton(card, index, true),
+                )
+              ) : (
+                <span className="pt-zone-empty">
+                  {query ? "No matches" : "Empty"}
                 </span>
               )}
-              <CardAbilityText text={focusedEntry.card.skill_text} />
             </div>
-          )}
+          </div>
+          {/* Keep a unit's click target above details so it cannot move between clicks. */}
+          {inspectingUnit && selectedCardDetails}
         </aside>
       </div>
       {selected.length > 0 && !setup && (
         <SelectedCardActions
-          selectedCount={selected.length}
+          selection={selection}
           playing={playing}
+          canAttack={Boolean(
+            session &&
+              selectedAttacker &&
+              canAttack(session, selectedAttacker.key),
+          )}
+          onAttack={attackSelectedCard}
           destination={destination}
           onClear={() => setSelected([])}
           onDestinationChange={setDestination}
@@ -697,7 +810,11 @@ export function HandTable({ version, copies }: Props) {
         />
       )}
       <div className="pt-footer">
-        <span>Manual effects & costs · temporary session</span>
+        <span>
+          Manual effects & costs
+          {session &&
+            (backedUp ? " · Saved in this tab" : " · Saved until refresh")}
+        </span>
         {session && (
           <details>
             <summary>Activity</summary>

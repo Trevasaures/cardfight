@@ -8,12 +8,14 @@ type Props = {
   card: TableCard;
   entry: DeckCardEntry | undefined;
   index: number;
+  effectiveGrade?: number | null;
   compact: boolean;
   selected: boolean;
   draggable: boolean;
   dragging: boolean;
   disabled: boolean;
   onSelect: (card: TableCard) => void;
+  onRest?: (card: TableCard) => void;
   onDragStart: (event: PointerEvent<HTMLElement>, card: TableCard) => void;
 };
 
@@ -22,12 +24,14 @@ export function PlaytestCard({
   card,
   entry,
   index,
+  effectiveGrade,
   compact,
   selected,
   draggable,
   dragging,
   disabled,
   onSelect,
+  onRest,
   onDragStart,
 }: Props) {
   if (!entry?.card) return null;
@@ -42,11 +46,19 @@ export function PlaytestCard({
       aria-label={`Select ${entry.card.name}, card ${index + 1}`}
       aria-pressed={selected}
       disabled={disabled}
-      onClick={() => onSelect(card)}
+      title={
+        onRest ? `Double-click to ${card.rested ? "stand" : "rest"}` : undefined
+      }
+      onClick={(event) => {
+        // Field entries stay selected, like clicking their circle. Removing the
+        // preview between clicks could shift the target and swallow double-click.
+        if (!onRest || (event.detail < 2 && !selected)) onSelect(card);
+      }}
+      onDoubleClick={() => onRest?.(card)}
     >
       <span className="pt-card-art">
         <CardArtwork card={entry.card} printing={entry.printing} />
-        <span className="hand-grade">G{entry.card.grade ?? "?"}</span>
+        <span className="hand-grade">G{effectiveGrade ?? entry.card.grade ?? "?"}</span>
         {selected && (
           <span className="pt-card-check">
             <Check size={15} />

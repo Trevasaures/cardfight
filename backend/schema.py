@@ -23,6 +23,20 @@ def ensure_schema_upgrades():
     inspector = inspect(db.engine)
     table_names = set(inspector.get_table_names())
 
+    if "card_printing" in table_names:
+        if "image_id" not in _column_names("card_printing"):
+            db.session.execute(
+                text(
+                    "ALTER TABLE card_printing ADD COLUMN image_id VARCHAR(64) "
+                    "REFERENCES card_image(id)"
+                )
+            )
+        db.session.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_card_printing_image ON card_printing(image_id)"
+            )
+        )
+
     if "deck" in table_names:
         deck_columns = _column_names("deck")
 

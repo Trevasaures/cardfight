@@ -1,4 +1,7 @@
+import type { CardArtworkValue } from "./cardArtworkState";
+
 export type CardPrintingFormState = {
+  artwork: CardArtworkValue | null;
   set_selection: string;
   set_code: string;
   set_name: string;
@@ -7,6 +10,7 @@ export type CardPrintingFormState = {
 };
 
 export const EMPTY_CARD_PRINTING_FORM: CardPrintingFormState = {
+  artwork: null,
   set_selection: "",
   set_code: "",
   set_name: "",

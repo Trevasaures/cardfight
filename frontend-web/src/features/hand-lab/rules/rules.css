@@ -1,0 +1,61 @@
+.pt-rules {
+  margin-top: 10px;
+  min-width: 0;
+}
+.pt-rule-counters,
+.pt-rule-choice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.pt-rule-tokens {
+  color: #ada7b8;
+  font-size: 11px;
+}
+.pt-rule-tokens summary {
+  cursor: pointer;
+  padding: 8px 0;
+}
+.pt-rule-tokens fieldset {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #dfb56d24;
+  border-radius: 8px;
+}
+.pt-rule-tokens label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pt-rule-tokens input {
+  accent-color: #dfb56d;
+}
+.pt-rule-tokens small {
+  color: #898391;
+}
+.pt-rule-choice {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid #dfb56d50;
+  border-radius: 10px;
+  background: #dfb56d0d;
+  color: #e4c897;
+  font-size: 12px;
+}
+.pt-rule-choice select {
+  flex: 1 1 210px;
+  min-width: 0;
+  max-width: 420px;
+}
+.pt-rule-choice .cinema-button {
+  min-height: 36px;
+}
+@media (max-width: 599px) {
+  .pt-rule-choice > strong,
+  .pt-rule-choice select {
+    flex-basis: 100%;
+    width: 100%;
+  }
+}

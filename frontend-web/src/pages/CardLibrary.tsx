@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronLeft,
@@ -17,10 +17,13 @@ import {
   getCardFormOptions,
   getCardLibraryPage,
   updateCard,
-  updateCardPrinting,
 } from "../api/cards";
 import { CardCreationTools } from "../components/cards/CardCreationTools";
 import { CardArtwork } from "../components/cards/CardArtwork";
+import {
+  artworkFromPrinting,
+  artworkPayload,
+} from "../components/cards/cardArtworkState";
 import { CardAbilityText } from "../components/cards/CardAbilityText";
 import { normalizeCardText } from "../utils/cardText";
 import { CardPrintingForm } from "../components/cards/CardPrintingForm";
@@ -140,6 +143,7 @@ function cardToManualForm(card: Card): ManualCardFormState {
     nation: cardNationToFormValue(card.nation),
     card_type: card.card_type,
     skill_text: normalizeCardText(card.skill_text),
+    artwork: artworkFromPrinting(printing),
     set_selection: printing?.set_code ?? "",
     set_code: printing?.set_code ?? "",
     set_name: printing?.set_name ?? "",
@@ -157,6 +161,8 @@ export function CardLibrary() {
   const [expandedCardId, setExpandedCardId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [catalog, setCatalog] = useState(DEFAULT_CATALOG);
+  const catalogRef = useRef(catalog);
+  const displayedCatalogRef = useRef<typeof DEFAULT_CATALOG | null>(null);
   const { nation, grade, card_type: cardType, set_code: setCode } = catalog;
 
   const [editingCard, setEditingCard] = useState<Card | null>(null);
@@ -180,6 +186,7 @@ export function CardLibrary() {
 
   const [pagination, setPagination] = useState(EMPTY_PAGINATION);
   const [loading, setLoading] = useState(true);
+  const [preservingResults, setPreservingResults] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [savingPrinting, setSavingPrinting] = useState(false);
@@ -210,6 +217,15 @@ export function CardLibrary() {
   }, [catalog.q, setCode, nation, grade, cardType]);
 
   const searchPending = query.trim() !== catalog.q;
+  const showLoading = loading && !preservingResults;
+
+  useLayoutEffect(() => {
+    if (!loading && !loadFailed && !preservingResults) {
+      // Reset after the new rows mount so virtual measurements cannot restore the old offset.
+      rowVirtualizer.scrollToOffset(0);
+    }
+  }, [cards, loading, loadFailed, preservingResults, rowVirtualizer]);
+
   const firstItem = pagination.total_items
     ? (pagination.page - 1) * pagination.page_size + 1
     : 0;
@@ -301,26 +317,31 @@ export function CardLibrary() {
     if (code && name) handleSetSaved({ code, name });
   }
 
-  const loadCards = useCallback(async () => {
+  const loadCards = useCallback(async ({ preserveScroll = false } = {}) => {
+    // A save can finish after the user changes filters. Reload the current view.
+    const requestedCatalog = catalogRef.current;
+    const keepResults = preserveScroll && displayedCatalogRef.current === requestedCatalog;
     const requestId = ++loadRequestRef.current;
     loadControllerRef.current?.abort();
     const controller = new AbortController();
     loadControllerRef.current = controller;
+    // Keeping the virtual rows mounted preserves their measurements and native scroll offset.
+    setPreservingResults(keepResults);
     setLoading(true);
     setLoadFailed(false);
     setError(null);
 
     try {
-      const response = await getCardLibraryPage(catalog, controller.signal);
+      const response = await getCardLibraryPage(requestedCatalog, controller.signal);
 
       if (requestId === loadRequestRef.current && !controller.signal.aborted) {
         setCards(response.items);
         setPagination(response.pagination);
-        parentRef.current?.scrollTo({ top: 0 });
+        displayedCatalogRef.current = requestedCatalog;
       }
     } catch (err) {
       if (requestId === loadRequestRef.current && !controller.signal.aborted) {
-        setLoadFailed(true);
+        setLoadFailed(!keepResults);
         setError(err instanceof Error ? err.message : "Failed to load cards");
       }
     } finally {
@@ -328,14 +349,20 @@ export function CardLibrary() {
         setLoading(false);
       }
     }
-  }, [catalog]);
+  }, []);
 
   useEffect(() => {
+    catalogRef.current = catalog;
     void loadCards();
     return () => {
       loadControllerRef.current?.abort();
     };
-  }, [loadCards]);
+  }, [catalog, loadCards]);
+
+  function refreshCards() {
+    setQuery("");
+    setCatalog((current) => ({ ...current, q: "", page: 1 }));
+  }
 
   function applySearch() {
     if (searchPending) updateCatalog({ q: query.trim() });
@@ -387,6 +414,7 @@ export function CardLibrary() {
         nation: cardNationToApiValue(createForm.nation),
         card_type: createForm.card_type,
         skill_text: createForm.skill_text,
+        ...artworkPayload(createForm.artwork),
         set_code: createForm.set_code,
         set_name: createForm.set_name,
         card_number: createForm.card_number,
@@ -399,7 +427,7 @@ export function CardLibrary() {
       );
       setCreateForm(EMPTY_MANUAL_CARD_FORM);
       setCardAnalysis(null);
-      await loadCards();
+      await loadCards({ preserveScroll: true });
       toast.success(`${created.name} was added to the shared card catalog.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create card");
@@ -453,10 +481,11 @@ export function CardLibrary() {
         set_name: printingForm.set_name,
         card_number: printingForm.card_number,
         rarity: printingForm.rarity,
+        ...artworkPayload(printingForm.artwork),
       });
 
       rememberFormSet(printing.set_code, printing.set_name);
-      await loadCards();
+      await loadCards({ preserveScroll: true });
       cancelAddingPrinting();
       toast.success(
         `Added ${printing.rarity ?? "another"} printing to ${addingPrintingCard.name}.`,
@@ -482,30 +511,26 @@ export function CardLibrary() {
     setError(null);
 
     try {
-      await updateCard(editingCard.id, {
+      const saved = await updateCard(editingCard.id, {
         name: editForm.name,
         grade: editForm.grade,
         nation: cardNationToApiValue(editForm.nation),
         card_type: editForm.card_type,
         skill_text: editForm.skill_text,
+        printing: {
+          set_code: editForm.set_code,
+          set_name: editForm.set_name,
+          card_number: editForm.card_number,
+          rarity: editForm.rarity,
+          ...artworkPayload(editForm.artwork),
+        },
       });
 
-      const savedPrinting = editingCard.primary_printing
-        ? await updateCardPrinting(editingCard.primary_printing.id, {
-            set_code: editForm.set_code,
-            set_name: editForm.set_name,
-            card_number: editForm.card_number,
-            rarity: editForm.rarity,
-          })
-        : await addCardPrinting(editingCard.id, {
-            set_code: editForm.set_code,
-            set_name: editForm.set_name,
-            card_number: editForm.card_number,
-            rarity: editForm.rarity,
-          });
-
-      rememberFormSet(savedPrinting.set_code, savedPrinting.set_name);
-      await loadCards();
+      rememberFormSet(
+        saved.primary_printing?.set_code,
+        saved.primary_printing?.set_name,
+      );
+      await loadCards({ preserveScroll: true });
       cancelEditingCard();
       toast.success(`Saved changes to ${editForm.name.trim()}.`);
     } catch (err) {
@@ -565,7 +590,7 @@ export function CardLibrary() {
           actions={
           <button
             type="button"
-            onClick={loadCards}
+            onClick={refreshCards}
             disabled={loading}
             className="workspace-button inline-flex items-center gap-2 border border-white/10 bg-white/[0.05] px-3 text-xs font-bold text-slate-300 transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-50"
             title="Refresh card records"
@@ -720,6 +745,7 @@ export function CardLibrary() {
             ) : null}
 
             <CardPrintingForm
+              key={addingPrintingCard.id}
               value={printingForm}
               options={cardFormOptions}
               disabled={savingPrinting}
@@ -741,6 +767,7 @@ export function CardLibrary() {
             </p>
 
             <ManualCardForm
+              key={editingCard.id}
               value={editForm}
               mode="edit"
               onChange={setEditForm}
@@ -760,12 +787,12 @@ export function CardLibrary() {
           aria-label="Card search results"
           className="workspace-inset mt-4 overflow-auto p-1.5"
           style={{
-            height: cards.length && !loading && !loadFailed
+            height: cards.length && !showLoading && !loadFailed
               ? `min(42rem, 72dvh, ${rowVirtualizer.getTotalSize() + 12}px)`
               : "14rem",
           }}
         >
-          {loading ? (
+          {showLoading ? (
             <div className="flex h-full items-center justify-center text-sm font-bold text-slate-500">
               Loading cards...
             </div>
@@ -877,7 +904,14 @@ export function CardLibrary() {
                           hidden={expandedCardId !== card.id}
                           className="catalog-card-details lg:col-span-2"
                         >
-                          <CardAbilityText text={card.skill_text} />
+                          {expandedCardId === card.id && (
+                            <div className="catalog-card-details-artwork">
+                              {card.printings.some((printing) => printing.image_url) && (
+                                <CardArtwork card={card} detail />
+                              )}
+                              <CardAbilityText text={card.skill_text} />
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

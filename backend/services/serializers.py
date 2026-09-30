@@ -7,6 +7,7 @@ Each function takes a model instance as input and returns a dictionary represent
 
 from backend.database import db
 from backend.models import AcquisitionPlanItem, CardPrinting, Deck, DeckCard
+from backend.services.card_images import image_urls
 
 
 def _deck_rule_summary(cards, totals_by_zone):
@@ -167,7 +168,10 @@ def serialize_card_printing(printing):
         "set_name": printing.set_name,
         "card_number": printing.card_number,
         "rarity": printing.rarity,
-        "image_url": printing.image_url,
+        "image_id": printing.image_id,
+        **(image_urls(printing.image_id) if printing.image_id else {
+            "image_url": printing.image_url, "thumbnail_url": printing.image_url,
+        }),
         "product_url": printing.product_url,
         "source": printing.source,
         "external_id": printing.external_id,

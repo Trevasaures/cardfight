@@ -3,14 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDeckBuilderMotion } from "../animations/useDeckBuilderMotion";
 import { normalizeCardText } from "../utils/cardText";
 import {
-  addCardPrinting,
   analyzeCardImage,
   createCard,
   getCardFormOptions,
   getCard,
   searchCards,
   updateCard,
-  updateCardPrinting,
 } from "../api/cards";
 import {
   addCardToDeckVersion,
@@ -24,6 +22,10 @@ import {
 } from "../api/deckBuilder";
 import { getDecks } from "../api/decks";
 import { CardCatalogPanel } from "../components/deck-builder/CardCatalogPanel";
+import {
+  artworkFromPrinting,
+  artworkPayload,
+} from "../components/cards/cardArtworkState";
 import {
   clearCardSetSelection,
   replaceCardSetSelection,
@@ -505,6 +507,7 @@ export function DeckBuilder() {
       nation: cardNationToFormValue(selectedCard.nation),
       card_type: selectedCard.card_type,
       skill_text: normalizeCardText(selectedCard.skill_text),
+      artwork: artworkFromPrinting(printing),
       set_selection: printing?.set_code ?? "",
       set_code: printing?.set_code ?? "",
       set_name: printing?.set_name ?? "",
@@ -682,25 +685,19 @@ export function DeckBuilder() {
         card_type: newCard.card_type,
         skill_text: newCard.skill_text,
       };
+      const printingPayload = {
+        set_code: newCard.set_code,
+        set_name: newCard.set_name,
+        card_number: newCard.card_number,
+        rarity: newCard.rarity,
+        ...artworkPayload(newCard.artwork),
+      };
 
       if (cardFormMode === "edit" && selectedCard) {
-        await updateCard(selectedCard.id, cardPayload);
-
-        if (selectedCard.primary_printing) {
-          await updateCardPrinting(selectedCard.primary_printing.id, {
-            set_code: newCard.set_code,
-            set_name: newCard.set_name,
-            card_number: newCard.card_number,
-            rarity: newCard.rarity,
-          });
-        } else {
-          await addCardPrinting(selectedCard.id, {
-            set_code: newCard.set_code,
-            set_name: newCard.set_name,
-            card_number: newCard.card_number,
-            rarity: newCard.rarity,
-          });
-        }
+        await updateCard(selectedCard.id, {
+          ...cardPayload,
+          printing: printingPayload,
+        });
 
         const refreshedCard = await getCard(selectedCard.id);
 
@@ -727,10 +724,7 @@ export function DeckBuilder() {
 
       const created = await createCard({
         ...cardPayload,
-        set_code: newCard.set_code,
-        set_name: newCard.set_name,
-        card_number: newCard.card_number,
-        rarity: newCard.rarity,
+        ...printingPayload,
       });
 
       setCardResults((rows) => [created, ...rows]);

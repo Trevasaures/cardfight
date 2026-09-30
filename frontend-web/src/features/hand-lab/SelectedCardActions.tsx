@@ -1,9 +1,18 @@
-import { ArrowRight, RotateCw, X } from "lucide-react";
-import { CIRCLES, ZONES, type Zone, type CardChange } from "./playtest";
+import { ArrowRight, RotateCw, Swords, X } from "lucide-react";
+import {
+  ATTACK_CIRCLES,
+  CIRCLES,
+  ZONES,
+  type Zone,
+  type CardChange,
+  type TableCard,
+} from "./playtest";
 
 type Props = {
-  selectedCount: number;
+  selection: { card: TableCard; zone: Zone }[];
   playing: boolean;
+  canAttack: boolean;
+  onAttack: () => void;
   destination: Zone | "deckTop";
   onClear: () => void;
   onDestinationChange: (destination: Zone | "deckTop") => void;
@@ -12,14 +21,40 @@ type Props = {
 };
 
 export function SelectedCardActions({
-  selectedCount,
+  selection,
   playing,
+  canAttack,
+  onAttack,
   destination,
   onClear,
   onDestinationChange,
   onMove,
   onChangeCards,
 }: Props) {
+  const selectedCount = selection.length;
+  const selectedAttacker =
+    selectedCount === 1 && ATTACK_CIRCLES.includes(selection[0].zone);
+  const allSoul =
+    selectedCount > 0 && selection.every(({ zone }) => zone === "soul");
+  const allUnits =
+    selectedCount > 0 && selection.every(({ zone }) => CIRCLES.includes(zone));
+  const allDamage =
+    selectedCount > 0 && selection.every(({ zone }) => zone === "damage");
+  const allFaceDown = selection.every(({ card }) => card.faceDown);
+  const allFaceUp = selection.every(({ card }) => !card.faceDown);
+  const flipLabel =
+    allDamage && allFaceUp
+      ? "Counter blast"
+      : allDamage && allFaceDown
+        ? "Counter charge"
+        : "Flip";
+  const restLabel =
+    selectedCount === 1
+      ? selection[0].card.rested
+        ? "Stand"
+        : "Rest"
+      : "Rest / stand";
+
   return (
     <div className="pt-selection" aria-label="Selected card actions">
       <div className="pt-selection-label">
@@ -34,7 +69,21 @@ export function SelectedCardActions({
         </button>
       </div>
       {playing && (
-        <div className="pt-selection-actions">
+        <div
+          className={`pt-selection-actions ${selectedAttacker ? "has-attack" : ""}`}
+        >
+          {selectedAttacker && (
+            <button
+              type="button"
+              className="cinema-button"
+              onClick={onAttack}
+              disabled={!canAttack}
+              title="Attack with this unit during your battle phase"
+            >
+              <Swords size={14} />
+              Attack
+            </button>
+          )}
           <div className="pt-move-controls">
             <select
               className="workspace-control"
@@ -75,7 +124,15 @@ export function SelectedCardActions({
               className="hand-button"
               onClick={() => onMove("drop")}
             >
-              Discard
+              {allSoul ? "Soul blast" : allUnits ? "Retire" : "Discard"}
+            </button>
+            <button
+              type="button"
+              className="hand-button"
+              title="Put selected cards on the bottom of the deck"
+              onClick={() => onMove("deck", "bottom")}
+            >
+              Deck bottom
             </button>
             <button
               type="button"
@@ -83,17 +140,21 @@ export function SelectedCardActions({
               onClick={() => onChangeCards("rest")}
             >
               <RotateCw size={14} />
-              Rest / stand
+              {restLabel}
             </button>
             <button
               type="button"
               className="hand-button"
               onClick={() => onChangeCards("flip")}
             >
-              Flip
+              {flipLabel}
             </button>
           </div>
-          <div className="pt-bonus" role="group" aria-label="Power bonus">
+          <div
+            className="pt-bonus pt-power-bonus"
+            role="group"
+            aria-label="Power bonus"
+          >
             <button
               type="button"
               className="hand-button"
@@ -105,10 +166,36 @@ export function SelectedCardActions({
             <button
               type="button"
               className="hand-button"
+              aria-label="Subtract 2000 power"
+              onClick={() => onChangeCards("power-2k")}
+            >
+              −2k
+            </button>
+            <button
+              type="button"
+              className="hand-button"
+              aria-label="Add 2000 power"
+              onClick={() => onChangeCards("power+2k")}
+            >
+              +2k
+            </button>
+            <button
+              type="button"
+              className="hand-button"
               aria-label="Add 5000 power"
               onClick={() => onChangeCards("power+")}
             >
               +5k
+            </button>
+            <button
+              type="button"
+              className="hand-button"
+              aria-label="Add 100 million power"
+              title="Add 100,000,000 power to one selected unit"
+              disabled={!allUnits || selectedCount !== 1}
+              onClick={() => onChangeCards("power+100m")}
+            >
+              +100M
             </button>
           </div>
           <div className="pt-bonus" role="group" aria-label="Critical bonus">

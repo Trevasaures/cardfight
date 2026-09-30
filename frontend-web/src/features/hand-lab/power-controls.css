@@ -1,0 +1,86 @@
+.pt-power-controls {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 12px;
+}
+.pt-power-controls > .hand-button,
+.pt-power-custom > summary {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 11px;
+}
+.pt-power-custom > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+.pt-power-custom > summary::-webkit-details-marker {
+  display: none;
+}
+.pt-power-custom[open] {
+  flex: 1 1 600px;
+  min-width: 0;
+}
+.pt-power-custom[open] > summary svg {
+  transform: rotate(180deg);
+}
+.pt-power-custom fieldset {
+  min-width: 0;
+  padding: 12px;
+  margin-top: 8px;
+  border: 1px solid #dfb56d28;
+  border-radius: 10px;
+  background: #dfb56d06;
+}
+.pt-power-inputs {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.3fr) minmax(110px, 1fr) minmax(170px, 1.3fr) 80px;
+  gap: 10px;
+}
+.pt-power-inputs label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: #a9a1b3;
+  font-size: 10px;
+}
+.pt-power-inputs .workspace-control {
+  width: 100%;
+  min-width: 0;
+  font-size: 12px;
+}
+.pt-power-inputs input[readonly] {
+  color: #e4c794;
+  background: #dfb56d08;
+}
+.pt-power-apply {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.pt-power-apply output {
+  color: #c8bdab;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.pt-power-apply .cinema-button {
+  min-height: 34px;
+  padding: 7px 12px;
+  font-size: 11px;
+}
+.pt-power-custom > summary:focus-visible {
+  outline: 2px solid #e7c58f;
+  outline-offset: 2px;
+}
+@media (max-width: 999px) {
+  .pt-power-inputs {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
