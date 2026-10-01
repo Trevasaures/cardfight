@@ -11,7 +11,8 @@ preview intact. Card details and their primary printing save in one transaction.
 - `backend/services/image_processing.py` shares upload limits and image encoding
   with the existing card image analyzer. Artwork import does not invoke analysis.
 - `backend/services/remote_images.py` downloads bounded public HTTP(S) resources
-  from `ALLOWED_IMAGE_HOSTS` (currently `images.ygoprodeck.com`). Each redirect is
+  from `ALLOWED_IMAGE_HOSTS` (`images.ygoprodeck.com` and
+  `tcgplayer-cdn.tcgplayer.com`). Each redirect is
   validated and connections use the validated IP with the original TLS hostname.
   The HTTP client receives a validated path/query target, never the supplied URL.
   Imports do not forward cookies or use environment proxies. Other sources can
@@ -32,6 +33,9 @@ preview intact. Card details and their primary printing save in one transaction.
   backend origin, including during Vite development.
 
 Inputs are limited to 8 MB and 20 megapixels. Animated images are not accepted.
+TCGplayer product URLs such as
+`https://tcgplayer-cdn.tcgplayer.com/product/708712_in_1000x1000.jpg` work through
+the same validation in development and production; no development bypass is needed.
 Unlinked assets older than one day are reclaimed on a subsequent new import;
 linked artwork is retained. Removal/replacement starts a new grace period for
 open previews. An expired unsaved preview must be imported again before saving.

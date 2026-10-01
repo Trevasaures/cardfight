@@ -276,8 +276,9 @@ def mock_remote(monkeypatch, responses, requests=None):
     return calls
 
 
+@pytest.mark.parametrize("host", [IMAGE_HOST, "tcgplayer-cdn.tcgplayer.com"])
 def test_url_import_downloads_and_converts_once_with_redirect_validation(
-    client, monkeypatch
+    client, monkeypatch, host
 ):
     calls = mock_remote(
         monkeypatch,
@@ -286,11 +287,13 @@ def test_url_import_downloads_and_converts_once_with_redirect_validation(
             RemoteResponse(),
         ],
     )
-    response = client.post("/api/card-images", json={"url": IMAGE_URL})
+    response = client.post(
+        "/api/card-images", json={"url": f"https://{host}/card.jpeg"}
+    )
     assert response.status_code == 201
     assert len(calls) == 2
     assert calls[1][0] == "93.184.215.14"
-    assert calls[1][1]["assert_hostname"] == IMAGE_HOST
+    assert calls[1][1]["assert_hostname"] == host
     assert client.get(response.get_json()["image_url"]).status_code == 200
     assert (
         len(calls) == 2
@@ -392,6 +395,8 @@ def test_request_uses_only_origin_form_and_the_validated_connection(
         "https://example.com/card.jpeg",
         f"https://{IMAGE_HOST}.example.com/card.jpeg",
         f"https://{IMAGE_HOST}@example.com/card.jpeg",
+        "https://tcgplayer-cdn.tcgplayer.com.example.com/product/card.jpg",
+        "https://tcgplayer-cdn.tcgplayer.com@example.com/product/card.jpg",
         f"https://{IMAGE_HOST}:0/card.jpeg",
         f"ftp://{IMAGE_HOST}/card.jpeg",
         f"//{IMAGE_HOST}/card.jpeg",
@@ -475,3 +480,25 @@ def test_mixed_public_and_private_dns_answers_are_rejected(monkeypatch):
     with pytest.raises(ValueError, match="public image URL"):
         remote_images.download_image(IMAGE_URL)
     assert calls == []
+
+
+def test_tcgplayer_product_url_keeps_its_path_and_validated_tls_host(
+    client, monkeypatch
+):
+    requests = []
+    calls = mock_remote(monkeypatch, [RemoteResponse()], requests)
+    response = client.post(
+        "/api/card-images",
+        json={
+            "url": "https://tcgplayer-cdn.tcgplayer.com/product/708712_in_1000x1000.jpg"
+        },
+    )
+    assert response.status_code == 201
+    assert calls[0][0] == "93.184.215.14"
+    assert calls[0][1]["assert_hostname"] == "tcgplayer-cdn.tcgplayer.com"
+    method, target, options = requests[0]
+    assert (method, target) == ("GET", "/product/708712_in_1000x1000.jpg")
+    assert options["headers"]["Host"] == "tcgplayer-cdn.tcgplayer.com"
+    assert options["redirect"] is False
+    assert options["assert_same_host"] is True
+    assert client.get(response.get_json()["thumbnail_url"]).status_code == 200

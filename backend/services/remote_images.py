@@ -13,6 +13,7 @@ from backend.services.image_processing import MAX_IMAGE_BYTES, validate_image_si
 
 ALLOWED_IMAGE_HOSTS = {
     "images.ygoprodeck.com",
+    "tcgplayer-cdn.tcgplayer.com",
 }
 
 
