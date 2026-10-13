@@ -82,6 +82,24 @@
 .pt-soul-count.is-drop-blocked {
   outline: 2px solid #e28282;
 }
+.pt-heart-label {
+  display: block;
+  flex-shrink: 0;
+  min-height: 14px;
+  /* The unit-role badge extends above its artwork; leave room for that badge. */
+  margin-bottom: 16px;
+  max-width: 90%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  color: #9d96a8;
+  pointer-events: none;
+}
+.pt-heart-label strong {
+  font-weight: 500;
+  color: #c8bdd8;
+}
 @media (max-width: 699px) {
   .pt-vanguard-stack {
     --vanguard-width: 58px;

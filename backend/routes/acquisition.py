@@ -2,12 +2,15 @@ from flask import Blueprint, jsonify, request
 
 from backend.services.acquisition import (
     add_acquisition_item,
+    archive_acquisition_plan,
+    batch_acquisition_items,
     create_acquisition_plan,
     delete_acquisition_plan,
     get_acquisition_plan_or_raise,
     list_acquisition_plans,
     receive_acquisition_item,
     remove_acquisition_item,
+    restore_acquisition_plan,
     update_acquisition_item,
     update_acquisition_plan,
 )
@@ -32,10 +35,7 @@ def _json_error(message, status_code):
 def list_acquisition_plans_route():
     plans = list_acquisition_plans()
     return jsonify(
-        [
-            serialize_acquisition_plan(plan, include_items=False)
-            for plan in plans
-        ]
+        [serialize_acquisition_plan(plan, include_items=False) for plan in plans]
     )
 
 
@@ -86,6 +86,26 @@ def delete_acquisition_plan_route(plan_id):
     return jsonify({"deleted": True, "id": plan_id})
 
 
+@bp_acquisition.post("/<int:plan_id>/archive")
+def archive_acquisition_plan_route(plan_id):
+    try:
+        plan = archive_acquisition_plan(plan_id)
+    except LookupError as exc:
+        return _json_error(str(exc), 404)
+    except ValueError as exc:
+        return _json_error(str(exc), 400)
+    return jsonify(serialize_acquisition_plan(plan))
+
+
+@bp_acquisition.post("/<int:plan_id>/restore")
+def restore_acquisition_plan_route(plan_id):
+    try:
+        plan = restore_acquisition_plan(plan_id)
+    except LookupError as exc:
+        return _json_error(str(exc), 404)
+    return jsonify(serialize_acquisition_plan(plan))
+
+
 @bp_acquisition.post("/<int:plan_id>/items")
 def add_acquisition_item_route(plan_id):
     try:
@@ -116,6 +136,17 @@ def update_acquisition_item_route(item_id):
     return jsonify(serialize_acquisition_item(item))
 
 
+@bp_acquisition.post("/<int:plan_id>/items/batch")
+def batch_acquisition_items_route(plan_id):
+    try:
+        plan = batch_acquisition_items(plan_id, request.get_json(silent=True) or {})
+    except LookupError as exc:
+        return _json_error(str(exc), 404)
+    except ValueError as exc:
+        return _json_error(str(exc), 400)
+    return jsonify(serialize_acquisition_plan(plan))
+
+
 @bp_acquisition.post("/items/<int:item_id>/receive")
 def receive_acquisition_item_route(item_id):
     try:
@@ -137,5 +168,7 @@ def remove_acquisition_item_route(item_id):
         remove_acquisition_item(item_id)
     except LookupError as exc:
         return _json_error(str(exc), 404)
+    except ValueError as exc:
+        return _json_error(str(exc), 400)
 
     return jsonify({"deleted": True, "id": item_id})

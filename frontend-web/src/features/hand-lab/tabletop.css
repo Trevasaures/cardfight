@@ -1,0 +1,339 @@
+/* The mat uses physical resource rails, keeping empty zones from setting its height.
+   Container queries respond to the navigation rail as well as the viewport. */
+.hand-table.pt-table {
+  container: hand-table / inline-size;
+  padding: 14px;
+  border-radius: 16px;
+}
+.hand-table-header {
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.hand-table-header .hand-button {
+  min-height: 30px;
+  padding: 5px 9px;
+  font-size: 10px;
+}
+.pt-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 248px;
+  gap: 12px;
+  margin-top: 10px;
+}
+.pt-mat {
+  display: grid;
+  grid-template-columns: 154px minmax(0, 1fr) 86px;
+  gap: 8px;
+  padding: 10px;
+  background:
+    radial-gradient(ellipse at 50% 40%, color-mix(in srgb, var(--hand-nation) 14%, transparent), transparent 70%),
+    linear-gradient(145deg, #ffffff02, #00000024), #0c0e15;
+}
+.pt-resource-rail {
+  display: flex;
+  flex-direction: column;
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  gap: 8px;
+}
+.pt-resource-rail > * {
+  grid-column: auto;
+  grid-row: auto;
+}
+.pt-field {
+  display: grid;
+  grid-column: 2;
+  grid-row: 1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: 32px 202px 170px;
+  align-content: center;
+  gap: 6px;
+}
+.pt-side {
+  display: grid;
+  grid-column: 3;
+  grid-row: 1;
+  grid-template-rows: repeat(4, minmax(82px, 1fr));
+  gap: 6px;
+}
+.pt-side .pt-zone {
+  padding: 7px 4px;
+}
+.pt-side .pt-zone-title {
+  font-size: 8px;
+}
+.pt-side .pt-zone-caption {
+  max-width: 100%;
+  font-size: 8px;
+}
+.pt-field .pt-circle.has-unit .pt-miniature {
+  width: 58px;
+  height: 83px;
+}
+.pt-field .pt-circle:not(.is-selected):not(.is-drop-over):hover {
+  border-color: transparent;
+  background-color: #dfb56d03;
+}
+.pt-field .pt-vanguard-stack {
+  --vanguard-width: 66px;
+  --vanguard-height: 94px;
+}
+.pt-field .pt-vanguard.has-unit .pt-miniature {
+  width: var(--vanguard-width);
+  height: var(--vanguard-height);
+}
+.pt-field .pt-vanguard-stack > .pt-zone {
+  padding-bottom: 28px;
+}
+.pt-field .pt-vanguard .pt-zone-surface {
+  padding-bottom: 18px;
+}
+.pt-field .pt-soul-stack {
+  top: calc(50% - 9px);
+}
+.pt-field .pt-heart-label {
+  margin-bottom: 5px;
+}
+.pt-field .pt-circle.has-unit .pt-zone-title {
+  min-height: 24px;
+  font-size: 10px;
+  line-height: 12px;
+}
+.pt-field .pt-guardian .pt-miniature {
+  width: 17px;
+  height: 24px;
+}
+.pt-field .pt-guardian {
+  padding: 3px 10px;
+}
+.pt-aux .pt-zone {
+  min-height: 42px;
+  flex-direction: row;
+  padding: 6px 10px;
+}
+.pt-aux .pt-zone-surface {
+  flex: 0 0 24px;
+}
+.pt-aux .pt-miniature {
+  width: 20px;
+  height: 29px;
+}
+.pt-tools {
+  padding: 9px 0;
+  gap: 8px;
+}
+.pt-tools .hand-button {
+  min-height: 30px;
+  padding: 5px 8px;
+}
+.pt-tools .pt-power-controls {
+  padding-top: 0;
+  gap: 5px;
+}
+.pt-hand-header {
+  padding: 7px 0;
+}
+.pt-hand {
+  gap: 7px;
+  padding-bottom: 6px;
+}
+.pt-hand > .pt-card {
+  flex-basis: 80px;
+}
+.pt-hand .pt-card-info > small {
+  display: none;
+}
+.pt-hand .pt-card-info {
+  padding: 4px 2px 2px;
+}
+.pt-hand .pt-card-info > span {
+  font-size: 9px;
+  line-height: 12px;
+}
+.pt-hand-empty {
+  min-height: 90px;
+}
+.pt-inspector {
+  top: 80px;
+  padding: 9px;
+  gap: 8px;
+}
+.pt-inspector-dock {
+  min-height: 34px;
+  padding: 4px 9px;
+  font-size: 11px;
+}
+.pt-inspector-dock > .catalog-artwork {
+  width: 18px;
+  height: 26px;
+  flex-basis: 18px;
+}
+.pt-footer {
+  padding-top: 10px;
+}
+.pt-selection {
+  padding: 9px;
+  gap: 10px;
+}
+.pt-selection .hand-button,
+.pt-selection .cinema-button,
+.pt-move-controls .workspace-control {
+  min-height: 32px;
+  padding-block: 6px;
+}
+@container hand-table (max-width: 1000px) {
+  .pt-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pt-inspector {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+  .pt-inspector-browser {
+    display: grid;
+    grid-template-columns: 170px minmax(0, 1fr);
+    align-items: start;
+  }
+  .pt-inspector-header,
+  .pt-inspector-tools {
+    grid-column: 1;
+  }
+  .pt-inspector-tools {
+    flex-wrap: wrap;
+  }
+  .pt-zone-list {
+    grid-column: 2;
+    grid-row: 1 / span 4;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  }
+}
+@container hand-table (max-width: 620px) {
+  .pt-mat {
+    grid-template-columns: minmax(0, 1fr) 74px;
+    padding: 6px;
+    gap: 6px;
+  }
+  .pt-field {
+    grid-column: 1;
+    grid-row: 1;
+    grid-template-rows: 30px 180px 145px;
+    gap: 4px;
+  }
+  .pt-side {
+    grid-column: 2;
+    grid-row: 1;
+    gap: 4px;
+  }
+  .pt-resource-rail {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .pt-field .pt-vanguard-stack {
+    --vanguard-width: 52px;
+    --vanguard-height: 74px;
+  }
+  .pt-field .pt-circle.has-unit .pt-miniature {
+    width: 46px;
+    height: 66px;
+  }
+  .pt-field .pt-vanguard.has-unit .pt-miniature {
+    width: var(--vanguard-width);
+    height: var(--vanguard-height);
+  }
+  .pt-field .pt-circle .pt-zone-caption {
+    gap: 3px;
+  }
+  .pt-field .pt-circle .pt-zone-caption strong {
+    font-size: 13px;
+  }
+  .pt-side .pt-miniature {
+    width: 35px;
+    height: 50px;
+  }
+  .pt-aux {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .pt-aux .pt-zone {
+    padding: 5px;
+  }
+  .pt-aux .pt-zone-title {
+    font-size: 8px;
+    letter-spacing: 0;
+  }
+  .pt-inspector-browser,
+  .pt-zone-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pt-zone-list {
+    grid-column: 1;
+    grid-row: auto;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+}
+@container hand-table (max-width: 390px) {
+  .pt-resource-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pt-resource-rail > .pt-crest-zone {
+    grid-column: 1 / -1;
+  }
+  .pt-aux .pt-zone-surface {
+    display: none;
+  }
+  /* Two action rows leave the circles visible on phones. Power adjustments
+     remain in More; the single-copy state and movement actions stay close. */
+  .pt-selection {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr);
+    gap: 6px;
+    padding: 8px;
+  }
+  .pt-selection-label {
+    width: auto;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+  }
+  .pt-selection-label > strong {
+    font-size: 9px;
+    white-space: nowrap;
+  }
+  .pt-selection-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 48px;
+    gap: 6px;
+  }
+  .pt-primary-actions {
+    grid-column: 1 / -1;
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+  .pt-move-controls {
+    gap: 4px;
+  }
+  .pt-selection .hand-button,
+  .pt-selection .cinema-button,
+  .pt-move-controls .workspace-control {
+    padding-inline: 4px;
+    font-size: 9px;
+    gap: 4px;
+  }
+  .pt-common-power {
+    display: none;
+  }
+  .pt-manual-actions {
+    position: fixed;
+    right: 16px;
+    left: 16px;
+    bottom: 112px;
+    width: auto;
+    max-height: 50dvh;
+  }
+}

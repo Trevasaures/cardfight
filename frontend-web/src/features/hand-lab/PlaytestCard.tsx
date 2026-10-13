@@ -3,6 +3,8 @@ import { Check } from "lucide-react";
 import { CardArtwork } from "../../components/cards/CardArtwork";
 import type { DeckCardEntry } from "../../types/api";
 import type { TableCard } from "./playtest";
+import { isCrestEntry } from "./crests";
+import { isSelectionClick } from "./selection";
 
 type Props = {
   card: TableCard;
@@ -35,30 +37,33 @@ export function PlaytestCard({
   onDragStart,
 }: Props) {
   if (!entry?.card) return null;
+  const crest = Boolean(card.crest || isCrestEntry(entry));
   return (
     <button
       type="button"
       key={card.key}
-      className={`pt-card ${selected ? "is-selected" : ""} ${compact ? "is-compact" : ""} ${draggable ? "pt-draggable" : ""} ${dragging ? "is-drag-source" : ""}`}
+      className={`pt-card ${crest ? "is-crest" : ""} ${selected ? "is-selected" : ""} ${compact ? "is-compact" : ""} ${draggable ? "pt-draggable" : ""} ${dragging ? "is-drag-source" : ""}`}
       onPointerDown={(event) => {
         if (draggable) onDragStart(event, card);
       }}
-      aria-label={`Select ${entry.card.name}, card ${index + 1}`}
+      aria-label={`${selected ? "Deselect" : "Select"} ${entry.card.name}, card ${index + 1}`}
       aria-pressed={selected}
       disabled={disabled}
       title={
         onRest ? `Double-click to ${card.rested ? "stand" : "rest"}` : undefined
       }
       onClick={(event) => {
-        // Field entries stay selected, like clicking their circle. Removing the
-        // preview between clicks could shift the target and swallow double-click.
-        if (!onRest || (event.detail < 2 && !selected)) onSelect(card);
+        if (isSelectionClick(event.detail, Boolean(onRest))) onSelect(card);
       }}
       onDoubleClick={() => onRest?.(card)}
     >
       <span className="pt-card-art">
         <CardArtwork card={entry.card} printing={entry.printing} />
-        <span className="hand-grade">G{effectiveGrade ?? entry.card.grade ?? "?"}</span>
+        {!crest && (
+          <span className="hand-grade">
+            G{effectiveGrade ?? entry.card.grade ?? "?"}
+          </span>
+        )}
         {selected && (
           <span className="pt-card-check">
             <Check size={15} />

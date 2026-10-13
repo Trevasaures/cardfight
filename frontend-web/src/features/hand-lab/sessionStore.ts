@@ -90,6 +90,8 @@ function validSession(
         seen.has(card.key) ||
         card.entryId !== original.entryId ||
         card.cardId !== original.cardId ||
+        (card.crest !== undefined && card.crest !== original.crest) ||
+        (card.gUnit !== undefined && card.gUnit !== original.gUnit) ||
         typeof card.rested !== "boolean" ||
         typeof card.faceDown !== "boolean" ||
         !Number.isSafeInteger(card.power) ||
@@ -102,6 +104,20 @@ function validSession(
   if (seen.size !== inventory.size) return false;
 
   const zones = value.zones as TableSession["zones"];
+  if (value.stride !== undefined && value.stride !== null) {
+    const stride = value.stride;
+    if (
+      !isRecord(stride) ||
+      typeof stride.gUnitKey !== "string" ||
+      typeof stride.heartKey !== "string" ||
+      !inventory.get(stride.gUnitKey)?.gUnit ||
+      inventory.get(stride.heartKey)?.gUnit ||
+      inventory.get(stride.heartKey)?.crest ||
+      !zones.vanguard.some((card) => card.key === stride.gUnitKey) ||
+      !zones.soul.some((card) => card.key === stride.heartKey)
+    )
+      return false;
+  }
   if (
     value.attackerKey !== null &&
     !ATTACK_CIRCLES.some((zone) =>
@@ -136,6 +152,56 @@ function validState(
     value.history.past.length <= MAX_UNDO_STATES &&
     value.history.past.every((session) => validSession(session, inventory))
   );
+}
+
+/** Restore auxiliary identity from inventory. A previous G-to-Crest drop hid the
+ * unit because Crest only renders crests; return those copies to G face up in every
+ * undo frame. All other zones, tokens, and effects retain their saved state. */
+function withCardIdentity(
+  state: PlaytestState,
+  copies: readonly TableCard[],
+): PlaytestState {
+  const identities = new Map(
+    copies
+      .filter((card) => card.crest || card.gUnit)
+      .map((card) => [card.key, card]),
+  );
+  if (!identities.size) return state;
+  function upgrade(session: TableSession): TableSession {
+    const zones = Object.fromEntries(
+      (
+        Object.entries(session.zones) as [keyof typeof ZONES, TableCard[]][]
+      ).map(([zone, cards]) => [
+        zone,
+        cards.map((card) => {
+          const identity = identities.get(card.key);
+          return identity
+            ? {
+                ...card,
+                ...(identity.crest ? { crest: true as const } : {}),
+                ...(identity.gUnit ? { gUnit: true as const } : {}),
+              }
+            : card;
+        }),
+      ]),
+    ) as TableSession["zones"];
+    const misplacedGUnits = zones.crest.filter((card) => card.gUnit);
+    if (misplacedGUnits.length) {
+      zones.crest = zones.crest.filter((card) => !card.gUnit);
+      zones.g = [
+        ...zones.g,
+        ...misplacedGUnits.map((card) => ({ ...card, faceDown: false })),
+      ];
+    }
+    return { ...session, zones };
+  }
+  return {
+    ...state,
+    history: {
+      present: state.history.present ? upgrade(state.history.present) : null,
+      past: state.history.past.map(upgrade),
+    },
+  };
 }
 
 /** One active game per tab. React can unmount the table without discarding its data. */
@@ -173,7 +239,11 @@ export function createPlaytestStore(
     }
     if (!cached) return empty;
     if (isRecord(cached) && cached.schema === 1) {
-      cached = { ...cached, schema: SAVE_SCHEMA, state: migrateRuleState(cached.state) };
+      cached = {
+        ...cached,
+        schema: SAVE_SCHEMA,
+        state: migrateRuleState(cached.state),
+      };
     }
     if (
       !isRecord(cached) ||
@@ -204,7 +274,11 @@ export function createPlaytestStore(
         notice: "Saved playtest could not be restored. Start a new game.",
       };
     }
-    return { state: cached.state, backedUp, notice: "" };
+    return {
+      state: withCardIdentity(cached.state, copies),
+      backedUp,
+      notice: "",
+    };
   }
 
   function save(source: SessionSource, state: PlaytestState): boolean {

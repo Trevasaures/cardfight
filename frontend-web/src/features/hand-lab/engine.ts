@@ -1,4 +1,5 @@
 import type { DeckCardEntry } from "../../types/api.ts";
+import { isCrestEntry } from "./crests.ts";
 
 // The key identifies one physical copy, even when several copies share a card ID.
 export type CardCopy = { key: string; cardId: number; entryId: number };
@@ -13,7 +14,7 @@ export type HandSession = {
 
 export function mainDeckCopies(entries: readonly DeckCardEntry[]): CardCopy[] {
   return entries
-    .filter((entry) => entry.zone === "main")
+    .filter((entry) => entry.zone === "main" && !isCrestEntry(entry))
     .flatMap((entry) => {
       if (
         !entry.card ||

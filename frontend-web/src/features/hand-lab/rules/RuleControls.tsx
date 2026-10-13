@@ -1,9 +1,10 @@
 import { useState } from "react";
 import type { TableSession, Zone } from "../playtest";
-import { hasRitualDeck, ritualCount } from "./luard";
+import { ritualCount } from "./luard";
 import { resolveXceed } from "./impauldio";
 import { setRuleToken } from "./index";
 import { hasRuleToken, type RuleContext } from "./types";
+import { ruleVisibility } from "./visibility";
 import "./rules.css";
 
 type Props = {
@@ -21,7 +22,9 @@ function GaugeChoice({ context, disabled, onApply }: Omit<Props, "onInspect">) {
   return (
     <div className="pt-rule-choice" role="group" aria-label="Resolve X-ceed">
       <strong>X-ceed</strong>
-      {empty ? <span>Drop empty</span> : (
+      {empty ? (
+        <span>Drop empty</span>
+      ) : (
         <select
           className="workspace-control"
           aria-label="AutoMOD card from drop"
@@ -32,7 +35,8 @@ function GaugeChoice({ context, disabled, onApply }: Omit<Props, "onInspect">) {
           <option value="">Choose from drop…</option>
           {drop.map((card) => (
             <option key={card.key} value={card.key}>
-              {context.entries.get(card.entryId)?.card?.name} · #{Number(card.key.split(":")[1]) + 1}
+              {context.entries.get(card.entryId)?.card?.name} · #
+              {Number(card.key.split(":")[1]) + 1}
             </option>
           ))}
         </select>
@@ -55,51 +59,60 @@ function GaugeChoice({ context, disabled, onApply }: Omit<Props, "onInspect">) {
   );
 }
 
-/** Keep counters visible and token setup tucked away; no card-text parser runs here. */
+/** Show the deck's rule counters; only unresolved choices interrupt the table. */
 export function RuleControls({ context, disabled, onApply, onInspect }: Props) {
   const { session } = context;
-  const ritual = hasRitualDeck(context);
-  const xceed = hasRuleToken(context, "xceed");
+  const visibility = ruleVisibility(context);
+  if (!visibility.ritual && !visibility.impauldio && !visibility.pendingXceed) {
+    return null;
+  }
   return (
     <div className="pt-rules">
       <div className="pt-rule-counters">
-        {ritual && (
+        {visibility.ritual && (
           <button
-            type="button" className="pt-resource-counter" disabled={disabled}
+            type="button"
+            className="pt-resource-counter"
+            disabled={disabled}
             title="Grade 1 cards in drop, including supported grade modifiers"
             onClick={() => onInspect("drop")}
           >
             Ritual <strong>{ritualCount(context)}</strong>
           </button>
         )}
-        {(xceed || session.zones.gauge.length > 0) && (
+        {visibility.impauldio && (
           <button
-            type="button" className="pt-resource-counter" disabled={disabled}
-            data-drop-zone="gauge" onClick={() => onInspect("gauge")}
+            type="button"
+            className="pt-resource-counter"
+            disabled={disabled}
+            data-drop-zone="gauge"
+            onClick={() => onInspect("gauge")}
             aria-label={`Inspect AutoMOD, ${session.zones.gauge.length} cards`}
           >
             AutoMOD <strong>{session.zones.gauge.length}</strong>
           </button>
         )}
-        <details className="pt-rule-tokens">
-          <summary>Rule tokens</summary>
-          <fieldset disabled={disabled}>
-            <legend className="sr-only">Virtual tokens in play</legend>
-            {(["energyGenerator", "xceed"] as const).map((token) => (
-              <label key={token}>
+        {visibility.impauldio && !hasRuleToken(context, "xceed") && (
+          <details className="pt-rule-tokens">
+            <summary>X-ceed</summary>
+            <fieldset disabled={disabled}>
+              <legend className="sr-only">Virtual tokens in play</legend>
+              <label>
                 <input
                   type="checkbox"
-                  checked={session.rules.tokens[token]}
-                  onChange={(event) => onApply(setRuleToken(session, token, event.target.checked))}
+                  checked={session.rules.tokens.xceed}
+                  onChange={(event) =>
+                    onApply(setRuleToken(session, "xceed", event.target.checked))
+                  }
                 />
-                {token === "energyGenerator" ? "Energy Generator · Crest" : "SYSTEM CODE: X-ceed · Order"}
+                SYSTEM CODE: X-ceed
               </label>
-            ))}
-            <small>Place when gained. Other abilities and costs stay manual.</small>
-          </fieldset>
-        </details>
+              <small>Manual setup</small>
+            </fieldset>
+          </details>
+        )}
       </div>
-      {session.rules.pending.length > 0 && (
+      {visibility.pendingXceed && (
         <GaugeChoice context={context} disabled={disabled} onApply={onApply} />
       )}
     </div>

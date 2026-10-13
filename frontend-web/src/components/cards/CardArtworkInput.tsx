@@ -1,12 +1,14 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { ImagePlus, Loader2, Upload, X } from "lucide-react";
-import { importCardArtwork } from "../../api/cards";
+import { ImagePlus, Loader2, RotateCcw, Upload, X } from "lucide-react";
+import { importCardArtwork, normalizeCrestArtwork } from "../../api/cards";
 import { apiAssetUrl } from "../../api/client";
+import { isCrestCard } from "../../utils/cards";
 import type { CardArtworkValue } from "./cardArtworkState";
 import "./card-artwork.css";
 
 type Props = {
   value: CardArtworkValue | null;
+  cardType?: string | null;
   disabled?: boolean;
   onChange: (value: CardArtworkValue | null) => void;
   onBusyChange: (busy: boolean) => void;
@@ -15,6 +17,7 @@ type Props = {
 /** Import prepares a preview; only the surrounding card form attaches it on Save. */
 export function CardArtworkInput({
   value,
+  cardType,
   disabled,
   onChange,
   onBusyChange,
@@ -26,13 +29,14 @@ export function CardArtworkInput({
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const crest = isCrestCard(cardType);
 
   useEffect(() => {
     callbacks.current = { onChange, onBusyChange };
   }, [onChange, onBusyChange]);
   useEffect(() => () => requestRef.current?.abort(), []);
 
-  async function prepare(source: File | string) {
+  async function prepare(source: File | string | { imageId: string }) {
     if (source instanceof File && source.size > 8 * 1024 * 1024) {
       setError("Image must be 8 MB or smaller.");
       return;
@@ -44,7 +48,10 @@ export function CardArtworkInput({
     callbacks.current.onBusyChange(true);
     setError("");
     try {
-      const artwork = await importCardArtwork(source, controller.signal);
+      const artwork =
+        typeof source === "object" && "imageId" in source
+          ? await normalizeCrestArtwork(source.imageId, cardType!, controller.signal)
+          : await importCardArtwork(source, controller.signal, cardType);
       if (!controller.signal.aborted) {
         // Use the latest form callback so typing while importing is never overwritten.
         callbacks.current.onChange(artwork);
@@ -65,7 +72,7 @@ export function CardArtworkInput({
 
   return (
     <div
-      className="card-artwork-editor"
+      className={`card-artwork-editor${crest ? " is-crest" : ""}`}
       aria-label="Card artwork"
       aria-busy={busy}
     >
@@ -137,6 +144,17 @@ export function CardArtworkInput({
               }}
             >
               <X size={14} /> Remove
+            </button>
+          )}
+          {crest && value?.id && (
+            <button
+              type="button"
+              className="workspace-button"
+              disabled={disabled || busy}
+              title="Prepare landscape artwork; Save applies it to this printing"
+              onClick={() => void prepare({ imageId: value.id! })}
+            >
+              <RotateCcw size={14} /> Normalize crest
             </button>
           )}
           {busy && <span role="status">Preparing artwork…</span>}

@@ -1,5 +1,11 @@
 import { emptyRules, type RuleState } from "./rules/types.ts";
 import type { DeckCardEntry } from "../../types/api.ts";
+import { CREST_DESTINATIONS, isCrestEntry } from "./crests.ts";
+import {
+  isGUnitEntry,
+  returnStridingVanguard,
+  strideHeartKey,
+} from "./stride.ts";
 import {
   dealHand,
   mulligan,
@@ -49,6 +55,8 @@ export const CIRCLES: Zone[] = [
   "backRight",
 ];
 export type TableCard = CardCopy & {
+  crest?: true;
+  gUnit?: true;
   rested: boolean;
   faceDown: boolean;
   power: number;
@@ -61,17 +69,12 @@ export type CardChange =
   | "power-"
   | "power+2k"
   | "power-2k"
+  | "power+10k"
   | "power+100m"
   | "critical+"
   | "critical-";
 export type Phase =
-  | "mulligan"
-  | "stand"
-  | "draw"
-  | "ride"
-  | "main"
-  | "battle"
-  | "end";
+  "mulligan" | "stand" | "draw" | "ride" | "main" | "battle" | "end";
 export const PHASES: Phase[] = [
   "stand",
   "draw",
@@ -88,6 +91,7 @@ export type TableSession = {
   phase: Phase;
   energy: number;
   rules: RuleState;
+  stride?: { gUnitKey: string; heartKey: string } | null;
   attackerKey: string | null;
   check: { key: string; kind: "drive" | "damage" } | null;
   log: string[];
@@ -109,13 +113,15 @@ export function listCopies(entries: readonly DeckCardEntry[]): TableCard[] {
         "This list has an unavailable card or invalid quantity. Update it in Deck Builder.",
       );
     }
-    return Array.from({ length: entry.quantity }, (_, index) =>
-      fresh({
+    return Array.from({ length: entry.quantity }, (_, index) => {
+      const copy = fresh({
         key: `${entry.id}:${index}`,
         cardId: entry.card_id,
         entryId: entry.id,
-      }),
-    );
+      });
+      if (isCrestEntry(entry)) return { ...copy, crest: true as const };
+      return isGUnitEntry(entry) ? { ...copy, gUnit: true as const } : copy;
+    });
   });
 }
 
@@ -135,8 +141,9 @@ export function startTable(
   const entryMap = new Map(entries.map((entry) => [entry.id, entry]));
   for (const copy of listCopies(entries)) {
     const entry = entryMap.get(copy.entryId)!;
-    const zone =
-      entry.zone === "main"
+    const zone = isCrestEntry(entry)
+      ? "reserve"
+      : entry.zone === "main"
         ? "deck"
         : entry.zone === "other"
           ? "reserve"
@@ -167,6 +174,7 @@ export function startTable(
     phase: "mulligan",
     energy: 0,
     rules: emptyRules(),
+    stride: null,
     attackerKey: null,
     check: null,
     log: ["Dealt five."],
@@ -225,8 +233,14 @@ export function canDropCards(
 ): boolean {
   if (session.phase === "mulligan" || !keys.length) return false;
   const cards = [...new Set(keys)].map((key) => findCard(session, key));
+  const heartKey = strideHeartKey(session);
   if (
     cards.some((card) => !card) ||
+    cards.some((found) => found?.card.key === heartKey) ||
+    cards.some(
+      (found) => found?.card.crest && !CREST_DESTINATIONS.includes(to),
+    ) ||
+    cards.some((found) => found?.card.gUnit && to === "crest") ||
     (CIRCLES.includes(to) && cards.length !== 1)
   )
     return false;
@@ -240,12 +254,36 @@ export function moveCards(
   position: "top" | "bottom" = "bottom",
 ): TableSession {
   if (session.phase === "mulligan") return session;
-  const selected = [...new Set(keys)].flatMap((key) => {
-    const found = findCard(session, key);
+  const requested = [...new Set(keys)].map((key) => findCard(session, key));
+  const heartKey = strideHeartKey(session);
+  // Validate the whole requested group before removing same-zone no-ops. Even a
+  // legacy crest already in a playable zone must not enable a partial group move.
+  if (
+    requested.some(
+      (found) =>
+        (heartKey !== undefined && found?.card.key === heartKey) ||
+        (found?.card.gUnit && to === "crest") ||
+        (found?.card.crest && !CREST_DESTINATIONS.includes(to)),
+    )
+  )
+    return session;
+  const selected = requested.flatMap((found) => {
     return found && (found.zone !== to || to === "deck") ? [found.card] : [];
   });
   if (!selected.length || (CIRCLES.includes(to) && selected.length !== 1))
     return session;
+  const stridingUnit = session.zones.vanguard[0];
+  const movingStride =
+    stridingUnit?.gUnit &&
+    selected.some((card) => card.key === stridingUnit.key);
+  if (stridingUnit?.gUnit && (movingStride || to === "vanguard")) {
+    // A G vanguard leaving (including a normal ride over it) returns to G face up.
+    const returned = returnStridingVanguard(session);
+    const remaining = keys.filter((key) => key !== stridingUnit.key);
+    return remaining.length
+      ? moveCards(returned, remaining, to, position)
+      : returned;
+  }
   const moved = new Set(selected.map((card) => card.key));
   const zones = { ...session.zones };
   // Remove each physical copy everywhere before inserting it at its destination.
@@ -272,6 +310,8 @@ export function moveCards(
     zones[destination] = [...zones[destination], ...replaced.map(fresh)];
     zones[to] = [];
   }
+  const incomingG = to === "vanguard" && selected[0]?.gUnit;
+  const previousVanguard = session.zones.vanguard[0];
   const cards = selected.map((card) => {
     const from = findCard(session, card.key)!.zone;
     // Rear-guard movement keeps rest/bonuses. Entering another zone resets that state.
@@ -292,6 +332,10 @@ export function moveCards(
     {
       ...session,
       zones,
+      stride:
+        incomingG && previousVanguard && !previousVanguard.gUnit
+          ? { gUnitKey: selected[0].key, heartKey: previousVanguard.key }
+          : session.stride,
       // A retired or removed attacker must not own the next drive check.
       attackerKey: ATTACK_CIRCLES.some((zone) =>
         zones[zone].some((card) => card.key === session.attackerKey),
@@ -339,6 +383,8 @@ export function changePower(
   });
   if (
     !targets.length ||
+    targets.some((card) => card.crest) ||
+    targets.some((card) => card.key === strideHeartKey(session)) ||
     targets.some((card) => !Number.isSafeInteger(card.power + amount))
   )
     return session;
@@ -370,11 +416,26 @@ export function changeCards(
       return changePower(session, keys, 2000);
     case "power-2k":
       return changePower(session, keys, -2000);
+    case "power+10k":
+      // This shortcut targets field units; mixed pile selections stay untouched.
+      if (
+        keys.some(
+          (key) =>
+            !CIRCLES.some((zone) =>
+              session.zones[zone].some((card) => card.key === key),
+            ),
+        )
+      )
+        return session;
+      return changePower(session, keys, 10000);
     case "power+100m":
       return changePower(session, keys, 100_000_000);
   }
   if (
     session.phase === "mulligan" ||
+    keys.includes(strideHeartKey(session) ?? "") ||
+    (change !== "flip" &&
+      keys.some((key) => findCard(session, key)?.card.crest)) ||
     !keys.some((key) => findCard(session, key))
   )
     return session;
@@ -403,9 +464,11 @@ export function changeEnergy(
   limit = 10,
 ): TableSession {
   if (
-    session.phase === "mulligan" || !Number.isSafeInteger(delta) ||
+    session.phase === "mulligan" ||
+    !Number.isSafeInteger(delta) ||
     ![10, 15].includes(limit)
-  ) return session;
+  )
+    return session;
   const energy = Math.min(limit, Math.max(0, session.energy + delta));
   return energy === session.energy
     ? session
@@ -416,12 +479,13 @@ export function canAttack(session: TableSession, key: string): boolean {
   const found = findCard(session, key);
   return Boolean(
     session.active === "you" &&
-      session.phase === "battle" &&
-      !session.check &&
-      found &&
-      ATTACK_CIRCLES.includes(found.zone) &&
-      !found.card.rested &&
-      !found.card.faceDown,
+    session.phase === "battle" &&
+    !session.check &&
+    found &&
+    ATTACK_CIRCLES.includes(found.zone) &&
+    !found.card.crest &&
+    !found.card.rested &&
+    !found.card.faceDown,
   );
 }
 
@@ -452,7 +516,10 @@ export function getDriveAttacker(
   key = session.attackerKey ?? session.zones.vanguard[0]?.key,
 ): { card: TableCard; zone: Zone } | undefined {
   const found = key ? findCard(session, key) : undefined;
-  return found && ATTACK_CIRCLES.includes(found.zone) && !found.card.faceDown
+  return found &&
+    ATTACK_CIRCLES.includes(found.zone) &&
+    !found.card.faceDown &&
+    !found.card.crest
     ? found
     : undefined;
 }
@@ -498,10 +565,14 @@ export function resolveCheck(session: TableSession): TableSession {
 export function nextPhase(session: TableSession): TableSession {
   // Resolve checks and queued abilities before advancing past their turn.
   if (
-    session.phase === "mulligan" || session.check || session.rules.pending.length
-  ) return session;
+    session.phase === "mulligan" ||
+    session.check ||
+    session.rules.pending.length
+  )
+    return session;
   if (session.active === "opponent") {
     // The opponent has no simulated field; this transition starts the next solo turn.
+    session = returnStridingVanguard(session);
     const zones = { ...session.zones };
     // Damage-trigger bonuses expire at the opponent's turn boundary as well.
     for (const zone of Object.keys(ZONES) as Zone[])
@@ -524,6 +595,8 @@ export function nextPhase(session: TableSession): TableSession {
     );
   }
   if (session.phase === "end") {
+    // Older/manual snapshots may already be in End without the initial return.
+    session = returnStridingVanguard(session);
     const zones = { ...session.zones };
     for (const zone of Object.keys(ZONES) as Zone[])
       zones[zone] = zones[zone].map((card) => ({
@@ -539,7 +612,8 @@ export function nextPhase(session: TableSession): TableSession {
   let phase = PHASES[PHASES.indexOf(session.phase) + 1];
   // Both starting orders draw, but the first player skips their first battle phase.
   if (phase === "battle" && session.first && session.turn === 1) phase = "end";
-  const next = { ...session, phase, attackerKey: null };
+  const phased = { ...session, phase, attackerKey: null };
+  const next = phase === "end" ? returnStridingVanguard(phased) : phased;
   return record(
     phase === "draw" ? takeTop(next, "hand") : next,
     `${phase[0].toUpperCase()}${phase.slice(1)} phase${phase === "draw" && !session.zones.deck.length ? " · deck empty" : ""}.`,

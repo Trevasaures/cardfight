@@ -2,12 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { RefreshCcw, Search } from "lucide-react";
 
 import { getMatches } from "../api/matches";
-import {
-  RivalryCard,
-  type RivalryRow,
-} from "../components/cards/RivalryCard";
+import { RivalryCard, type RivalryRow } from "../components/cards/RivalryCard";
 import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
+import { usePersistentState } from "../hooks/usePersistentState";
 import type { Match, MatchFormat } from "../types/api";
 
 type FormatFilter = "All" | MatchFormat;
@@ -96,9 +94,18 @@ function buildRivalries(matches: Match[]) {
 
 export function Rivalries() {
   const [matches, setMatches] = useState<Match[]>([]);
-  const [search, setSearch] = useState("");
-  const [format, setFormat] = useState<FormatFilter>("All");
-  const [minGames, setMinGames] = useState<MinGamesFilter>(1);
+  const [search, setSearch] = usePersistentState(
+    "cardfight.rivalries.search",
+    "",
+  );
+  const [format, setFormat] = usePersistentState<FormatFilter>(
+    "cardfight.rivalries.format",
+    "All",
+  );
+  const [minGames, setMinGames] = usePersistentState<MinGamesFilter>(
+    "cardfight.rivalries.min-games",
+    1,
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const toast = useToast();
@@ -155,26 +162,36 @@ export function Rivalries() {
     <>
       <PageHeader title="Rivalries" />
 
-      <section
-        data-anime="motion-panel"
-        className="workspace-panel"
-      >
-
+      <section data-anime="motion-panel" className="workspace-panel">
         <div className="workspace-inset grid grid-cols-2 overflow-hidden md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)]">
           <div className="border-r border-white/10 px-4 py-3">
-            <p className="text-[0.6rem] font-bold uppercase tracking-[0.15em] text-slate-500">Pairings</p>
-            <p className="mt-1 text-2xl font-black text-white">{totalPairings}</p>
+            <p className="text-[0.6rem] font-bold uppercase tracking-[0.15em] text-slate-500">
+              Pairings
+            </p>
+            <p className="mt-1 text-2xl font-black text-white">
+              {totalPairings}
+            </p>
           </div>
           <div className="px-4 py-3 md:border-r md:border-white/10">
-            <p className="text-[0.6rem] font-bold uppercase tracking-[0.15em] text-slate-500">Logged matches</p>
+            <p className="text-[0.6rem] font-bold uppercase tracking-[0.15em] text-slate-500">
+              Logged matches
+            </p>
             <p className="mt-1 text-2xl font-black text-white">{totalLogged}</p>
           </div>
           <div className="col-span-2 min-w-0 border-t border-white/10 px-4 py-3 md:col-span-1 md:border-t-0">
-            <p className="text-[0.6rem] font-bold uppercase tracking-[0.15em] text-slate-500">Most played pairing</p>
-            <p className="mt-1 break-words text-base font-black text-cyan-100">
-              {topRivalry ? `${topRivalry.deckAName} vs ${topRivalry.deckBName}` : "No rivalry yet"}
+            <p className="text-[0.6rem] font-bold uppercase tracking-[0.15em] text-slate-500">
+              Most played pairing
             </p>
-            {topRivalry ? <p className="mt-0.5 text-xs text-slate-500">{topRivalry.total} matches</p> : null}
+            <p className="mt-1 break-words text-base font-black text-cyan-100">
+              {topRivalry
+                ? `${topRivalry.deckAName} vs ${topRivalry.deckBName}`
+                : "No rivalry yet"}
+            </p>
+            {topRivalry ? (
+              <p className="mt-0.5 text-xs text-slate-500">
+                {topRivalry.total} matches
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -223,16 +240,32 @@ export function Rivalries() {
             disabled={loading}
             className="col-span-2 xl:col-span-1 workspace-button inline-flex items-center justify-center gap-2 border border-white/10 bg-white/[0.05] px-3 text-sm font-semibold text-slate-200 transition hover:bg-white/[0.09] disabled:opacity-40"
           >
-            <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCcw
+              className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+            />
             Refresh
           </button>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-          <span>{filteredRows.length} of {rivalryRows.length} pairings shown</span>
+          <span>
+            {filteredRows.length} of {rivalryRows.length} pairings shown
+          </span>
           {search || format !== "All" || minGames !== 1 ? (
-            <button type="button" onClick={() => { setSearch(""); setFormat("All"); setMinGames(1); }} className="font-semibold text-cyan-200 transition hover:text-cyan-100">Clear filters</button>
-          ) : <span>Most played first</span>}
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setFormat("All");
+                setMinGames(1);
+              }}
+              className="font-semibold text-cyan-200 transition hover:text-cyan-100"
+            >
+              Clear filters
+            </button>
+          ) : (
+            <span>Most played first</span>
+          )}
         </div>
       </section>
 
@@ -248,9 +281,13 @@ export function Rivalries() {
         </section>
       ) : (
         <section className="workspace-panel mt-4 border-dashed py-8 text-center">
-          <p className="text-lg font-bold text-slate-300">No rivalries found.</p>
+          <p className="text-lg font-bold text-slate-300">
+            No rivalries found.
+          </p>
           <p className="mt-2 text-sm text-slate-500">
-            {rivalryRows.length ? "Try a different deck, format, or minimum game count." : "Log a few matches in Play Lab to start a head-to-head record."}
+            {rivalryRows.length
+              ? "Try a different deck, format, or minimum game count."
+              : "Log a few matches in Play Lab to start a head-to-head record."}
           </p>
         </section>
       )}

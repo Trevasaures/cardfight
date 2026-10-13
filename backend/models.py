@@ -378,7 +378,7 @@ class DeckCard(db.Model):
     __table_args__ = (
         db.CheckConstraint("quantity > 0", name="ck_deck_card_quantity_positive"),
         db.CheckConstraint(
-            "zone IN ('main','ride','g','token','other')",
+            "zone IN ('main','ride','g','token','other','crest')",
             name="ck_deck_card_zone",
         ),
         db.Index("ix_deck_card_version", "deck_version_id"),
@@ -401,6 +401,7 @@ class AcquisitionPlan(db.Model):
     plan_type = db.Column(db.String(40), default="new_build", nullable=False)
     list_source = db.Column(db.String(40), default="empty", nullable=False)
     status = db.Column(db.String(40), default="planning", nullable=False)
+    archived_at = db.Column(db.DateTime, nullable=True)
     build_mode = db.Column(db.String(40), default="physical", nullable=False)
 
     deck_id = db.Column(

@@ -36,7 +36,12 @@ function field() {
   const opening = startTable(entries, true, "2:0", seededRandom(2));
   let session = finishMulligan(opening, []);
   const hand = session.zones.hand;
-  const circles = ["frontLeft", "frontRight", "backCenter", "guardian"] as const;
+  const circles = [
+    "frontLeft",
+    "frontRight",
+    "backCenter",
+    "guardian",
+  ] as const;
   for (const [index, zone] of circles.entries())
     session = moveCards(session, [hand[index].key], zone);
   return session;
@@ -54,10 +59,14 @@ test("front bonuses affect current front-row units once, including rested units"
   assert.equal(next.zones.guardian[0].power, 0);
   assert.equal(next.zones.hand[0].power, 0);
   assert.equal(
-    JSON.stringify(rested), snapshot, "undo retains the previous field",
+    JSON.stringify(rested),
+    snapshot,
+    "undo retains the previous field",
   );
   assert.equal(
-    next.log.length, rested.log.length + 1, "one effect is one action",
+    next.log.length,
+    rested.log.length + 1,
+    "one effect is one action",
   );
   const replacement = moveCards(next, [next.zones.hand[0].key], "frontLeft");
   assert.equal(
@@ -96,13 +105,77 @@ test("Over Trigger power adds to existing bonuses without resolving the pending 
   assert.equal(formatPower(next.zones.vanguard[0], null, true), "+100.005M");
 });
 
+test("selected +10k is one reversible field action and leaves a check pending", () => {
+  const checked = beginCheck(field(), "damage");
+  const vanguard = checked.zones.vanguard[0].key;
+  const rearGuard = checked.zones.frontLeft[0].key;
+  const initial = changeCards(checked, [rearGuard], "power+2k");
+  const snapshot = JSON.stringify(initial);
+  const next = changeCards(
+    initial,
+    [vanguard, rearGuard, rearGuard],
+    "power+10k",
+  );
+
+  assert.equal(next.zones.vanguard[0].power, 10000);
+  assert.equal(next.zones.frontLeft[0].power, 12000);
+  assert.equal(next.zones.frontRight[0].power, 0);
+  assert.equal(next.log.length, initial.log.length + 1);
+  assert.deepEqual(next.check, initial.check);
+  assert.deepEqual(next.zones.reveal, initial.zones.reveal);
+  assert.deepEqual(next.zones.deck, initial.zones.deck);
+  assert.deepEqual(next.zones.hand, initial.zones.hand);
+  assert.equal(
+    JSON.stringify(initial),
+    snapshot,
+    "undo keeps the complete previous state",
+  );
+});
+
+test("selected +10k rejects pile cards, crests, mulligan and overflow atomically", () => {
+  const session = field();
+  const unit = session.zones.vanguard[0].key;
+  const pileCards = [
+    session.zones.hand[0],
+    session.zones.guardian[0],
+    session.zones.g[0],
+  ];
+  for (const card of pileCards) {
+    assert.equal(changeCards(session, [card.key], "power+10k"), session);
+    assert.equal(changeCards(session, [unit, card.key], "power+10k"), session);
+  }
+  assert.equal(changeCards(session, [unit, "missing"], "power+10k"), session);
+  assert.equal(changeCards(session, [], "power+10k"), session);
+
+  const crestSession = {
+    ...session,
+    zones: {
+      ...session.zones,
+      vanguard: [{ ...session.zones.vanguard[0], crest: true as const }],
+    },
+  };
+  assert.equal(changeCards(crestSession, [unit], "power+10k"), crestSession);
+  const opening = startTable(entries, true, "2:0", seededRandom(2));
+  assert.equal(changeCards(opening, [unit], "power+10k"), opening);
+  const atLimit = changePower(session, [unit], Number.MAX_SAFE_INTEGER);
+  assert.equal(
+    changeCards(atLimit, [unit, session.zones.frontLeft[0].key], "power+10k"),
+    atLimit,
+  );
+});
+
 test("G-zone multipliers use the chosen count at application and start face down", () => {
   const initial = field();
-  assert.equal(initial.zones.g.every((card) => card.faceDown), true);
+  assert.equal(
+    initial.zones.g.every((card) => card.faceDown),
+    true,
+  );
   assert.equal(powerMultiplierCount(initial, "gTotal", 9), 4);
   assert.equal(powerMultiplierCount(initial, "gFaceUp", 9), 0);
   const scaled: PowerEffect = {
-    ...effect, amount: 5000, multiplier: "gFaceUp",
+    ...effect,
+    amount: 5000,
+    multiplier: "gFaceUp",
   };
   assert.equal(applyPowerEffect(initial, [], scaled), initial);
   const flipped = changeCards(
@@ -119,13 +192,20 @@ test("G-zone multipliers use the chosen count at application and start face down
     "counts are not ongoing effects",
   );
   const moved = moveCards(
-    flippedAgain, [flippedAgain.zones.g[3].key], "reserve",
+    flippedAgain,
+    [flippedAgain.zones.g[3].key],
+    "reserve",
   );
   assert.equal(powerMultiplierCount(moved, "gTotal", 9), 3);
-  const total = applyPowerEffect(initial, [], { ...scaled, multiplier: "gTotal" });
+  const total = applyPowerEffect(initial, [], {
+    ...scaled,
+    multiplier: "gTotal",
+  });
   assert.equal(total.zones.vanguard[0].power, 20000);
   const manual = applyPowerEffect(initial, [], {
-    ...scaled, multiplier: "manual", count: 3,
+    ...scaled,
+    multiplier: "manual",
+    count: 3,
   });
   assert.equal(manual.zones.vanguard[0].power, 15000);
 });
@@ -146,7 +226,8 @@ test("power effects reject invalid input and overflow without a partial update",
   for (const [amount, count] of invalidInputs) {
     assert.equal(powerEffectAmount(amount, count), null);
     assert.equal(
-      applyPowerEffect(session, [], { ...effect, amount, count }), session,
+      applyPowerEffect(session, [], { ...effect, amount, count }),
+      session,
     );
   }
   const atLimit = changePower(session, [key], Number.MAX_SAFE_INTEGER);
@@ -161,7 +242,9 @@ test("turn bonuses expire after either player's turn, including damage-trigger p
   const initial = field();
   const key = initial.zones.vanguard[0].key;
   const boosted = changeCards(
-    applyPowerEffect(initial, [], effect), [key], "critical+",
+    applyPowerEffect(initial, [], effect),
+    [key],
+    "critical+",
   );
   for (const active of ["you", "opponent"] as const) {
     const next = nextPhase({ ...boosted, phase: "end", active });

@@ -19,11 +19,17 @@ type Toast = {
   tone: ToastTone;
   title: string;
   message: string;
+  action?: ToastOptions["action"];
 };
 
 const TOAST_STYLE: Record<
   ToastTone,
-  { icon: typeof CheckCircle2; title: string; className: string; iconClassName: string }
+  {
+    icon: typeof CheckCircle2;
+    title: string;
+    className: string;
+    iconClassName: string;
+  }
 > = {
   success: {
     icon: CheckCircle2,
@@ -70,6 +76,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           tone,
           title: options?.title ?? style.title,
           message,
+          action: options?.action,
         },
       ]);
 
@@ -122,7 +129,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               className={`toast-enter pointer-events-auto rounded-2xl border p-4 shadow-2xl shadow-black/50 backdrop-blur-xl ${style.className}`}
             >
               <div className="flex items-start gap-3">
-                <Icon className={`mt-0.5 h-5 w-5 shrink-0 ${style.iconClassName}`} />
+                <Icon
+                  className={`mt-0.5 h-5 w-5 shrink-0 ${style.iconClassName}`}
+                />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-black text-slate-50">
                     {toast.title}
@@ -130,6 +139,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   <p className="mt-1 break-words text-sm leading-5 text-slate-300">
                     {toast.message}
                   </p>
+                  {toast.action && (
+                    <button
+                      type="button"
+                      className="mt-2 rounded-lg border border-white/20 px-3 py-1.5 text-xs font-bold text-slate-50 hover:bg-white/10"
+                      onClick={() => {
+                        dismiss(toast.id);
+                        void toast.action?.onClick();
+                      }}
+                    >
+                      {toast.action.label}
+                    </button>
+                  )}
                 </div>
                 <button
                   type="button"

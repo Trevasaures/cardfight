@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
-import { Plus, Save, Search, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Plus, Save, Search } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { NATION_COLORS } from "../utils/nations";
 
 import { createDeck, getDeckOptions, getDecks, updateDeck } from "../api/decks";
 import { DeckCard } from "../components/cards/DeckCard";
 import { useToast } from "../components/feedback/useToast";
+import { ModalDialog } from "../components/layout/ModalDialog";
 import { PageHeader } from "../components/layout/PageHeader";
-import { WorkspaceSectionHeader } from "../components/layout/WorkspaceSectionHeader";
+import { usePersistentState } from "../hooks/usePersistentState";
 import type { Deck, DeckOptionsResponse, DeckType } from "../types/api";
 
 type EditorMode = "create" | "edit";
@@ -48,14 +49,28 @@ export function DeckLibrary() {
   });
 
   const [editingDeck, setEditingDeck] = useState<EditState | null>(null);
-  const [search, setSearch] = useState("");
-  const [showInactive, setShowInactive] = useState(true);
+  const editorInitial = useRef<EditState | null>(null);
+  const deckNameInput = useRef<HTMLInputElement>(null);
+  const [search, setSearch] = usePersistentState(
+    "cardfight.deck-library.search",
+    "",
+  );
+  const [showInactive, setShowInactive] = usePersistentState(
+    "cardfight.deck-library.show-inactive",
+    true,
+  );
 
   const [error, setError] = useState<string | null>(null);
+  const [editorError, setEditorError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
+
+  useEffect(() => {
+    // Run after the dialog opens so typing can begin immediately.
+    deckNameInput.current?.focus();
+  }, [editingDeck?.id, editingDeck?.mode]);
 
   useEffect(() => {
     if (error) {
@@ -104,47 +119,65 @@ export function DeckLibrary() {
 
       const matchesActive = showInactive || deck.active;
 
-      return matchesSearch && matchesActive && (!selectedNation || deck.nation === selectedNation);
+      return (
+        matchesSearch &&
+        matchesActive &&
+        (!selectedNation || deck.nation === selectedNation)
+      );
     });
   }, [decks, search, showInactive, selectedNation]);
 
   function openCreateEditor() {
     setMessage(null);
     setError(null);
+    setEditorError(null);
+    editorInitial.current = EMPTY_EDITOR;
     setEditingDeck(EMPTY_EDITOR);
   }
 
   function openEditEditor(deck: Deck) {
     setMessage(null);
     setError(null);
+    setEditorError(null);
 
-    setEditingDeck({
+    const initial: EditState = {
       mode: "edit",
       id: deck.id,
       name: deck.name,
       type: deck.type,
       nation: deck.nation,
       active: deck.active,
-    });
+    };
+    editorInitial.current = initial;
+    setEditingDeck(initial);
   }
 
   function closeEditor() {
     if (saving) return;
+    // Closing by Escape or the backdrop follows the same draft guard as Cancel.
+    if (
+      JSON.stringify(editingDeck) !== JSON.stringify(editorInitial.current) &&
+      !window.confirm("Discard your unsaved deck changes?")
+    )
+      return;
     setEditingDeck(null);
+    setEditorError(null);
+    editorInitial.current = null;
   }
 
   async function saveDeck() {
-    if (!editingDeck) return;
+    if (!editingDeck || saving) return;
 
     const name = editingDeck.name.trim();
 
     if (!name) {
-      setError("Deck name cannot be empty.");
+      setEditorError("Deck name cannot be empty.");
       return;
     }
 
     setSaving(true);
     setError(null);
+    setEditorError(null);
     setMessage(null);
 
     try {
@@ -181,8 +214,11 @@ export function DeckLibrary() {
       }
 
       setEditingDeck(null);
+      editorInitial.current = null;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save deck");
+      setEditorError(
+        err instanceof Error ? err.message : "Failed to save deck",
+      );
     } finally {
       setSaving(false);
     }
@@ -199,12 +235,26 @@ export function DeckLibrary() {
       <PageHeader title="Deck Library" />
 
       <section className="workspace-panel">
-
         <div className="workspace-inset overflow-hidden">
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-white/10 px-3 py-2.5 text-xs text-slate-500 sm:px-4">
-            <span><strong className="mr-1.5 font-black text-slate-100">{decks.length}</strong>Total decks</span>
-            <span><strong className="mr-1.5 font-black text-emerald-100">{activeCount}</strong>Active</span>
-            <span><strong className="mr-1.5 font-black text-slate-300">{inactiveCount}</strong>Inactive</span>
+            <span>
+              <strong className="mr-1.5 font-black text-slate-100">
+                {decks.length}
+              </strong>
+              Total decks
+            </span>
+            <span>
+              <strong className="mr-1.5 font-black text-emerald-100">
+                {activeCount}
+              </strong>
+              Active
+            </span>
+            <span>
+              <strong className="mr-1.5 font-black text-slate-300">
+                {inactiveCount}
+              </strong>
+              Inactive
+            </span>
             <span className="sm:ml-auto">{filteredDecks.length} shown</span>
             <button
               type="button"
@@ -216,34 +266,50 @@ export function DeckLibrary() {
             </button>
           </div>
           <div className="grid gap-2 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:p-4">
-          <label className="relative block min-w-0">
-            <span className="sr-only">Search decks</span>
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search decks, formats, or nations..."
-              className="workspace-control w-full !pl-9 placeholder:text-slate-600"
-            />
-          </label>
+            <label className="relative block min-w-0">
+              <span className="sr-only">Search decks</span>
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search decks, formats, or nations..."
+                className="workspace-control w-full !pl-9 placeholder:text-slate-600"
+              />
+            </label>
 
-          <button
-            type="button"
-            onClick={() => setShowInactive((value) => !value)}
-            aria-pressed={showInactive}
-            className={[
-              "workspace-button border px-3 text-xs font-bold transition",
-              showInactive
-                ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100"
-                : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]",
-            ].join(" ")}
-          >
-            {showInactive ? "Including inactive" : "Active only"}
-          </button>
+            <button
+              type="button"
+              onClick={() => setShowInactive((value) => !value)}
+              aria-pressed={showInactive}
+              className={[
+                "workspace-button border px-3 text-xs font-bold transition",
+                showInactive
+                  ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100"
+                  : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]",
+              ].join(" ")}
+            >
+              {showInactive ? "Including inactive" : "Active only"}
+            </button>
           </div>
         </div>
         <div className="nation-filter" aria-label="Filter decks by nation">
-          {["", ...Object.keys(NATION_COLORS)].map((nation) => <button key={nation} type="button" aria-pressed={selectedNation === nation} onClick={() => setSearchParams((current) => { const next = new URLSearchParams(current); if (nation) next.set("nation", nation); else next.delete("nation"); return next; })}>{nation || "All nations"}</button>)}
+          {["", ...Object.keys(NATION_COLORS)].map((nation) => (
+            <button
+              key={nation}
+              type="button"
+              aria-pressed={selectedNation === nation}
+              onClick={() =>
+                setSearchParams((current) => {
+                  const next = new URLSearchParams(current);
+                  if (nation) next.set("nation", nation);
+                  else next.delete("nation");
+                  return next;
+                })
+              }
+            >
+              {nation || "All nations"}
+            </button>
+          ))}
         </div>
       </section>
 
@@ -260,33 +326,55 @@ export function DeckLibrary() {
       ) : (
         <div className="mt-4 rounded-2xl border border-dashed border-white/15 bg-white/[0.025] p-8 text-center">
           <p className="text-sm font-bold text-slate-300">No decks found.</p>
-
         </div>
       )}
 
       {editingDeck ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={editingDeck.mode === "create" ? "Create deck profile" : "Edit deck profile"}
-            className="max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-[1.75rem] border border-white/10 bg-slate-950 p-4 shadow-2xl shadow-black sm:p-5"
+        <ModalDialog
+          title={editingDeck.mode === "create" ? "New deck" : "Edit deck"}
+          onClose={closeEditor}
+          footer={
+            <div className="w-full">
+              {editorError && (
+                <p
+                  id="deck-profile-error"
+                  role="alert"
+                  className="mb-3 text-sm text-rose-200"
+                >
+                  {editorError}
+                </p>
+              )}
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeEditor}
+                  disabled={saving}
+                  className="workspace-button border border-white/10 bg-white/[0.04] px-4 text-sm font-bold text-slate-300 transition hover:bg-white/[0.08]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  form="deck-profile-form"
+                  disabled={saving}
+                  className="workspace-button inline-flex items-center gap-2 bg-cyan-300 px-4 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Save className="h-4 w-4" />
+                  {saving ? "Saving..." : "Save deck"}
+                </button>
+              </div>
+            </div>
+          }
+        >
+          <form
+            id="deck-profile-form"
+            aria-describedby={editorError ? "deck-profile-error" : undefined}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveDeck();
+            }}
           >
-            <WorkspaceSectionHeader
-              title={editingDeck.mode === "create" ? "New deck" : "Edit deck"}
-              actions={
-              <button
-                type="button"
-                onClick={closeEditor}
-                aria-label="Close deck editor"
-                className="workspace-button inline-flex w-10 items-center justify-center border border-white/10 bg-white/[0.05] text-slate-300 transition hover:bg-white/[0.1]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-              }
-            />
-
-            <div className="mt-4 grid gap-4">
+            <fieldset disabled={saving} className="grid min-w-0 gap-4">
               <div className="workspace-inset flex items-center gap-3 p-3">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/30">
                   {previewIcon ? (
@@ -296,17 +384,19 @@ export function DeckLibrary() {
                       className="h-9 w-9 object-contain"
                     />
                   ) : (
-                    <span className="text-2xl font-black text-slate-700">?</span>
+                    <span className="text-2xl font-black text-slate-700">
+                      ?
+                    </span>
                   )}
                 </div>
 
                 <div className="min-w-0">
-                  <p className="text-[0.65rem] font-bold uppercase tracking-[0.16em] text-slate-500">Preview</p>
-                  <p className="mt-0.5 break-words text-sm font-bold text-slate-100">
+                  <p className="break-words text-sm font-bold text-slate-100">
                     {editingDeck.name.trim() || "Unnamed deck"}
                   </p>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    {editingDeck.nation ?? "No nation selected"} · {editingDeck.type}
+                    {editingDeck.nation ?? "No nation selected"} ·{" "}
+                    {editingDeck.type}
                   </p>
                 </div>
               </div>
@@ -316,10 +406,14 @@ export function DeckLibrary() {
                   Deck name
                 </span>
                 <input
+                  ref={deckNameInput}
+                  required
                   value={editingDeck.name}
                   onChange={(event) =>
                     setEditingDeck((current) =>
-                      current ? { ...current, name: event.target.value } : current,
+                      current
+                        ? { ...current, name: event.target.value }
+                        : current,
                     )
                   }
                   className="workspace-control min-w-0"
@@ -384,9 +478,6 @@ export function DeckLibrary() {
                     <p className="text-sm font-semibold text-slate-300">
                       Active status
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Inactive decks are hidden from Play Lab random rolls.
-                    </p>
                   </div>
 
                   <button
@@ -394,7 +485,9 @@ export function DeckLibrary() {
                     aria-pressed={editingDeck.active}
                     onClick={() =>
                       setEditingDeck((current) =>
-                        current ? { ...current, active: !current.active } : current,
+                        current
+                          ? { ...current, active: !current.active }
+                          : current,
                       )
                     }
                     className={[
@@ -408,29 +501,9 @@ export function DeckLibrary() {
                   </button>
                 </div>
               </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-white/10 pt-4">
-              <button
-                type="button"
-                onClick={closeEditor}
-                className="workspace-button border border-white/10 bg-white/[0.04] px-4 text-sm font-bold text-slate-300 transition hover:bg-white/[0.08]"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                onClick={saveDeck}
-                disabled={saving}
-                className="workspace-button inline-flex items-center gap-2 bg-cyan-300 px-4 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Save className="h-4 w-4" />
-                {saving ? "Saving..." : "Save deck"}
-              </button>
-            </div>
-          </div>
-        </div>
+            </fieldset>
+          </form>
+        </ModalDialog>
       ) : null}
     </>
   );

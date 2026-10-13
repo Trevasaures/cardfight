@@ -5,6 +5,7 @@ export type ToastTone = "success" | "error" | "info";
 export type ToastOptions = {
   title?: string;
   duration?: number;
+  action?: { label: string; onClick: () => void | Promise<void> };
 };
 
 export type ToastContextValue = {

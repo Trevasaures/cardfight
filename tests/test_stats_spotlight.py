@@ -219,7 +219,7 @@ def test_performance_spotlight_returns_404_for_unknown_deck(client):
     response = client.get("/api/stats/spotlight/999")
 
     assert response.status_code == 404
-    assert response.get_json() == {"error": "Deck not found"}
+    assert response.get_json() == {"error": "Resource not found"}
 
 
 def test_new_matches_snapshot_each_decks_active_version(app_context, client):

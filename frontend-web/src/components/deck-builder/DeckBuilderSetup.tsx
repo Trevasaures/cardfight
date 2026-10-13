@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import {
   CheckCircle2,
   Copy,
-  Layers3,
   Pencil,
   Plus,
   RefreshCcw,
@@ -16,9 +15,7 @@ import {
 
 import { FormatBadge } from "../badges/FormatBadge";
 import { FormSelect, FormTextInput } from "../forms/HelpfulField";
-import { DeckBuilderStepHeader } from "./DeckBuilderStepHeader";
 import type { Deck, DeckVersion, DeckVersionSummary } from "../../types/api";
-import { formatDateTime, formatPercent } from "../../utils/format";
 
 const NATION_ICON_FILES: Record<string, string> = {
   "Dragon Empire": "dragon_empire.png",
@@ -130,456 +127,313 @@ export function DeckBuilderSetup({
   return (
     <section
       data-anime="motion-panel"
-      className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5"
+      className="collection-panel builder-toolbar"
+      aria-label="Deck workspace"
     >
-      <DeckBuilderStepHeader
-        title="Deck & version"
-        action={
-          <div className="flex flex-wrap gap-2">
-            {currentVersion && (
-              <Link
-                to={`/hand-lab?deck=${currentVersion.deck_id}&version=${currentVersion.id}`}
-                className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-xs font-bold text-cyan-100 transition hover:bg-cyan-300/15"
-              >
-                <Shuffle className="h-4 w-4" />
-                Hand Lab
-              </Link>
+      <div className="builder-toolbar-main">
+        <label>
+          <span className="collection-label">Deck</span>
+          <select
+            aria-label="Deck"
+            value={selectedDeckId}
+            onChange={(event) => onSelectedDeckIdChange(event.target.value)}
+            disabled={loadingDecks || saving}
+            className="workspace-control w-full"
+          >
+            {!decks.length && (
+              <option value="">{loadingDecks ? "Loading…" : "No decks"}</option>
             )}
-            <button
-              type="button"
-              onClick={onRefreshDecks}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-bold text-slate-300 transition hover:bg-white/[0.09] hover:text-slate-100"
-              title="Refresh the deck list from the backend"
-            >
-              <RefreshCcw className="h-4 w-4" />
-              <span className="hidden sm:inline">Refresh decks</span>
-            </button>
-          </div>
-        }
-      />
-
-      <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
-        <div className="grid xl:grid-cols-[minmax(14rem,0.42fr)_minmax(0,1.58fr)]">
-          <div className="p-3 sm:p-4 xl:border-r xl:border-white/10">
-            <label className="mb-2 block text-[0.68rem] font-bold uppercase tracking-[0.18em] text-slate-500">
-              Deck
-            </label>
-            <select
-              value={selectedDeckId}
-              onChange={(event) => onSelectedDeckIdChange(event.target.value)}
-              title="Choose which saved deck you want to build or version."
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm font-semibold text-slate-100 outline-none transition focus:border-cyan-300/50"
-            >
-              {loadingDecks ? <option value="">Loading decks...</option> : null}
-              {!loadingDecks && decks.length === 0 ? (
-                <option value="">No decks found</option>
-              ) : null}
-              {decks.map((deck) => (
-                <option key={deck.id} value={deck.id}>
-                  {deck.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="border-t border-white/10 p-3 sm:p-4 xl:border-t-0">
-            {selectedDeck ? (
-              <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/20">
-                  {nationIcons.length ? (
-                    <div className="flex -space-x-3">
-                      {nationIcons.slice(0, 2).map((icon) => (
-                        <img
-                          key={icon.path}
-                          src={icon.path}
-                          alt={icon.nation}
-                          className="h-9 w-9 rounded-full bg-slate-950/80 object-contain ring-2 ring-slate-900"
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="text-xl font-black text-slate-600">?</span>
-                  )}
-                </div>
-
-                <div className="min-w-[9rem] flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="truncate font-black text-slate-50">
-                      {selectedDeck.name}
-                    </h4>
-                    <FormatBadge type={selectedDeck.type} />
-                  </div>
-                  <p className="mt-0.5 truncate text-xs text-slate-500">
-                    {nationLabel}
-                  </p>
-                </div>
-
-                <div className="grid w-full grid-cols-3 overflow-hidden rounded-xl border border-white/10 bg-black/15 lg:w-auto lg:min-w-[21rem]">
-                  <div className="px-3 py-2">
-                    <p className="text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate-600">
-                      Record
-                    </p>
-                    <p className="mt-0.5 text-sm font-black text-slate-200">
-                      {selectedDeck.wins}-{selectedDeck.losses}
-                    </p>
-                  </div>
-                  <div className="border-x border-white/10 px-3 py-2">
-                    <p className="text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate-600">
-                      Win rate
-                    </p>
-                    <p className="mt-0.5 text-sm font-black text-slate-200">
-                      {formatPercent(selectedDeck.win_pct)}
-                    </p>
-                  </div>
-                  <div className="px-3 py-2">
-                    <p className="text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate-600">
-                      Games
-                    </p>
-                    <p className="mt-0.5 text-sm font-black text-slate-200">
-                      {selectedDeck.decided_games}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-slate-500">
-                No deck selected.
-              </p>
+            {decks.map((deck) => (
+              <option key={deck.id} value={deck.id}>
+                {deck.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span className="collection-label">Version</span>
+          <select
+            aria-label="Version"
+            value={selectedVersionId}
+            onChange={(event) => onSelectedVersionIdChange(event.target.value)}
+            disabled={loadingVersions || saving}
+            className="workspace-control w-full"
+          >
+            {!versions.length && (
+              <option value="">
+                {loadingVersions ? "Loading…" : "Create a version"}
+              </option>
             )}
-          </div>
-        </div>
-
-        <div className="border-t border-white/10 p-3 sm:p-4">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
-            <div className="col-span-2 flex min-w-[10rem] items-center gap-2.5 lg:col-span-1">
-              <Layers3 className="h-4 w-4 text-cyan-200" />
-              <div>
-                <h4 className="text-sm font-black text-slate-100">
-                  Version
-                </h4>
-              </div>
-            </div>
-
-            <select
-              value={selectedVersionId}
-              onChange={(event) => onSelectedVersionIdChange(event.target.value)}
-              title="Choose the version of this deck list you want to view or edit."
-              className="min-w-0 rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm font-semibold text-slate-100 outline-none transition focus:border-cyan-300/50"
+            {versions.map((version) => (
+              <option key={version.id} value={version.id}>
+                {version.version_name}
+                {version.is_active ? " · Active" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="builder-toolbar-actions">
+          <button
+            type="button"
+            onClick={onShowCreateVersion}
+            disabled={!selectedDeck || saving || showCreateVersion}
+            className="collection-button"
+          >
+            <Copy /> New version
+          </button>
+          {currentVersion && (
+            <Link
+              to={`/hand-lab?deck=${currentVersion.deck_id}&version=${currentVersion.id}`}
+              className="collection-button primary"
             >
-              {loadingVersions ? (
-                <option value="">Loading versions...</option>
-              ) : null}
-              {!loadingVersions && versions.length === 0 ? (
-                <option value="">No versions yet</option>
-              ) : null}
-              {versions.map((version) => (
-                <option key={version.id} value={version.id}>
-                  {version.version_name}
-                  {version.is_active ? " · Active" : ""}
-                </option>
-              ))}
-            </select>
-
-            <button
-              type="button"
-              onClick={onRefreshVersions}
-              disabled={!selectedDeck}
-              className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] p-2.5 text-slate-400 transition hover:bg-white/[0.09] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Refresh versions for the selected deck"
-              aria-label="Refresh deck versions"
-            >
-              <RefreshCcw className="h-4 w-4" />
-            </button>
-          </div>
-
-          {currentVersion ? (
-            <>
-              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-3 rounded-xl border border-white/10 bg-white/[0.025] p-3">
-                <div className="min-w-[10rem] flex-1">
-                  <p className="text-[0.65rem] font-bold uppercase tracking-[0.16em] text-cyan-200/70">
-                    Editing now
-                  </p>
-                  <p className="mt-0.5 truncate text-sm font-black text-slate-100">
-                    {currentVersion.version_name}
-                  </p>
-                </div>
-
-                <div
-                  data-builder-anime="stat"
-                  className="border-l border-white/10 pl-4"
-                >
-                  <p className="text-[0.62rem] uppercase tracking-wide text-slate-600">
-                    Core deck
-                  </p>
-                  <p className="mt-0.5 text-sm font-black text-slate-200">
-                    {currentVersion.deck_rules.core_card_count}
-                    <span className="text-slate-600">/54</span>
-                  </p>
-                </div>
-
-                <div
-                  data-builder-anime="stat"
-                  className="border-l border-white/10 pl-4"
-                >
-                  <p className="text-[0.62rem] uppercase tracking-wide text-slate-600">
-                    Unique
-                  </p>
-                  <p className="mt-0.5 text-sm font-black text-slate-200">
-                    {currentVersion.unique_card_count}
-                  </p>
-                </div>
-
-                <div
-                  data-builder-anime="stat"
-                  className="hidden border-l border-white/10 pl-4 md:block"
-                >
-                  <p className="text-[0.62rem] uppercase tracking-wide text-slate-600">
-                    Updated
-                  </p>
-                  <p className="mt-0.5 whitespace-nowrap text-xs font-bold text-slate-300">
-                    {formatDateTime(currentVersion.updated_at)}
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap gap-2 xl:ml-auto">
-                  {!currentVersion.is_active ? (
-                    <button
-                      type="button"
-                      onClick={onActivateVersion}
-                      disabled={saving}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-300/10 px-3 py-2 text-xs font-bold text-emerald-100 transition hover:bg-emerald-300/15 disabled:opacity-50"
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                      Make active
-                    </button>
-                  ) : (
-                    <span className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-300/20 bg-emerald-300/[0.06] px-3 py-2 text-xs font-bold text-emerald-100">
-                      <CheckCircle2 className="h-4 w-4" />
-                      Active
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={onShowEditVersion}
-                    disabled={showEditVersion}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/[0.09] disabled:opacity-50"
-                  >
-                    <Pencil className="h-4 w-4" />
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onShowCreateVersion}
-                    disabled={showCreateVersion}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-violet-300/20 bg-violet-300/10 px-3 py-2 text-xs font-bold text-violet-100 transition hover:bg-violet-300/15 disabled:opacity-50"
-                  >
-                    <Copy className="h-4 w-4" />
-                    New version
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowDeleteConfirmation(true)}
-                    disabled={saving || currentVersion.is_active}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-300/20 bg-rose-300/5 px-3 py-2 text-xs font-bold text-rose-200 transition hover:bg-rose-300/10 disabled:cursor-not-allowed disabled:opacity-40"
-                    title={
-                      currentVersion.is_active
-                        ? "Make another version active before deleting this one"
-                        : "Permanently delete this inactive deck version"
-                    }
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Delete
-                  </button>
-                </div>
-              </div>
-            </>
-          ) : null}
-
-          {showDeleteConfirmation && currentVersion ? (
-            <div className="mt-4 rounded-2xl border border-rose-300/25 bg-rose-300/[0.06] p-4">
-              <div className="flex items-start gap-3">
-                <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-200" />
-                <div className="min-w-0 flex-1">
-                  <p className="font-black text-rose-100">
-                    Permanently delete {currentVersion.version_name}?
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-slate-400">
-                    Its saved card list will be removed. Type the exact version
-                    name to confirm. Active versions cannot be deleted.
-                  </p>
-
-                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                    <input
-                      value={deleteConfirmation}
-                      onChange={(event) =>
-                        setDeleteConfirmation(event.target.value)
-                      }
-                      placeholder={currentVersion.version_name}
-                      className="min-w-0 flex-1 rounded-xl border border-rose-300/20 bg-black/30 px-3 py-2 text-sm outline-none placeholder:text-slate-600 focus:border-rose-300/50"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onDeleteVersion();
-                        setShowDeleteConfirmation(false);
-                        setDeleteConfirmation("");
-                      }}
-                      disabled={
-                        saving ||
-                        deleteConfirmation !== currentVersion.version_name
-                      }
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-300 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-rose-200 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Delete permanently
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowDeleteConfirmation(false);
-                        setDeleteConfirmation("");
-                      }}
-                      className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-bold text-slate-300 transition hover:bg-white/[0.06]"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {showEditVersion && currentVersion ? (
-            <div className="mt-3 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.035] p-3">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-cyan-200/70">
-                    Edit version
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={onCancelEditVersion}
-                  className="rounded-xl border border-white/10 bg-black/20 p-2 text-slate-500 transition hover:text-slate-200"
-                  aria-label="Close version details"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
-                <FormTextInput
-                  label="Version name"
-                  value={editVersionName}
-                  onChange={onEditVersionNameChange}
-                  placeholder="Version name"
-                  required
-                />
-
-                <FormTextInput
-                  label="Version notes"
-                  value={editVersionNotes}
-                  onChange={onEditVersionNotesChange}
-                  placeholder="Version notes"
-                />
-
-                <button
-                  type="button"
-                  onClick={onSaveVersionDetails}
-                  disabled={
-                    saving || !versionEditIsDirty || !editVersionName.trim()
-                  }
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
-                  title="Save the selected version name and notes"
-                >
-                  <Save className="h-4 w-4" />
-                  Save changes
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {createVersionIsVisible ? (
-            <div className="mt-3 rounded-xl border border-violet-300/20 bg-violet-300/[0.045] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <Plus className="h-4 w-4 shrink-0 text-violet-200" />
-                  <div>
-                    <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-violet-200/80">
-New version
-                    </p>
-                  </div>
-                </div>
-
-                {versions.length ? (
-                  <button
-                    type="button"
-                    onClick={onCancelCreateVersion}
-                    className="rounded-xl border border-white/10 bg-black/20 p-2 text-slate-500 transition hover:text-slate-200"
-                    aria-label="Cancel new version"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                ) : null}
-              </div>
-
-              <div
-                className={
-                  versions.length
-                    ? "mt-3 grid gap-3 lg:grid-cols-2 2xl:grid-cols-[minmax(12rem,1fr)_minmax(14rem,1.15fr)_minmax(12rem,0.9fr)_auto] 2xl:items-end"
-                    : "mt-3 grid gap-3 lg:grid-cols-[minmax(12rem,1fr)_minmax(14rem,1.2fr)_auto] lg:items-end"
-                }
-              >
-                <FormTextInput
-                  label="Name"
-                  value={newVersionName}
-                  onChange={onNewVersionNameChange}
-                  placeholder="Version name"
-                  required
-                />
-
-                <FormTextInput
-                  label="Notes"
-                  value={newVersionNotes}
-                  onChange={onNewVersionNotesChange}
-                  placeholder="What is this build for?"
-                />
-
-                {versions.length ? (
-                  <FormSelect
-                    label="Start from"
-                    help="Copies the full list; the source stays unchanged."
-                    value={newVersionSourceId}
-                    onChange={onNewVersionSourceIdChange}
-                    placeholder="An empty deck list"
-                    options={versions.map((version) => ({
-                      value: String(version.id),
-                      label: `Copy ${version.version_name}`,
-                    }))}
-                  />
-                ) : null}
-
-                <button
-                  type="button"
-                  onClick={onCreateVersion}
-                  disabled={!selectedDeck || saving || !newVersionName.trim()}
-                  className="inline-flex items-center justify-center gap-2 self-end whitespace-nowrap rounded-xl border border-violet-300/25 bg-violet-300/15 px-4 py-3 text-sm font-bold text-violet-50 transition hover:bg-violet-300/20 disabled:cursor-not-allowed disabled:opacity-50"
-                  title={
-                    !newVersionName.trim()
-                      ? "Enter a version name before creating the build"
-                      : newVersionSourceId
-                        ? "Create a separate active version by copying the selected deck list"
-                        : "Create a separate empty active deck version"
-                  }
-                >
-                  <Plus className="h-4 w-4" />
-                  Create version
-                </button>
-              </div>
-            </div>
-          ) : null}
+              <Shuffle /> Hand Lab
+            </Link>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              onRefreshDecks();
+              onRefreshVersions();
+            }}
+            disabled={loadingDecks || loadingVersions || saving}
+            className="collection-button subtle"
+            aria-label="Refresh deck workspace"
+          >
+            <RefreshCcw />
+          </button>
         </div>
       </div>
+      <div className="builder-context">
+        {nationIcons.map((icon) => (
+          <img key={icon.path} src={icon.path} alt={icon.nation} />
+        ))}
+        <span>{nationLabel}</span>
+        {selectedDeck && <FormatBadge type={selectedDeck.type} />}
+        <div className="builder-toolbar-actions">
+          {currentVersion && (
+            <>
+              {currentVersion.is_active ? (
+                <span className="inline-flex items-center gap-1 text-xs text-emerald-200">
+                  <CheckCircle2 size={13} /> Active
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onActivateVersion}
+                  disabled={saving}
+                  className="collection-button subtle"
+                >
+                  <CheckCircle2 /> Make active
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onShowEditVersion}
+                disabled={showEditVersion || saving}
+                className="collection-button subtle"
+              >
+                <Pencil /> Details
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirmation(true)}
+                disabled={saving || currentVersion.is_active}
+                className="collection-button subtle danger"
+                aria-label="Delete version"
+                title={
+                  currentVersion.is_active
+                    ? "Make another version active before deleting"
+                    : "Delete version"
+                }
+              >
+                <Trash2 />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      {showDeleteConfirmation && currentVersion ? (
+        <div className="mt-4 rounded-2xl border border-rose-300/25 bg-rose-300/[0.06] p-4">
+          <div className="flex items-start gap-3">
+            <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-200" />
+            <div className="min-w-0 flex-1">
+              <p className="font-black text-rose-100">
+                Permanently delete {currentVersion.version_name}?
+              </p>
+              <p className="mt-1 text-sm leading-6 text-slate-400">
+                Its saved card list will be removed. Type the exact version name
+                to confirm. Active versions cannot be deleted.
+              </p>
+
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                <input
+                  value={deleteConfirmation}
+                  onChange={(event) =>
+                    setDeleteConfirmation(event.target.value)
+                  }
+                  placeholder={currentVersion.version_name}
+                  className="min-w-0 flex-1 rounded-xl border border-rose-300/20 bg-black/30 px-3 py-2 text-sm outline-none placeholder:text-slate-600 focus:border-rose-300/50"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDeleteVersion();
+                    setShowDeleteConfirmation(false);
+                    setDeleteConfirmation("");
+                  }}
+                  disabled={
+                    saving || deleteConfirmation !== currentVersion.version_name
+                  }
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-300 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-rose-200 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete permanently
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDeleteConfirmation(false);
+                    setDeleteConfirmation("");
+                  }}
+                  className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-bold text-slate-300 transition hover:bg-white/[0.06]"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showEditVersion && currentVersion ? (
+        <div className="mt-3 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.035] p-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-cyan-200/70">
+                Edit version
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onCancelEditVersion}
+              className="rounded-xl border border-white/10 bg-black/20 p-2 text-slate-500 transition hover:text-slate-200"
+              aria-label="Close version details"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+            <FormTextInput
+              label="Version name"
+              value={editVersionName}
+              onChange={onEditVersionNameChange}
+              placeholder="Version name"
+              required
+            />
+
+            <FormTextInput
+              label="Version notes"
+              value={editVersionNotes}
+              onChange={onEditVersionNotesChange}
+              placeholder="Version notes"
+            />
+
+            <button
+              type="button"
+              onClick={onSaveVersionDetails}
+              disabled={
+                saving || !versionEditIsDirty || !editVersionName.trim()
+              }
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Save the selected version name and notes"
+            >
+              <Save className="h-4 w-4" />
+              Save changes
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {createVersionIsVisible ? (
+        <div className="mt-3 rounded-xl border border-violet-300/20 bg-violet-300/[0.045] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <Plus className="h-4 w-4 shrink-0 text-violet-200" />
+              <div>
+                <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-violet-200/80">
+                  New version
+                </p>
+              </div>
+            </div>
+
+            {versions.length ? (
+              <button
+                type="button"
+                onClick={onCancelCreateVersion}
+                className="rounded-xl border border-white/10 bg-black/20 p-2 text-slate-500 transition hover:text-slate-200"
+                aria-label="Cancel new version"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : null}
+          </div>
+
+          <div
+            className={
+              versions.length
+                ? "mt-3 grid gap-3 lg:grid-cols-2 2xl:grid-cols-[minmax(12rem,1fr)_minmax(14rem,1.15fr)_minmax(12rem,0.9fr)_auto] 2xl:items-end"
+                : "mt-3 grid gap-3 lg:grid-cols-[minmax(12rem,1fr)_minmax(14rem,1.2fr)_auto] lg:items-end"
+            }
+          >
+            <FormTextInput
+              label="Name"
+              value={newVersionName}
+              onChange={onNewVersionNameChange}
+              placeholder="Version name"
+              required
+            />
+
+            <FormTextInput
+              label="Notes"
+              value={newVersionNotes}
+              onChange={onNewVersionNotesChange}
+              placeholder="What is this build for?"
+            />
+
+            {versions.length ? (
+              <FormSelect
+                label="Start from"
+                help="Copies the full list; the source stays unchanged."
+                value={newVersionSourceId}
+                onChange={onNewVersionSourceIdChange}
+                placeholder="An empty deck list"
+                options={versions.map((version) => ({
+                  value: String(version.id),
+                  label: `Copy ${version.version_name}`,
+                }))}
+              />
+            ) : null}
+
+            <button
+              type="button"
+              onClick={onCreateVersion}
+              disabled={!selectedDeck || saving || !newVersionName.trim()}
+              className="inline-flex items-center justify-center gap-2 self-end whitespace-nowrap rounded-xl border border-violet-300/25 bg-violet-300/15 px-4 py-3 text-sm font-bold text-violet-50 transition hover:bg-violet-300/20 disabled:cursor-not-allowed disabled:opacity-50"
+              title={
+                !newVersionName.trim()
+                  ? "Enter a version name before creating the build"
+                  : newVersionSourceId
+                    ? "Create a separate active version by copying the selected deck list"
+                    : "Create a separate empty active deck version"
+              }
+            >
+              <Plus className="h-4 w-4" />
+              Create version
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

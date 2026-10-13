@@ -7,9 +7,10 @@ They also provide validation and normalization of input data to ensure consisten
 
 from backend.database import db
 from backend.models import Card, CardPrinting, Deck, DeckCard, DeckVersion
+from backend.services.card_types import CREST_CARD_TYPES
 
 
-ALLOWED_ZONES = {"main", "ride", "g", "token", "other"}
+ALLOWED_ZONES = {"main", "ride", "g", "token", "other", "crest"}
 MAIN_DECK_LIMIT = 50
 RIDE_DECK_LIMIT = 4
 RIDE_DECK_GRADES = {0, 1, 2, 3}
@@ -132,6 +133,29 @@ def _validate_deck_card_rules(
     zone,
     exclude_entry_id=None,
 ):
+    if card.card_type in CREST_CARD_TYPES:
+        if zone != "crest":
+            raise ValueError(
+                "Crests belong in the crest zone, outside the main, ride, and G decks"
+            )
+        if quantity != 1:
+            raise ValueError("A crest must have a quantity of exactly 1")
+        existing_crests = DeckCard.query.join(Card).filter(
+            DeckCard.deck_version_id == version.id,
+            DeckCard.zone == "crest",
+        )
+        if exclude_entry_id is not None:
+            existing_crests = existing_crests.filter(DeckCard.id != exclude_entry_id)
+        if existing_crests.filter(DeckCard.card_id == card.id).first():
+            raise ValueError("This crest is already included in the deck")
+        if (
+            card.card_type == "Ride Deck Crest"
+            and existing_crests.filter(Card.card_type == "Ride Deck Crest").first()
+        ):
+            raise ValueError("A deck can include only one Ride Deck Crest")
+        return
+    if zone == "crest":
+        raise ValueError("Only crests can be placed in the crest zone")
     if card.grade is None or card.grade < 0 or card.grade > MAX_CARD_GRADE:
         raise ValueError("Deck cards must have a grade between 0 and 4")
 

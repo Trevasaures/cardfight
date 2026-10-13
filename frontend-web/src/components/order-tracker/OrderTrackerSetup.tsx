@@ -1,9 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Check, Copy, PackagePlus, Sparkles, Wrench } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
+import { ArrowRight, Copy, PackagePlus, Sparkles, Wrench } from "lucide-react";
 
+import { EMPTY_PURCHASE_DRAFT, type NewPurchaseDraft } from "./order-drafts";
 import { getDeckVersions } from "../../api/deckBuilder";
 import type {
-  AcquisitionListSource,
   AcquisitionPlanType,
   CreateAcquisitionPlanPayload,
   Deck,
@@ -16,7 +23,10 @@ type OrderTrackerSetupProps = {
   decks: Deck[];
   options: DeckOptionsResponse;
   creating: boolean;
-  onCreate: (payload: CreateAcquisitionPlanPayload) => Promise<void>;
+  draft: NewPurchaseDraft;
+  onDraftChange: Dispatch<SetStateAction<NewPurchaseDraft>>;
+  onClose: () => void;
+  onCreate: (payload: CreateAcquisitionPlanPayload) => Promise<boolean>;
   onError: (message: string) => void;
 };
 
@@ -24,19 +34,44 @@ export function OrderTrackerSetup({
   decks,
   options,
   creating,
+  draft,
+  onDraftChange,
+  onClose,
   onCreate,
   onError,
 }: OrderTrackerSetupProps) {
-  const [planType, setPlanType] =
-    useState<AcquisitionPlanType>("new_build");
-  const [listSource, setListSource] =
-    useState<AcquisitionListSource>("empty");
-  const [name, setName] = useState("");
-  const [deckType, setDeckType] = useState<DeckType>("Standard");
-  const [nation, setNation] = useState("");
-  const [notes, setNotes] = useState("");
-  const [selectedDeckId, setSelectedDeckId] = useState("");
-  const [selectedVersionId, setSelectedVersionId] = useState("");
+  const {
+    planType,
+    listSource,
+    name,
+    deckType,
+    nation,
+    notes,
+    selectedDeckId,
+    selectedVersionId,
+  } = draft;
+  const updateField = useCallback(
+    <K extends keyof NewPurchaseDraft>(
+      field: K,
+      value: SetStateAction<NewPurchaseDraft[K]>,
+    ) => {
+      onError("");
+      onDraftChange((current) => ({
+        ...current,
+        [field]:
+          typeof value === "function"
+            ? (value as (old: NewPurchaseDraft[K]) => NewPurchaseDraft[K])(
+                current[field],
+              )
+            : value,
+      }));
+    },
+    [onDraftChange, onError],
+  );
+  const setSelectedVersionId = useCallback(
+    (value: SetStateAction<string>) => updateField("selectedVersionId", value),
+    [updateField],
+  );
   const [versions, setVersions] = useState<DeckVersionSummary[]>([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
 
@@ -83,13 +118,13 @@ export function OrderTrackerSetup({
     return () => {
       cancelled = true;
     };
-  }, [onError, selectedDeckId]);
+  }, [onError, selectedDeckId, setSelectedVersionId]);
 
   function choosePlanType(nextType: AcquisitionPlanType) {
-    setPlanType(nextType);
+    updateField("planType", nextType);
 
     if (nextType === "existing_deck") {
-      setListSource("deck_version");
+      updateField("listSource", "deck_version");
     }
   }
 
@@ -112,13 +147,17 @@ export function OrderTrackerSetup({
       return;
     }
 
+    const contextDeck =
+      planType === "existing_deck" || listSource === "deck_version"
+        ? selectedDeck
+        : null;
     const payload: CreateAcquisitionPlanPayload = {
       name: cleanedName,
       plan_type: planType,
       list_source: listSource,
       build_mode: "physical",
-      deck_type: selectedDeck?.type ?? deckType,
-      nation: selectedDeck?.nation ?? (nation || null),
+      deck_type: contextDeck?.type ?? deckType,
+      nation: contextDeck?.nation ?? (nation || null),
       notes: notes.trim(),
     };
 
@@ -132,270 +171,201 @@ export function OrderTrackerSetup({
     }
 
     await onCreate(payload);
-    setName("");
-    setNotes("");
   }
 
   return (
-    <section className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
-      <div className="flex items-center gap-3">
-
-        <div className="min-w-0">
-          <h3 className="text-xl font-black text-slate-50 sm:text-2xl">New plan</h3>
-
+    <form
+      className="orders-setup-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
+      <fieldset disabled={creating}>
+        <div
+          className="collection-segments mb-4"
+          role="group"
+          aria-label="Purpose of this purchase plan"
+        >
+          <button
+            type="button"
+            onClick={() => choosePlanType("new_build")}
+            aria-pressed={planType === "new_build"}
+          >
+            <PackagePlus size={14} /> New build
+          </button>
+          <button
+            type="button"
+            onClick={() => choosePlanType("existing_deck")}
+            aria-pressed={planType === "existing_deck"}
+          >
+            <Wrench size={14} /> Upgrade deck
+          </button>
         </div>
-      </div>
-
-      <div
-        className="mt-4 grid gap-3 md:grid-cols-2"
-        role="group"
-        aria-label="Purpose of this purchase plan"
-      >
-        <button
-          type="button"
-          onClick={() => choosePlanType("new_build")}
-          aria-pressed={planType === "new_build"}
-          className={[
-            "flex items-start gap-3 rounded-2xl border p-3 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300 sm:p-4",
-            planType === "new_build"
-              ? "border-cyan-300/40 bg-cyan-300/10"
-              : "border-white/10 bg-black/20 hover:bg-white/[0.05]",
-          ].join(" ")}
-        >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-300/15 bg-cyan-300/10 text-cyan-200">
-            <PackagePlus className="h-4 w-4" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-black text-slate-100">New build</span>
-            <span className="mt-1 block text-xs leading-5 text-slate-400">Ownership starts at zero.</span>
-          </span>
-          <span
-            className={[
-              "mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
-              planType === "new_build"
-                ? "border-cyan-300/50 bg-cyan-300/20 text-cyan-100"
-                : "border-white/15",
-            ].join(" ")}
-          >
-            {planType === "new_build" ? <Check className="h-3 w-3" /> : null}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => choosePlanType("existing_deck")}
-          aria-pressed={planType === "existing_deck"}
-          className={[
-            "flex items-start gap-3 rounded-2xl border p-3 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300 sm:p-4",
-            planType === "existing_deck"
-              ? "border-violet-300/40 bg-violet-300/10"
-              : "border-white/10 bg-black/20 hover:bg-white/[0.05]",
-          ].join(" ")}
-        >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-300/15 bg-violet-300/10 text-violet-200">
-            <Wrench className="h-4 w-4" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-black text-slate-100">Upgrade deck</span>
-            <span className="mt-1 block text-xs leading-5 text-slate-400">Keep existing copies.</span>
-          </span>
-          <span
-            className={[
-              "mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
-              planType === "existing_deck"
-                ? "border-violet-300/50 bg-violet-300/20 text-violet-100"
-                : "border-white/15",
-            ].join(" ")}
-          >
-            {planType === "existing_deck" ? <Check className="h-3 w-3" /> : null}
-          </span>
-        </button>
-      </div>
-
-      <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
-        <div className="grid gap-3 p-3 sm:grid-cols-2 sm:p-4">
-          <label className="grid gap-2">
-            <span className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-500">
-              Plan name <span className="text-cyan-200">*</span>
-            </span>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label>
+            <span className="collection-label">Plan name</span>
             <input
+              autoFocus
               value={name}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => updateField("name", event.target.value)}
               required
-              placeholder={
-                planType === "new_build"
-                  ? "Example: New Youthberk build"
-                  : "Example: Rotovisor upgrades"
-              }
-              className="min-w-0 rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-cyan-300/50"
+              placeholder="Youthberk upgrades"
+              className="workspace-control w-full"
             />
           </label>
-
-          <label className="grid gap-2">
-            <span className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-500">
-              Notes{" "}
-              <span className="font-normal normal-case tracking-normal">
-                (optional)
-              </span>
-            </span>
+          <label>
+            <span className="collection-label">Notes</span>
             <input
               value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              placeholder="Goal, deadline, or buying notes"
-              className="min-w-0 rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-cyan-300/50"
+              onChange={(event) => updateField("notes", event.target.value)}
+              placeholder="Optional"
+              className="workspace-control w-full"
             />
           </label>
         </div>
-
-        <div className="border-t border-white/10 p-3 sm:p-4">
-          <p className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-500">
-            Starting card list
-          </p>
+        <div className="mt-4">
+          <span className="collection-label">Starting list</span>
           <div
-            className="mt-2 grid gap-2 sm:grid-cols-2"
+            className="collection-segments"
             role="group"
             aria-label="Starting card list"
           >
             <button
               type="button"
-              onClick={() => setListSource("empty")}
+              onClick={() => updateField("listSource", "empty")}
               aria-pressed={listSource === "empty"}
-              className={[
-                "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300",
-                listSource === "empty"
-                  ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100"
-                  : "border-white/10 bg-white/[0.03] text-slate-400 hover:bg-white/[0.06] hover:text-slate-200",
-              ].join(" ")}
             >
-              <Sparkles className="h-4 w-4 shrink-0" />
-              {planType === "new_build"
-                ? "Empty list"
-                : "New purchases only"}
+              <Sparkles size={14} />
+              {planType === "new_build" ? "Empty" : "New purchases"}
             </button>
-
             <button
               type="button"
-              onClick={() => setListSource("deck_version")}
+              onClick={() => updateField("listSource", "deck_version")}
               aria-pressed={listSource === "deck_version"}
-              className={[
-                "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300",
-                listSource === "deck_version"
-                  ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100"
-                  : "border-white/10 bg-white/[0.03] text-slate-400 hover:bg-white/[0.06] hover:text-slate-200",
-              ].join(" ")}
             >
-              <Copy className="h-4 w-4 shrink-0" />
-              {planType === "new_build"
-                ? "Copy an existing version"
-                : "Import current version as owned"}
+              <Copy size={14} />
+              {planType === "new_build" ? "Copy version" : "Current deck"}
             </button>
           </div>
-
-          {planType === "existing_deck" || listSource === "deck_version" ? (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-2">
-                <span className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-500">
-                  {planType === "existing_deck" ? "Existing deck" : "Template deck"}
-                </span>
-                <select
-                  value={selectedDeckId}
-                  onChange={(event) => setSelectedDeckId(event.target.value)}
-                  className="min-w-0 rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-slate-100 outline-none transition focus:border-cyan-300/50"
-                >
-                  <option value="">Choose a deck</option>
-                  {decks.map((deck) => (
-                    <option key={deck.id} value={deck.id}>
-                      {deck.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="grid gap-2">
-                <span className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-500">
-                  Deck list version
-                </span>
-                <select
-                  value={selectedVersionId}
-                  onChange={(event) => setSelectedVersionId(event.target.value)}
-                  disabled={!selectedDeckId || loadingVersions}
-                  className="min-w-0 rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-slate-100 outline-none transition focus:border-cyan-300/50 disabled:opacity-50"
-                >
-                  <option value="">
-                    {loadingVersions ? "Loading versions..." : "Choose a version"}
-                  </option>
-                  {versions.map((version) => (
-                    <option key={version.id} value={version.id}>
-                      {version.version_name}
-                      {version.is_active ? " · Active" : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          ) : (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-2">
-                <span className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-500">
-                  Format
-                </span>
-                <select
-                  value={deckType}
-                  onChange={(event) => setDeckType(event.target.value as DeckType)}
-                  className="min-w-0 rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-slate-100 outline-none transition focus:border-cyan-300/50"
-                >
-                  {options.types.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="grid gap-2">
-                <span className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-500">
-                  Nation, if known
-                </span>
-                <select
-                  value={nation}
-                  onChange={(event) => setNation(event.target.value)}
-                  className="min-w-0 rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-slate-100 outline-none transition focus:border-cyan-300/50"
-                >
-                  <option value="">Choose later</option>
-                  {options.nations.map((option) => (
-                    <option key={option.name} value={option.name}>
-                      {option.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          )}
-
-          <p className="mt-3 text-xs leading-5 text-slate-500" aria-live="polite">
-            {listSource === "deck_version"
-              ? planType === "existing_deck"
-                ? "Current-version cards start owned."
-                : "Copies the list; ownership starts at zero."
-              : planType === "existing_deck"
-                ? "New purchases only; existing deck unchanged."
-                : "Starts with an empty list."}
-          </p>
         </div>
-      </div>
-
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-
-        <button
-          type="button"
-          onClick={submit}
-          disabled={creating}
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-cyan-300 px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {creating ? "Creating plan..." : "Create plan"}
-          <ArrowRight className="h-4 w-4" />
-        </button>
-      </div>
-    </section>
+        {planType === "existing_deck" || listSource === "deck_version" ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label>
+              <span className="collection-label">Deck</span>
+              <select
+                value={selectedDeckId}
+                onChange={(event) => {
+                  setSelectedVersionId("");
+                  updateField("selectedDeckId", event.target.value);
+                }}
+                className="workspace-control w-full"
+              >
+                <option value="">Choose a deck</option>
+                {decks.map((deck) => (
+                  <option key={deck.id} value={deck.id}>
+                    {deck.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="collection-label">Version</span>
+              <select
+                value={selectedVersionId}
+                onChange={(event) => setSelectedVersionId(event.target.value)}
+                disabled={!selectedDeckId || loadingVersions}
+                className="workspace-control w-full"
+              >
+                <option value="">
+                  {loadingVersions ? "Loading…" : "Choose a version"}
+                </option>
+                {versions.map((version) => (
+                  <option key={version.id} value={version.id}>
+                    {version.version_name}
+                    {version.is_active ? " · Active" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        ) : (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label>
+              <span className="collection-label">Format</span>
+              <select
+                value={deckType}
+                onChange={(event) =>
+                  updateField("deckType", event.target.value as DeckType)
+                }
+                className="workspace-control w-full"
+              >
+                {options.types.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="collection-label">Nation</span>
+              <select
+                value={nation}
+                onChange={(event) => updateField("nation", event.target.value)}
+                className="workspace-control w-full"
+              >
+                <option value="">Choose later</option>
+                {options.nations.map((option) => (
+                  <option key={option.name} value={option.name}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+        {listSource === "deck_version" && (
+          <p className="collection-muted mt-3 mb-0">
+            {planType === "existing_deck"
+              ? "Current copies start on hand."
+              : "Copied cards start unowned."}
+          </p>
+        )}
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              onDraftChange(EMPTY_PURCHASE_DRAFT);
+            }}
+            disabled={creating || (!name && !notes)}
+            className="collection-button subtle"
+          >
+            Discard draft
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={creating}
+            className="collection-button subtle"
+          >
+            Close
+          </button>
+          <button
+            type="submit"
+            disabled={
+              creating ||
+              !name.trim() ||
+              ((planType === "existing_deck" ||
+                listSource === "deck_version") &&
+                (loadingVersions || !selectedVersionId))
+            }
+            className="collection-button primary"
+          >
+            {creating ? "Creating…" : "Create plan"}
+            <ArrowRight />
+          </button>
+        </div>
+      </fieldset>
+    </form>
   );
 }

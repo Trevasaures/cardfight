@@ -2,7 +2,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: end;
-  gap: 14px;
+  gap: 10px;
+  padding: 10px 14px;
 }
 .hand-source > label {
   flex: 1 1 200px;
@@ -10,7 +11,7 @@
 .hand-source label {
   display: grid;
   min-width: 0;
-  gap: 7px;
+  gap: 4px;
   color: #a0a1b1;
   font-size: 11px;
   font-weight: 600;
@@ -21,6 +22,8 @@
   color: #eeebe6;
   font-size: 13px;
   font-weight: 500;
+  min-height: 34px;
+  padding-block: 6px;
 }
 .hand-source-actions {
   display: flex;

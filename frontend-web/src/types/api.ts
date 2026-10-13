@@ -387,7 +387,7 @@ export type DeckVersionSummary = {
   updated_at: string | null;
 };
 
-export type DeckCardZone = "main" | "ride" | "g" | "token" | "other";
+export type DeckCardZone = "main" | "ride" | "g" | "crest" | "token" | "other";
 
 export type DeckCardEntry = {
   id: number;
@@ -491,12 +491,7 @@ export type PaginatedCardsResponse = {
 };
 
 export type CardLibrarySort =
-  | "name_asc"
-  | "name_desc"
-  | "grade_asc"
-  | "grade_desc"
-  | "newest"
-  | "updated";
+  "name_asc" | "name_desc" | "grade_asc" | "grade_desc" | "newest" | "updated";
 
 export type CardLibraryParams = CardSearchParams & {
   page?: number;
@@ -523,17 +518,9 @@ export type CardFormOptions = {
 export type AcquisitionPlanType = "new_build" | "existing_deck";
 export type AcquisitionListSource = "empty" | "deck_version";
 export type AcquisitionPlanStatus =
-  | "planning"
-  | "buying"
-  | "waiting"
-  | "complete"
-  | "paused";
+  "planning" | "buying" | "waiting" | "complete" | "paused";
 export type AcquisitionBuildMode = "physical" | "proxy" | "mixed";
-export type AcquisitionItemStatus =
-  | "needed"
-  | "partial"
-  | "ordered"
-  | "owned";
+export type AcquisitionItemStatus = "needed" | "partial" | "ordered" | "owned";
 
 export type AcquisitionPlanItem = {
   id: number;
@@ -568,8 +555,13 @@ export type AcquisitionPlanSummary = {
   required_quantity: number;
   source_quantity: number;
   removed_quantity: number;
+  /** All owned copies, including cards planned to leave the current deck. */
   owned_quantity: number;
+  /** Owned copies applied to each card's target; used for readiness. */
+  available_quantity: number;
   ordered_quantity: number;
+  /** Target copies covered by ownership or incoming copies, capped per card. */
+  accounted_quantity: number;
   missing_quantity: number;
   overage_quantity: number;
   purchase_quantity: number;
@@ -587,6 +579,7 @@ export type AcquisitionPlan = {
   plan_type: AcquisitionPlanType;
   list_source: AcquisitionListSource;
   status: AcquisitionPlanStatus;
+  archived_at: string | null;
   build_mode: AcquisitionBuildMode;
   deck_id: number | null;
   deck_version_id: number | null;

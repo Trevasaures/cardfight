@@ -1,0 +1,243 @@
+/* Each card exposes its left badge and its own cost button beneath the overlap.
+   The last card remains fully visible; overflowing fans scroll rather than wrap. */
+.pt-resource.pt-resource-compact {
+  --resource-card-width: 44px;
+  --resource-card-height: 63px;
+  --resource-card-advance: 34px;
+  display: flex;
+  flex-direction: column;
+  align-self: start;
+  align-items: stretch;
+  justify-content: flex-start;
+  min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  padding: 6px;
+  gap: 2px;
+  background: #090b1270;
+}
+
+.pt-resource.pt-resource-compact.pt-resource-soul {
+  --resource-card-width: 40px;
+  --resource-card-height: 57px;
+  border-top-color: #dfb56d35;
+}
+
+.pt-resource-compact .pt-resource-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  min-height: 22px;
+  gap: 6px;
+}
+
+.pt-resource-compact .pt-resource-heading {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 6px;
+  color: #b4b1bd;
+  border-radius: 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.pt-resource-compact .pt-resource-heading strong {
+  color: #ead0a5;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pt-resource-compact .pt-resource-available {
+  padding: 3px 5px;
+  color: #d7bc8f;
+  border: 1px solid #dfb56d25;
+  border-radius: 5px;
+  background: #dfb56d0a;
+  white-space: nowrap;
+  font-size: 9px;
+}
+
+.pt-resource-compact .pt-resource-charge.hand-button {
+  min-height: 26px;
+  padding: 3px 6px;
+  font-size: 9px;
+}
+
+.pt-resource.pt-resource-compact .pt-resource-cards {
+  display: flex;
+  align-items: flex-start;
+  min-height: 0;
+  gap: 0;
+  margin: 0;
+  list-style: none;
+  padding: 4px 2px 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #b298713d transparent;
+}
+
+.pt-resource-compact .pt-resource-cards:empty {
+  display: none;
+}
+
+.pt-resource.pt-resource-compact .pt-resource-slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 var(--resource-card-width);
+  min-width: 0;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.pt-resource-compact .pt-resource-slot + .pt-resource-slot {
+  margin-inline-start: calc(
+    var(--resource-card-advance) - var(--resource-card-width)
+  );
+}
+
+/* Lift only the artwork without changing fan order or covering adjacent grade
+   badges. Cost controls and neighboring click targets stay fixed. */
+.pt-resource-compact .pt-resource-card {
+  position: relative;
+  width: var(--resource-card-width);
+  height: var(--resource-card-height);
+  flex-shrink: 0;
+  padding: 2px;
+  border: 1px solid #c8a56b60;
+  border-radius: 4px;
+  background: #1b1b24;
+  transition:
+    transform 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.pt-resource-compact .pt-resource-card.is-face-down {
+  border-color: #ffffff20;
+}
+
+.pt-resource-compact .pt-resource-card.is-selected {
+  border-color: #edce9e;
+  box-shadow: 0 0 0 2px #dfb56d55;
+}
+
+.pt-resource-compact .pt-resource-card:hover {
+  border-color: #edce9e;
+}
+
+.pt-resource-compact .pt-resource-slot:hover .pt-resource-card,
+.pt-resource-compact .pt-resource-slot:focus-within .pt-resource-card {
+  transform: translateY(-3px);
+}
+
+.pt-resource-compact .pt-resource-card .pt-miniature {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  overflow: hidden;
+  border-radius: 2px;
+}
+
+.pt-resource-compact .pt-miniature .catalog-artwork {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.pt-resource-compact .catalog-artwork img {
+  object-fit: contain;
+}
+
+.pt-resource-compact .catalog-artwork > span {
+  display: none;
+}
+
+.pt-resource-compact .pt-resource-position {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  min-width: 18px;
+  height: 18px;
+  padding-inline: 2px;
+  display: grid;
+  place-items: center;
+  border-radius: 3px;
+  background: #07090eef;
+  color: #ead0a5;
+  box-shadow: 0 1px 4px #0008;
+  font-weight: 600;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pt-resource-compact .pt-resource-card .pt-card-check {
+  position: absolute;
+  left: 3px;
+  right: auto;
+  bottom: 3px;
+  padding: 2px;
+  border-radius: 20px;
+  background: #e1bf88;
+  color: #16120c;
+}
+
+.pt-resource-compact .pt-resource-use {
+  width: calc(var(--resource-card-advance) - 2px);
+  min-height: 24px;
+  padding: 3px 1px;
+  border: 1px solid #dfb56d30;
+  border-radius: 4px;
+  color: #e5c594;
+  background: #dfb56d0c;
+  font-size: 9px;
+}
+
+.pt-resource-compact .pt-resource-use.is-spent {
+  color: #afb9d1;
+  border-color: #a3b3d72e;
+  background: #a3b3d709;
+}
+
+.pt-resource-compact .pt-resource-use:hover:not(:disabled) {
+  border-color: #dfb56d80;
+  background: #dfb56d20;
+}
+
+.pt-resource-compact .pt-resource-use:disabled {
+  opacity: 0.45;
+}
+
+.pt-resource-compact .pt-resource-empty-table {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  gap: 6px;
+  color: #797a89;
+  font-size: 10px;
+}
+
+.pt-resource-compact button:focus-visible {
+  outline: 2px solid #e7c58f;
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .pt-resource.pt-resource-compact {
+    --resource-card-advance: 36px;
+  }
+
+  .pt-resource-compact .pt-resource-use {
+    min-height: 34px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pt-resource-compact .pt-resource-card {
+    transition: none;
+  }
+}

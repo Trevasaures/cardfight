@@ -1,0 +1,138 @@
+.pt-g-tracker {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #dfb56d30;
+  border-radius: 9px;
+  background: #11121a;
+}
+.pt-g-tracker.is-drop-over {
+  outline: 2px solid #dfb56d;
+  outline-offset: -2px;
+}
+.pt-g-tracker.is-drop-blocked {
+  outline: 2px solid #e28282;
+  outline-offset: -2px;
+}
+.pt-g-tracker.is-destination {
+  border-color: #dfb56d80;
+}
+.pt-g-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.pt-g-heading > button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #c7b591;
+  font-size: 11px;
+}
+.pt-generation-break {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px;
+  border: 1px solid #dfb56d40;
+  border-radius: 6px;
+  color: #dec79f;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.pt-generation-break strong {
+  color: #f2d7ab;
+}
+.pt-g-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 5px 0;
+  color: #858594;
+  font-size: 9px;
+}
+.pt-g-counts strong {
+  margin-left: 3px;
+  color: #cec2ac;
+}
+.pt-g-face-up {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 6px;
+  scrollbar-width: thin;
+}
+.pt-g-copy {
+  flex: 0 0 48px;
+  width: 48px;
+  min-width: 0;
+  text-align: left;
+}
+.pt-g-copy-art {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border: 1px solid #dfb56d30;
+  border-radius: 5px;
+}
+.pt-g-copy .catalog-artwork {
+  width: 100%;
+  aspect-ratio: 7 / 10;
+  border: 0;
+  border-radius: 0;
+}
+.pt-g-copy .catalog-artwork img {
+  object-fit: contain;
+}
+.pt-g-copy .catalog-artwork > span {
+  display: none;
+}
+.pt-g-copy.is-selected .pt-g-copy-art {
+  border-color: #e5c594;
+  box-shadow: 0 0 0 1px #dfb56d40;
+}
+.pt-g-copy-name {
+  display: block;
+  margin-top: 5px;
+  color: #b0adba;
+  font-size: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pt-g-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 9px;
+  min-height: 48px;
+  padding: 10px;
+  border: 1px dashed #ffffff15;
+  border-radius: 6px;
+  color: #858594;
+  font-size: 10px;
+}
+.pt-g-heading > button:focus-visible,
+.pt-g-copy:focus-visible,
+.pt-g-empty:focus-visible {
+  outline: 2px solid #e7c58f;
+  outline-offset: 2px;
+}
+.pt-g-face-up-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+@media (max-width: 699px) {
+  .pt-g-tracker {
+    grid-column: 1 / -1;
+  }
+}

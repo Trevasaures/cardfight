@@ -1,10 +1,20 @@
 import type {
+  Card,
   CardFormOptions,
   CardImageAnalysisResult,
   CardSetOption,
 } from "../../types/api";
-import { NATIONLESS_CARD_OPTION } from "../../utils/cards";
-import type { CardArtworkValue } from "../cards/cardArtworkState";
+import {
+  cardNationToFormValue,
+  CREST_CARD_TYPES,
+  isCrestCard,
+  NATIONLESS_CARD_OPTION,
+} from "../../utils/cards.ts";
+import {
+  artworkFromPrinting,
+  type CardArtworkValue,
+} from "../cards/cardArtworkState.ts";
+import { normalizeCardText } from "../../utils/cardText.ts";
 
 export type ManualCardFormState = {
   name: string;
@@ -34,6 +44,23 @@ export const EMPTY_MANUAL_CARD_FORM: ManualCardFormState = {
   rarity: "",
 };
 
+export function cardToManualForm(card: Card): ManualCardFormState {
+  const printing = card.primary_printing;
+  return {
+    name: card.name,
+    grade: !isCrestCard(card) && card.grade !== null ? String(card.grade) : "",
+    nation: cardNationToFormValue(card.nation),
+    card_type: card.card_type,
+    skill_text: normalizeCardText(card.skill_text),
+    artwork: artworkFromPrinting(printing),
+    set_selection: printing?.set_code ?? "",
+    set_code: printing?.set_code ?? "",
+    set_name: printing?.set_name ?? "",
+    card_number: printing?.card_number ?? "",
+    rarity: printing?.rarity ?? "",
+  };
+}
+
 export const DEFAULT_CARD_FORM_OPTIONS: CardFormOptions = {
   grades: [0, 1, 2, 3, 4],
   nations: [
@@ -52,6 +79,7 @@ export const DEFAULT_CARD_FORM_OPTIONS: CardFormOptions = {
     "Normal Order",
     "Blitz Order",
     "Set Order",
+    ...CREST_CARD_TYPES,
   ],
   sets: [],
 };
@@ -70,9 +98,9 @@ export function withSavedCardSet(
 }
 
 export function manualCardFormIsComplete(value: ManualCardFormState) {
+  if (!isCrestCard(value) && !value.grade.trim()) return false;
   return [
     value.name,
-    value.grade,
     value.nation,
     value.card_type,
     value.set_code,
@@ -82,12 +110,23 @@ export function manualCardFormIsComplete(value: ManualCardFormState) {
   ].every((field) => field.trim().length > 0);
 }
 
+export function updateManualCardType(
+  value: ManualCardFormState,
+  cardType: string,
+) {
+  return {
+    ...value,
+    card_type: cardType,
+    grade: isCrestCard(cardType) ? "" : value.grade,
+  };
+}
+
 export function cardAnalysisToManualForm(
   result: CardImageAnalysisResult,
 ): ManualCardFormState {
   return {
     name: result.fields.name,
-    grade: result.fields.grade,
+    grade: isCrestCard(result.fields.card_type) ? "" : result.fields.grade,
     nation: result.fields.nation,
     card_type: result.fields.card_type || "Normal Unit",
     skill_text: "",

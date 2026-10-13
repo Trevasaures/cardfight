@@ -16,9 +16,25 @@ export function getAcquisitionPlan(planId: number) {
   return apiRequest<AcquisitionPlan>(`/api/acquisition-plans/${planId}`);
 }
 
-export function createAcquisitionPlan(
-  payload: CreateAcquisitionPlanPayload,
-) {
+export function archiveAcquisitionPlan(planId: number) {
+  return apiRequest<AcquisitionPlan>(
+    `/api/acquisition-plans/${planId}/archive`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function restoreAcquisitionPlan(planId: number) {
+  return apiRequest<AcquisitionPlan>(
+    `/api/acquisition-plans/${planId}/restore`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function createAcquisitionPlan(payload: CreateAcquisitionPlanPayload) {
   return apiRequest<AcquisitionPlan>("/api/acquisition-plans", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -75,6 +91,19 @@ export function receiveAcquisitionItem(itemId: number, quantity: number) {
       method: "POST",
       body: JSON.stringify({ quantity }),
     },
+  );
+}
+
+export type AcquisitionBatchAction = "mark_incoming" | "receive";
+
+export function batchAcquisitionItems(
+  planId: number,
+  action: AcquisitionBatchAction,
+  itemIds: number[],
+) {
+  return apiRequest<AcquisitionPlan>(
+    `/api/acquisition-plans/${planId}/items/batch`,
+    { method: "POST", body: JSON.stringify({ action, item_ids: itemIds }) },
   );
 }
 
