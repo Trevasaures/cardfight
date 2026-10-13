@@ -162,7 +162,7 @@ def test_built_in_set_name_cannot_be_overwritten(client):
     )
 
     assert response.status_code == 409
-    assert "already exists as 'Fated Clash'" in response.get_json()["error"]
+    assert response.get_json()["error"] == "Card set already exists."
 
 
 def test_duplicate_custom_set_code_requires_the_explicit_update_route(client):
@@ -177,7 +177,8 @@ def test_duplicate_custom_set_code_requires_the_explicit_update_route(client):
 
     assert first_response.status_code == 201
     assert duplicate_response.status_code == 409
-    assert "Use Manage reusable card sets" in duplicate_response.get_json()["error"]
+    assert duplicate_response.get_json()["error"] == "Card set already exists."
+    assert CardSet.query.filter_by(code="DZ-CUSTOM").one().name == "Original Product"
 
 
 def test_updating_a_custom_set_cascades_to_linked_printings_and_blocks_collisions(
@@ -260,7 +261,7 @@ def test_only_unused_custom_sets_can_be_deleted(app_context, client):
     assert CardSet.query.filter_by(code="DZ-UNUSED").first() is None
     assert used_response.status_code == 409
     assert used_response.get_json()["usage_count"] == 1
-    assert "Update the set instead of deleting" in used_response.get_json()["error"]
+    assert used_response.get_json()["error"] == "Card set is in use."
     assert CardSet.query.filter_by(code="DZ-USED").one()
 
 

@@ -3,6 +3,7 @@ import { CardArtwork } from "../../components/cards/CardArtwork";
 import type { DeckCardEntry } from "../../types/api";
 import { ZONES, type TableCard, type Zone } from "./playtest";
 import { formatPower } from "./cardDisplay";
+import { isCrestEntry } from "./crests";
 import "./card-inspector.css";
 
 type Props = {
@@ -10,15 +11,24 @@ type Props = {
   entry: DeckCardEntry;
   zone: Zone;
   effectiveGrade?: number | null;
+  showName?: boolean;
 };
 
 /** Details are deliberately inspectable in this solo sandbox, including face-down cards. */
 export function CardInspector({
-  card, entry, zone, effectiveGrade,
+  card,
+  entry,
+  zone,
+  effectiveGrade,
+  showName = true,
 }: Props) {
   if (!entry.card) return null;
+  const crest = Boolean(card.crest || isCrestEntry(entry));
   return (
-    <section className="pt-card-detail" aria-label="Selected card">
+    <section
+      className={`pt-card-detail ${crest ? "is-crest" : ""}`}
+      aria-label="Selected card"
+    >
       <div className="pt-detail-overview">
         <CardArtwork card={entry.card} printing={entry.printing} detail />
         <div>
@@ -26,13 +36,15 @@ export function CardInspector({
             {ZONES[zone]}
             {card.faceDown ? " · Face down" : card.rested ? " · Rest" : ""}
           </span>
-          <strong>{entry.card.name}</strong>
-          <div className="pt-detail-stats">
-            <span>G{effectiveGrade ?? entry.card.grade ?? "?"}</span>
-            <strong>{formatPower(card, entry.card.power)}</strong>
-            <span>★{(entry.card.critical ?? 1) + card.critical}</span>
-          </div>
-          {Boolean(card.power || card.critical) && (
+          {showName && <strong>{entry.card.name}</strong>}
+          {!crest && (
+            <div className="pt-detail-stats">
+              <span>G{effectiveGrade ?? entry.card.grade ?? "?"}</span>
+              <strong>{formatPower(card, entry.card.power)}</strong>
+              <span>★{(entry.card.critical ?? 1) + card.critical}</span>
+            </div>
+          )}
+          {!crest && Boolean(card.power || card.critical) && (
             <small>
               Bonus {card.power >= 0 ? "+" : ""}
               {card.power.toLocaleString()} / {card.critical >= 0 ? "+" : ""}
@@ -41,7 +53,14 @@ export function CardInspector({
           )}
         </div>
       </div>
-      <CardAbilityText text={entry.card.skill_text} />
+      <div
+        className="pt-detail-ability"
+        role="region"
+        aria-label="Card abilities"
+        tabIndex={0}
+      >
+        <CardAbilityText text={entry.card.skill_text} />
+      </div>
     </section>
   );
 }

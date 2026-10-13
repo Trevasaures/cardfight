@@ -2,6 +2,8 @@
   display: grid;
   grid-template-columns: 76px minmax(0, 1fr);
   align-items: start;
+  flex-shrink: 0;
+  min-width: 0;
   gap: 10px;
 }
 .pt-detail-overview > .catalog-artwork {
@@ -39,7 +41,21 @@
   color: #ead5b1;
   font-variant-numeric: tabular-nums;
 }
-.pt-card-detail .card-ability-text {
+.pt-detail-ability {
   margin-top: 10px;
-  max-height: 160px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding-right: 6px;
+}
+.pt-detail-ability:focus-visible {
+  outline: 2px solid #e7c58f;
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+.pt-detail-ability .card-ability-text {
+  margin: 0;
+  color: #bbb6c2;
+  line-height: 1.7;
 }

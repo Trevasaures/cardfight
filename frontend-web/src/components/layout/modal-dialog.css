@@ -1,0 +1,63 @@
+.workspace-dialog {
+  width: min(640px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 24px 80px #0009;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.workspace-dialog::backdrop {
+  background: #05060b99;
+}
+.workspace-dialog-header,
+.workspace-dialog-footer {
+  position: sticky;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--panel);
+}
+.workspace-dialog-header {
+  top: 0;
+  border-bottom: 1px solid var(--border);
+}
+.workspace-dialog-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.workspace-dialog-body {
+  min-width: 0;
+  padding: 20px;
+}
+.workspace-dialog-footer {
+  bottom: 0;
+  border-top: 1px solid var(--border);
+  justify-content: flex-end;
+}
+.workspace-drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  margin: 0;
+  width: min(560px, 100vw);
+  height: 100dvh;
+  max-height: none;
+  border-radius: 18px 0 0 18px;
+}
+@media (max-width: 600px) {
+  .workspace-dialog-body {
+    padding: 16px;
+  }
+  .workspace-drawer {
+    border-radius: 0;
+  }
+}

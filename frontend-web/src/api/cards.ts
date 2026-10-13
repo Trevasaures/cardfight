@@ -133,15 +133,35 @@ export function getCardLibraryPage(
   );
 }
 
-export function importCardArtwork(source: File | string, signal?: AbortSignal) {
+export function importCardArtwork(
+  source: File | string,
+  signal?: AbortSignal,
+  cardType?: string | null,
+) {
   const body =
     typeof source === "string"
-      ? JSON.stringify({ url: source })
+      ? JSON.stringify({ url: source, card_type: cardType })
       : new FormData();
-  if (body instanceof FormData) body.set("image", source as File);
+  if (body instanceof FormData) {
+    body.set("image", source as File);
+    if (cardType) body.set("card_type", cardType);
+  }
   return apiRequest<CardArtworkValue>("/api/card-images", {
     method: "POST",
     body,
+    signal,
+  });
+}
+
+/** Prepare a separate crest preview; attaching it remains the card form's Save action. */
+export function normalizeCrestArtwork(
+  imageId: string,
+  cardType: string,
+  signal?: AbortSignal,
+) {
+  return apiRequest<CardArtworkValue>("/api/card-images", {
+    method: "POST",
+    body: JSON.stringify({ image_id: imageId, card_type: cardType }),
     signal,
   });
 }

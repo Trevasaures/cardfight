@@ -1,0 +1,115 @@
+.pt-crest-zone {
+  min-width: 0;
+  border-radius: 10px;
+}
+.pt-crest-zone.is-drop-over {
+  outline: 2px solid #dfb56d;
+  outline-offset: -2px;
+  background: #dfb56d12;
+}
+.pt-crest-zone.is-destination {
+  border-color: #dfb56d55;
+}
+.pt-crest-zone.is-drop-blocked {
+  outline: 2px solid #e28282;
+  outline-offset: -2px;
+}
+.pt-crest-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+.pt-crest-tile {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid #ffffff12;
+  border-radius: 9px;
+  background: #11121a;
+}
+.pt-crest-tile.is-active {
+  border-color: #dfb56d55;
+  background: #282119;
+}
+.pt-crest-tile.is-selected {
+  outline: 2px solid #dfb56d;
+  outline-offset: -2px;
+}
+.pt-crest-art {
+  display: flex;
+  flex: 0 0 60px;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  aspect-ratio: 7 / 5;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #dfb56d30;
+  border-radius: 5px;
+  background: #0c0d12;
+}
+.pt-crest-art .catalog-artwork {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  border: 0;
+}
+.pt-crest-art .catalog-artwork img {
+  object-fit: contain;
+}
+.pt-crest-art .catalog-artwork > span {
+  display: none;
+}
+.pt-virtual-crest {
+  color: #dfb56d;
+  background:
+    radial-gradient(circle at center, #dfb56d20, transparent 75%), #101117;
+}
+.pt-crest-info {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.pt-crest-info > strong {
+  color: #ead5b1;
+  font-size: 9px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.pt-crest-info .hand-button {
+  justify-self: start;
+  min-height: 24px;
+  padding: 3px 6px;
+  font-size: 9px;
+}
+.pt-crest-art:focus-visible {
+  outline: 2px solid #e7c58f;
+  outline-offset: 2px;
+}
+.pt-card.is-crest .pt-card-art {
+  aspect-ratio: 7 / 5;
+}
+.pt-drag-preview.is-crest .pt-drag-art {
+  height: auto;
+  aspect-ratio: 7 / 5;
+}
+.pt-drag-preview.is-crest .catalog-artwork img {
+  object-fit: contain;
+}
+.pt-card.is-crest .catalog-artwork,
+.pt-card-detail.is-crest .catalog-artwork {
+  aspect-ratio: 7 / 5;
+}
+.pt-card.is-crest .catalog-artwork img,
+.pt-card-detail.is-crest .catalog-artwork img {
+  object-fit: contain;
+}
+.pt-card-detail.is-crest .pt-detail-overview {
+  grid-template-columns: minmax(105px, 40%) minmax(0, 1fr);
+}

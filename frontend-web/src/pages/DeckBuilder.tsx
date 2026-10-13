@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useDeckBuilderMotion } from "../animations/useDeckBuilderMotion";
-import { normalizeCardText } from "../utils/cardText";
 import {
-  analyzeCardImage,
   createCard,
   getCardFormOptions,
   getCard,
@@ -21,11 +19,16 @@ import {
   updateDeckVersion,
 } from "../api/deckBuilder";
 import { getDecks } from "../api/decks";
-import { CardCatalogPanel } from "../components/deck-builder/CardCatalogPanel";
+import { DeckCardComposer } from "../components/deck-builder/DeckCardComposer";
 import {
-  artworkFromPrinting,
-  artworkPayload,
-} from "../components/cards/cardArtworkState";
+  cardAdditionIssue,
+  suggestedDeckCardZone,
+} from "../components/deck-builder/deckCardSelection";
+import { CardInspector } from "../components/cards/CardInspector";
+import { ManualCardForm } from "../components/deck-builder/ManualCardForm";
+import "../components/collection-workspace.css";
+import { CardCatalogPanel } from "../components/deck-builder/CardCatalogPanel";
+import { artworkPayload } from "../components/cards/cardArtworkState";
 import {
   clearCardSetSelection,
   replaceCardSetSelection,
@@ -37,16 +40,16 @@ import { useToast } from "../components/feedback/useToast";
 import {
   DEFAULT_CARD_FORM_OPTIONS,
   EMPTY_MANUAL_CARD_FORM,
-  cardAnalysisToManualForm,
   manualCardFormIsComplete,
+  cardToManualForm,
   withSavedCardSet,
 } from "../components/deck-builder/manualCardFormState";
 import { PageHeader } from "../components/layout/PageHeader";
 import { usePersistentState } from "../hooks/usePersistentState";
 import type {
   Card,
+  CardPrinting,
   CardFormOptions,
-  CardImageAnalysisResult,
   CardSetOption,
   CreateCardPayload,
   Deck,
@@ -56,8 +59,9 @@ import type {
   DeckVersionSummary,
 } from "../types/api";
 import {
+  cardGradeToApiValue,
   cardNationToApiValue,
-  cardNationToFormValue,
+  isCrestCard,
 } from "../utils/cards";
 
 type CardFormMode = "create" | "edit";
@@ -66,6 +70,7 @@ const ZONES: { value: DeckCardZone; label: string }[] = [
   { value: "main", label: "Main deck" },
   { value: "ride", label: "Ride deck" },
   { value: "g", label: "G zone" },
+  { value: "crest", label: "Crests" },
   { value: "token", label: "Token" },
   { value: "other", label: "Other" },
 ];
@@ -75,7 +80,9 @@ export function DeckBuilder() {
 
   const [decks, setDecks] = useState<Deck[]>([]);
   const [versions, setVersions] = useState<DeckVersionSummary[]>([]);
-  const [currentVersion, setCurrentVersion] = useState<DeckVersion | null>(null);
+  const [currentVersion, setCurrentVersion] = useState<DeckVersion | null>(
+    null,
+  );
 
   const [selectedDeckId, setSelectedDeckId] = usePersistentState(
     "cardfight.deck-builder.selected-deck",
@@ -119,14 +126,33 @@ export function DeckBuilder() {
   const [comparisonBaseline, setComparisonBaseline] =
     useState<DeckVersion | null>(null);
 
-  const [cardSearch, setCardSearch] = useState("");
+  const [cardSearch, setCardSearch] = usePersistentState(
+    "cardfight.deck-builder.card-search",
+    "",
+  );
   const [cardResults, setCardResults] = useState<Card[]>([]);
-  const [selectedCardId, setSelectedCardId] = useState("");
+  const [selectedCardId, setSelectedCardId] = usePersistentState(
+    "cardfight.deck-builder.selected-card",
+    "",
+  );
   const [selectedPrintingId, setSelectedPrintingId] = useState("");
-  const [cardFormMode, setCardFormMode] = useState<CardFormMode>("create");
-  const [cardAnalysis, setCardAnalysis] =
-    useState<CardImageAnalysisResult | null>(null);
-  const [analyzingCardImage, setAnalyzingCardImage] = useState(false);
+  const [cardFormMode, setCardFormMode] = usePersistentState<CardFormMode>(
+    "cardfight.deck-builder.card-mode",
+    "create",
+  );
+  const [editingCardSnapshot, setEditingCardSnapshot] =
+    usePersistentState<Card | null>(
+      "cardfight.deck-builder.editing-card",
+      null,
+    );
+  const [inspectedCard, setInspectedCard] = useState<{
+    card: Card;
+    printing?: CardPrinting | null;
+  } | null>(null);
+  const initialCatalogSearchRef = useRef(false);
+  const currentVersionIdRef = useRef<number | null>(null);
+  const selectedVersionIdRef = useRef(selectedVersionId);
+  const versionRequestRef = useRef(0);
 
   const [addQuantity, setAddQuantity] = usePersistentState(
     "cardfight.deck-builder.add-quantity",
@@ -137,7 +163,10 @@ export function DeckBuilder() {
     "main",
   );
 
-  const [newCard, setNewCard] = useState(EMPTY_MANUAL_CARD_FORM);
+  const [newCard, setNewCard] = usePersistentState(
+    "cardfight.deck-builder.card-draft",
+    EMPTY_MANUAL_CARD_FORM,
+  );
   const [cardFormOptions, setCardFormOptions] = useState<CardFormOptions>(
     DEFAULT_CARD_FORM_OPTIONS,
   );
@@ -187,10 +216,15 @@ export function DeckBuilder() {
   const toast = useToast();
 
   useEffect(() => {
-    if (!error) return;
+    if (!error || inspectedCard) return;
     toast.error(error);
     setError(null);
-  }, [error, toast]);
+  }, [error, toast, inspectedCard]);
+
+  useEffect(() => {
+    currentVersionIdRef.current = currentVersion?.id ?? null;
+    selectedVersionIdRef.current = selectedVersionId;
+  }, [currentVersion?.id, selectedVersionId]);
 
   const selectedDeck = useMemo(
     () => decks.find((deck) => deck.id === Number(selectedDeckId)) ?? null,
@@ -198,9 +232,16 @@ export function DeckBuilder() {
   );
 
   const selectedCard = useMemo(
-    () => cardResults.find((card) => card.id === Number(selectedCardId)) ?? null,
+    () =>
+      cardResults.find((card) => card.id === Number(selectedCardId)) ?? null,
     [cardResults, selectedCardId],
   );
+
+  useEffect(() => {
+    if (!selectedCard) return;
+    setAddZone((current) => suggestedDeckCardZone(selectedCard, current));
+    if (isCrestCard(selectedCard)) setAddQuantity(1);
+  }, [selectedCard, setAddZone, setAddQuantity]);
 
   useEffect(() => {
     setSelectedPrintingId((current) => {
@@ -265,8 +306,8 @@ export function DeckBuilder() {
     try {
       const rows = await getDecks(true);
       setDecks(rows);
-      setSelectedDeckId((current) =>
-        current || (rows[0] ? String(rows[0].id) : ""),
+      setSelectedDeckId(
+        (current) => current || (rows[0] ? String(rows[0].id) : ""),
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load decks");
@@ -275,48 +316,78 @@ export function DeckBuilder() {
     }
   }, [setSelectedDeckId]);
 
-  const loadDeckVersions = useCallback(async (deckId: number) => {
-    setError(null);
-    setLoadingVersions(true);
+  const loadDeckVersions = useCallback(
+    async (deckId: number) => {
+      setError(null);
+      setLoadingVersions(true);
 
-    try {
-      const rows = await getDeckVersions(deckId);
-      setVersions(rows);
+      try {
+        const rows = await getDeckVersions(deckId);
+        setVersions(rows);
 
-      setSelectedVersionId((current) => {
-        if (rows.some((version) => String(version.id) === current)) {
-          return current;
+        setSelectedVersionId((current) => {
+          if (rows.some((version) => String(version.id) === current)) {
+            return current;
+          }
+
+          const activeVersion = rows.find((version) => version.is_active);
+
+          return activeVersion
+            ? String(activeVersion.id)
+            : rows[0]
+              ? String(rows[0].id)
+              : "";
+        });
+
+        if (rows.length === 0) {
+          setCurrentVersion(null);
         }
-
-        const activeVersion = rows.find((version) => version.is_active);
-
-        return activeVersion
-          ? String(activeVersion.id)
-          : rows[0]
-            ? String(rows[0].id)
-            : "";
-      });
-
-      if (rows.length === 0) {
-        setCurrentVersion(null);
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Failed to load deck versions",
+        );
+      } finally {
+        setLoadingVersions(false);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load deck versions");
-    } finally {
-      setLoadingVersions(false);
-    }
-  }, [setSelectedVersionId]);
+    },
+    [setSelectedVersionId],
+  );
 
   const loadCurrentVersion = useCallback(async (versionId: number) => {
+    const request = ++versionRequestRef.current;
+    const isCurrentRequest = () =>
+      request === versionRequestRef.current &&
+      versionId === Number(selectedVersionIdRef.current);
     setError(null);
 
     try {
       const version = await getDeckVersion(versionId);
-      setCurrentVersion(version);
+      // Undo can refresh a list while the user switches to another version.
+      if (isCurrentRequest()) setCurrentVersion(version);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load deck version");
+      if (isCurrentRequest())
+        setError(
+          err instanceof Error ? err.message : "Failed to load deck version",
+        );
     }
   }, []);
+
+  useEffect(() => {
+    const refreshRestoredVersion = (event: Event) => {
+      const versionId = (event as CustomEvent<number>).detail;
+      if (versionId === currentVersionIdRef.current)
+        void loadCurrentVersion(versionId);
+    };
+    window.addEventListener(
+      "cardfight:deck-version-restored",
+      refreshRestoredVersion,
+    );
+    return () =>
+      window.removeEventListener(
+        "cardfight:deck-version-restored",
+        refreshRestoredVersion,
+      );
+  }, [loadCurrentVersion]);
 
   const loadCardResults = useCallback(async () => {
     const query = cardSearch.trim();
@@ -334,7 +405,7 @@ export function DeckBuilder() {
     try {
       const rows = await searchCards({
         q: query,
-        limit: 25,
+        limit: 100,
       });
 
       setCardResults(rows);
@@ -350,7 +421,13 @@ export function DeckBuilder() {
     } finally {
       setLoadingCards(false);
     }
-  }, [cardSearch]);
+  }, [cardSearch, setSelectedCardId]);
+
+  useEffect(() => {
+    if (initialCatalogSearchRef.current) return;
+    initialCatalogSearchRef.current = true;
+    if (cardSearch.trim().length >= 2) void loadCardResults();
+  }, [cardSearch, loadCardResults]);
 
   useEffect(() => {
     void loadDecks();
@@ -361,7 +438,9 @@ export function DeckBuilder() {
       .then(setCardFormOptions)
       .catch((err) => {
         setError(
-          err instanceof Error ? err.message : "Failed to load card form options",
+          err instanceof Error
+            ? err.message
+            : "Failed to load card form options",
         );
       });
   }, []);
@@ -487,35 +566,31 @@ export function DeckBuilder() {
     setCardSearch("");
     setCardResults([]);
     setSelectedCardId("");
-    setCardAnalysis(null);
     setError(null);
-
-    if (cardFormMode === "edit") {
-      setCardFormMode("create");
-      setNewCard(EMPTY_MANUAL_CARD_FORM);
-    }
   }
 
   function handleEditSelectedCard() {
     if (!selectedCard) return;
+    startCardEdit(selectedCard);
+  }
 
-    const printing = selectedCard.primary_printing;
-
-    setNewCard({
-      name: selectedCard.name,
-      grade: selectedCard.grade !== null ? String(selectedCard.grade) : "",
-      nation: cardNationToFormValue(selectedCard.nation),
-      card_type: selectedCard.card_type,
-      skill_text: normalizeCardText(selectedCard.skill_text),
-      artwork: artworkFromPrinting(printing),
-      set_selection: printing?.set_code ?? "",
-      set_code: printing?.set_code ?? "",
-      set_name: printing?.set_name ?? "",
-      card_number: printing?.card_number ?? "",
-      rarity: printing?.rarity ?? "",
-    });
-
-    setCardAnalysis(null);
+  function startCardEdit(card: Card) {
+    if (editingCardSnapshot?.id === card.id && cardFormMode === "edit") {
+      setInspectedCard({ card: editingCardSnapshot });
+      return;
+    }
+    const baseline =
+      cardFormMode === "edit" && editingCardSnapshot
+        ? cardToManualForm(editingCardSnapshot)
+        : EMPTY_MANUAL_CARD_FORM;
+    if (
+      JSON.stringify(newCard) !== JSON.stringify(baseline) &&
+      !window.confirm("Discard the unfinished card edit?")
+    )
+      return;
+    setNewCard(cardToManualForm(card));
+    setEditingCardSnapshot(card);
+    setInspectedCard({ card });
     setCardFormMode("edit");
     setError(null);
   }
@@ -523,37 +598,9 @@ export function DeckBuilder() {
   function handleCancelCardEdit() {
     setCardFormMode("create");
     setNewCard(EMPTY_MANUAL_CARD_FORM);
-    setCardAnalysis(null);
+    setEditingCardSnapshot(null);
+    setInspectedCard(null);
     setError(null);
-  }
-
-  function applyCardAnalysisToForm(result: CardImageAnalysisResult) {
-    setNewCard(cardAnalysisToManualForm(result));
-
-    setCardFormMode("create");
-    setError(null);
-  }
-
-  async function handleAnalyzeCardImage(file: File) {
-    setAnalyzingCardImage(true);
-    setCardAnalysis(null);
-    setError(null);
-
-    try {
-      const result = await analyzeCardImage(file);
-      setCardAnalysis(result);
-      applyCardAnalysisToForm(result);
-      toast.success("Card image analyzed and its suggested fields were applied.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to analyze card image");
-    } finally {
-      setAnalyzingCardImage(false);
-    }
-  }
-
-  function handleApplyCardAnalysis() {
-    if (!cardAnalysis) return;
-    applyCardAnalysisToForm(cardAnalysis);
   }
 
   async function handleCreateVersion() {
@@ -580,9 +627,13 @@ export function DeckBuilder() {
       setCurrentVersion(version);
       setSelectedVersionId(String(version.id));
       await loadDeckVersions(selectedDeck.id);
-      toast.success(`Created ${version.version_name} as the active deck version.`);
+      toast.success(
+        `Created ${version.version_name} as the active deck version.`,
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create deck version");
+      setError(
+        err instanceof Error ? err.message : "Failed to create deck version",
+      );
     } finally {
       setSaving(false);
     }
@@ -591,8 +642,9 @@ export function DeckBuilder() {
   function handleAddZoneChange(zone: DeckCardZone) {
     setAddZone(zone);
     setAddQuantity((current) => {
-      if (zone === "ride") return 1;
-      if (addZone === "ride" && current === 1) return 4;
+      if (zone === "ride" || zone === "crest") return 1;
+      if ((addZone === "ride" || addZone === "crest") && current === 1)
+        return 4;
       return current;
     });
   }
@@ -669,6 +721,10 @@ export function DeckBuilder() {
   }
 
   async function handleSaveCardForm() {
+    if (cardFormMode === "edit" && !editingCardSnapshot) {
+      setError("Open the card you want to edit first.");
+      return;
+    }
     if (!manualCardIsComplete) {
       setError("Complete the required fields before saving a card.");
       return;
@@ -680,7 +736,7 @@ export function DeckBuilder() {
     try {
       const cardPayload: CreateCardPayload = {
         name: newCard.name,
-        grade: newCard.grade,
+        grade: cardGradeToApiValue(newCard),
         nation: cardNationToApiValue(newCard.nation),
         card_type: newCard.card_type,
         skill_text: newCard.skill_text,
@@ -693,13 +749,13 @@ export function DeckBuilder() {
         ...artworkPayload(newCard.artwork),
       };
 
-      if (cardFormMode === "edit" && selectedCard) {
-        await updateCard(selectedCard.id, {
+      if (cardFormMode === "edit" && editingCardSnapshot) {
+        await updateCard(editingCardSnapshot.id, {
           ...cardPayload,
           printing: printingPayload,
         });
 
-        const refreshedCard = await getCard(selectedCard.id);
+        const refreshedCard = await getCard(editingCardSnapshot.id);
 
         setCardResults((rows) =>
           rows.map((card) =>
@@ -718,6 +774,8 @@ export function DeckBuilder() {
         );
         setNewCard(EMPTY_MANUAL_CARD_FORM);
         setCardFormMode("create");
+        setEditingCardSnapshot(null);
+        setInspectedCard(null);
         toast.success(`Updated ${refreshedCard.name}.`);
         return;
       }
@@ -735,8 +793,9 @@ export function DeckBuilder() {
       );
       setNewCard(EMPTY_MANUAL_CARD_FORM);
       setCardFormMode("create");
-      setCardAnalysis(null);
-      toast.success(`Created ${created.name} and added it to the card catalog.`);
+      toast.success(
+        `Created ${created.name} and added it to the card catalog.`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save card");
     } finally {
@@ -746,6 +805,18 @@ export function DeckBuilder() {
 
   async function handleAddCardToVersion() {
     if (!currentVersion || !selectedCard) return;
+    const destination = suggestedDeckCardZone(selectedCard, addZone);
+    const quantity = isCrestCard(selectedCard) ? 1 : addQuantity;
+    const issue = cardAdditionIssue(
+      currentVersion,
+      selectedCard,
+      destination,
+      quantity,
+    );
+    if (issue) {
+      setError(issue);
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -754,22 +825,30 @@ export function DeckBuilder() {
       await addCardToDeckVersion(currentVersion.id, {
         card_id: selectedCard.id,
         printing_id: selectedPrintingId ? Number(selectedPrintingId) : null,
-        quantity: addQuantity,
-        zone: addZone,
+        quantity,
+        zone: destination,
       });
 
+      setAddZone(destination);
       await loadCurrentVersion(currentVersion.id);
       toast.success(
-        `Added ${addQuantity} cop${addQuantity === 1 ? "y" : "ies"} of ${selectedCard.name} to the ${addZone} deck zone.`,
+        isCrestCard(selectedCard)
+          ? `Added ${selectedCard.name} to Crests.`
+          : `Added ${quantity} cop${quantity === 1 ? "y" : "ies"} of ${selectedCard.name} to the ${destination} deck zone.`,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add card to deck");
+      setError(
+        err instanceof Error ? err.message : "Failed to add card to deck",
+      );
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleQuantityChange(entry: DeckCardEntry, nextQuantity: number) {
+  async function handleQuantityChange(
+    entry: DeckCardEntry,
+    nextQuantity: number,
+  ) {
     if (nextQuantity <= 0) return;
 
     setSaving(true);
@@ -782,7 +861,9 @@ export function DeckBuilder() {
 
       await loadCurrentVersion(entry.deck_version_id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update quantity");
+      setError(
+        err instanceof Error ? err.message : "Failed to update quantity",
+      );
     } finally {
       setSaving(false);
     }
@@ -801,7 +882,9 @@ export function DeckBuilder() {
       });
 
       await loadCurrentVersion(entry.deck_version_id);
-      toast.success(`Updated the printing used for ${entry.card?.name ?? "this card"}.`);
+      toast.success(
+        `Updated the printing used for ${entry.card?.name ?? "this card"}.`,
+      );
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to update card printing",
@@ -818,7 +901,14 @@ export function DeckBuilder() {
     try {
       await removeDeckCard(entry.id);
       await loadCurrentVersion(entry.deck_version_id);
-      toast.success(`Removed ${entry.card?.name ?? "the card"} from this version.`);
+      toast.success(`Removed ${entry.card?.name ?? "the card"}.`, {
+        title: "Card removed",
+        duration: 10000,
+        action: {
+          label: "Undo",
+          onClick: () => undoCardRemoval(entry),
+        },
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove card");
     } finally {
@@ -826,13 +916,36 @@ export function DeckBuilder() {
     }
   }
 
+  async function undoCardRemoval(entry: DeckCardEntry) {
+    setSaving(true);
+    try {
+      await addCardToDeckVersion(entry.deck_version_id, {
+        card_id: entry.card_id,
+        printing_id: entry.printing_id,
+        quantity: entry.quantity,
+        zone: entry.zone,
+      });
+      // Global toasts can outlive this page. Notify whichever builder is now mounted.
+      window.dispatchEvent(
+        new CustomEvent("cardfight:deck-version-restored", {
+          detail: entry.deck_version_id,
+        }),
+      );
+      toast.success(`Restored ${entry.card?.name ?? "the card"}.`);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to restore card",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div ref={builderRef}>
-      <PageHeader
-        title="Deck Builder"
-      />
+      <PageHeader title="Deck Builder" />
 
-      <div className="space-y-4">
+      <div className="collection-workspace">
         <DeckBuilderSetup
           decks={decks}
           versions={versions}
@@ -887,16 +1000,7 @@ export function DeckBuilder() {
           onDeleteVersion={handleDeleteVersion}
         />
 
-        <DeckVersionComparison
-          versions={versions}
-          currentVersion={currentVersion}
-          baselineVersion={comparisonBaseline}
-          selectedBaselineId={comparisonBaselineId}
-          loading={loadingComparison}
-          onSelectedBaselineIdChange={setComparisonBaselineId}
-        />
-
-        <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr] xl:items-start">
+        <div className="builder-columns">
           <CardCatalogPanel
             cardSearch={cardSearch}
             cardResults={cardResults}
@@ -904,8 +1008,6 @@ export function DeckBuilder() {
             selectedCardId={selectedCardId}
             newCard={newCard}
             cardFormMode={cardFormMode}
-            analysisResult={cardAnalysis}
-            analyzingImage={analyzingCardImage}
             loadingCards={loadingCards}
             saving={saving}
             manualCardIsComplete={manualCardIsComplete}
@@ -917,35 +1019,106 @@ export function DeckBuilder() {
             onNewCardChange={setNewCard}
             onSaveCardForm={handleSaveCardForm}
             onEditSelectedCard={handleEditSelectedCard}
+            onInspectSelectedCard={() =>
+              selectedCard && setInspectedCard({ card: selectedCard })
+            }
+            onResumeCardEdit={() =>
+              editingCardSnapshot &&
+              setInspectedCard({ card: editingCardSnapshot })
+            }
             onCancelCardEdit={handleCancelCardEdit}
-            onAnalyzeCardImage={handleAnalyzeCardImage}
-            onApplyCardAnalysis={handleApplyCardAnalysis}
             onSetSaved={handleSetSaved}
             onSetUpdated={handleSetUpdated}
             onSetDeleted={handleSetDeleted}
+            composer={
+              <DeckCardComposer
+                currentVersion={currentVersion}
+                selectedCard={selectedCard}
+                selectedPrintingId={selectedPrintingId}
+                addQuantity={addQuantity}
+                addZone={addZone}
+                saving={saving}
+                onSelectedPrintingIdChange={setSelectedPrintingId}
+                onAddQuantityChange={setAddQuantity}
+                onAddZoneChange={handleAddZoneChange}
+                onAddCardToVersion={handleAddCardToVersion}
+              />
+            }
           />
 
           <DeckVersionContents
             currentVersion={currentVersion}
             groupedCards={groupedCards}
-            cardResults={cardResults}
-            selectedCardId={selectedCardId}
-            selectedPrintingId={selectedPrintingId}
-            addQuantity={addQuantity}
-            addZone={addZone}
+            activeZone={addZone}
+            onActiveZoneChange={handleAddZoneChange}
             saving={saving}
-            selectedCard={selectedCard}
-            onSelectedCardIdChange={setSelectedCardId}
-            onSelectedPrintingIdChange={setSelectedPrintingId}
-            onAddQuantityChange={setAddQuantity}
-            onAddZoneChange={handleAddZoneChange}
-            onAddCardToVersion={handleAddCardToVersion}
             onQuantityChange={handleQuantityChange}
             onPrintingChange={handlePrintingChange}
             onRemoveCard={handleRemoveCard}
+            onInspectCard={(entry) =>
+              entry.card &&
+              setInspectedCard({ card: entry.card, printing: entry.printing })
+            }
           />
         </div>
+        <DeckVersionComparison
+          versions={versions}
+          currentVersion={currentVersion}
+          baselineVersion={comparisonBaseline}
+          selectedBaselineId={comparisonBaselineId}
+          loading={loadingComparison}
+          onSelectedBaselineIdChange={setComparisonBaselineId}
+        />
       </div>
+      {inspectedCard && (
+        <CardInspector
+          key={inspectedCard.card.id}
+          card={inspectedCard.card}
+          printing={inspectedCard.printing}
+          editingPrimary={
+            cardFormMode === "edit" &&
+            editingCardSnapshot?.id === inspectedCard.card.id
+          }
+          onClose={() => {
+            if (!saving) setInspectedCard(null);
+          }}
+          footer={
+            cardFormMode !== "edit" ||
+            editingCardSnapshot?.id !== inspectedCard.card.id ? (
+              <button
+                type="button"
+                className="workspace-button"
+                onClick={() => startCardEdit(inspectedCard.card)}
+              >
+                Edit card
+              </button>
+            ) : undefined
+          }
+        >
+          {error && (
+            <p
+              role="alert"
+              className="mb-3 rounded-xl border border-rose-300/30 bg-rose-300/10 p-3 text-sm text-rose-100"
+            >
+              {error}
+            </p>
+          )}
+          {cardFormMode === "edit" &&
+            editingCardSnapshot?.id === inspectedCard.card.id && (
+              <ManualCardForm
+                value={newCard}
+                mode="edit"
+                onChange={setNewCard}
+                onSubmit={handleSaveCardForm}
+                onCancelEdit={handleCancelCardEdit}
+                disabled={saving}
+                canSubmit={manualCardIsComplete}
+                options={cardFormOptions}
+                onSetSaved={handleSetSaved}
+              />
+            )}
+        </CardInspector>
+      )}
     </div>
   );
 }

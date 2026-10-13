@@ -11,6 +11,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { CardArtwork } from "../../components/cards/CardArtwork";
+import { ModalDialog } from "../../components/layout/ModalDialog";
 import type { DeckVersion } from "../../types/api";
 import { nationColor } from "../../utils/nations";
 import type { CardCopy } from "./engine";
@@ -41,10 +42,26 @@ import {
 } from "./playtest";
 import { useCardDrag } from "./useCardDrag";
 import { usePlaytestSession } from "./usePlaytestSession";
+import { useCompactInspector } from "./useCompactInspector";
+import { useTableShortcuts } from "./useTableShortcuts";
 import { MAX_UNDO_STATES } from "./sessionStore";
 import { PlaytestCard } from "./PlaytestCard";
 import { PlaytestZone } from "./PlaytestZone";
 import { ResourceZone } from "./ResourceZone";
+import { CrestZone } from "./CrestZone";
+import { GZoneTracker } from "./GZoneTracker";
+import { toggleCrest } from "./crestActions";
+import {
+  canStride,
+  canDropInGZone,
+  canTurnFaceUpGUnits,
+  heartCard,
+  dropInGZone,
+  isGUnit,
+  soulCards,
+  stride,
+  turnFaceUpGUnits,
+} from "./stride";
 import { BattleStatus } from "./BattleStatus";
 import { PowerControls } from "./PowerControls";
 import { applyPowerEffect } from "./powerEffects";
@@ -52,8 +69,12 @@ import { CardInspector } from "./CardInspector";
 import { SelectedCardActions } from "./SelectedCardActions";
 import { RuleControls } from "./rules/RuleControls";
 import { applyRules, effectiveGrade, energyLimit } from "./rules";
+import { supportsImpauldio } from "./rules/visibility";
 import { CardDragPreview } from "./CardDragPreview";
+import { focusSelection, resolveSelection, toggleSelection } from "./selection";
+import { selectedStrideTarget } from "./strideSelection";
 import "./playtest.css";
+import "./tabletop.css";
 
 type Props = { version: DeckVersion; copies: CardCopy[] };
 const LARGE_PILES: readonly Zone[] = [
@@ -119,17 +140,28 @@ export function HandTable({ version, copies }: Props) {
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [announcement, setAnnouncement] = useState("");
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const tableRef = useRef<HTMLElement>(null);
+  const compactInspector = useCompactInspector(tableRef);
   const session = history.present;
   const ruleContext = session ? { session, entries } : null;
   const energyMax = ruleContext ? energyLimit(ruleContext) : 10;
   const playing = Boolean(session && session.phase !== "mulligan");
-  const selection = session
-    ? selected.flatMap((key) => {
-        const found = findCard(session, key);
-        return found ? [found] : [];
-      })
-    : [];
+  const moveZones = (Object.keys(ZONES) as Zone[]).filter(
+    (zone) =>
+      zone !== "gauge" ||
+      Boolean(ruleContext && supportsImpauldio(ruleContext)),
+  );
+  // Legacy sandbox cards remain reachable, without offering unrelated decks a
+  // new AutoMOD destination or adding a permanent empty resource control.
+  const inspectedZones = (Object.keys(ZONES) as Zone[]).filter(
+    (zone) =>
+      moveZones.includes(zone) ||
+      (zone === "gauge" &&
+        (Boolean(session?.zones.gauge.length) ||
+          Boolean(session?.rules.pending.length))),
+  );
+  const selection = resolveSelection(session, selected);
   const focused = selection.at(-1);
   const focusedEntry = focused && entries.get(focused.card.entryId);
   const selectedAttacker =
@@ -149,6 +181,38 @@ export function HandTable({ version, copies }: Props) {
     (copy) =>
       copy.key === starter && entries.get(copy.entryId)?.zone === "main",
   );
+  const gUnitSelection =
+    selection.length > 0 &&
+    selection.every(
+      ({ card, zone }) =>
+        zone === "g" && isGUnit(card, entries.get(card.entryId)),
+    );
+  const strideCandidate = ruleContext
+    ? selectedStrideTarget(ruleContext, selected)
+    : undefined;
+  const stridingVanguardSelected = Boolean(
+    focused &&
+    selection.length === 1 &&
+    focused.zone === "vanguard" &&
+    isGUnit(focused.card, focusedEntry),
+  );
+  const showGZone = Boolean(
+    version.cards.some((entry) => entry.zone === "g") ||
+    session?.zones.g.length ||
+    session?.zones.vanguard.some((card) => isGUnit(card, entries.get(card.entryId))),
+  );
+
+  function usesGZoneAction(keys: readonly string[], to: Zone) {
+    if (to !== "g" || !session) return false;
+    return keys.some((key) => {
+      const found = findCard(session, key);
+      return (
+        found &&
+        (found.zone === "g" || found.zone === "vanguard") &&
+        isGUnit(found.card, entries.get(found.card.entryId))
+      );
+    });
+  }
 
   function apply(next: TableSession, clear = true) {
     if (!session || next === session) return;
@@ -195,20 +259,16 @@ export function HandTable({ version, copies }: Props) {
   }
 
   function selectCard(card: TableCard) {
-    setSelected((keys) =>
-      keys.includes(card.key)
-        ? keys.filter((key) => key !== card.key)
-        : [...keys, card.key],
-    );
+    setSelected((keys) => toggleSelection(keys, card.key));
   }
 
   function restUnit(card: TableCard) {
     if (!session || !playing || setup || drag) return;
     const found = findCard(session, card.key);
-    if (!found || !CIRCLES.includes(found.zone)) return;
+    if (!found || found.card.crest || !CIRCLES.includes(found.zone)) return;
     // Double-click targets only this copy, even when several cards were selected.
     apply(changeCards(session, [card.key], "rest"), false);
-    setSelected([card.key]);
+    setSelected((keys) => focusSelection(keys, card.key));
     setAnnouncement(
       `${entries.get(card.entryId)?.card?.name ?? "Unit"} ${card.rested ? "stood" : "rested"}.`,
     );
@@ -216,6 +276,18 @@ export function HandTable({ version, copies }: Props) {
 
   function move(to: Zone, position: "top" | "bottom" = "bottom") {
     if (!session) return;
+    if (to === "vanguard" && strideCandidate && ruleContext) {
+      const next = stride(ruleContext, strideCandidate.key);
+      if (next === session) return;
+      apply(next);
+      openZone("g");
+      return;
+    }
+    if (ruleContext && usesGZoneAction(selected, to)) {
+      apply(dropInGZone(ruleContext, selected));
+      openZone("g");
+      return;
+    }
     if (CIRCLES.includes(to) && selected.length > 1) {
       setAnnouncement("Select one card for a unit circle.");
       return;
@@ -231,26 +303,36 @@ export function HandTable({ version, copies }: Props) {
   function openZone(zone: Zone) {
     setInspected(zone);
     setQuery("");
-    if (playing) {
-      setSelected(
-        CIRCLES.includes(zone)
-          ? (session?.zones[zone].map((card) => card.key) ?? [])
-          : [],
-      );
-    }
   }
 
   const { drag, start, onClickCapture, onPointerDownCapture } = useCardDrag({
     root: tableRef,
-    canDrop: (keys, zone) =>
-      Boolean(session && !setup && canDropCards(session, keys, zone)),
+    canDrop: canDropOnZone,
     onDrop: (keys, zone) => {
       if (!session) return;
-      apply(moveCards(session, keys, zone));
-      setInspected(zone);
+      const strideTarget =
+        zone === "vanguard" && ruleContext
+          ? selectedStrideTarget(ruleContext, keys)
+          : undefined;
+      const gZoneAction = ruleContext && usesGZoneAction(keys, zone);
+      const next =
+        strideTarget && ruleContext
+          ? stride(ruleContext, strideTarget.key)
+          : gZoneAction && ruleContext
+            ? dropInGZone(ruleContext, keys)
+            : moveCards(session, keys, zone);
+      if (next === session) return;
+      // Leave the G browser ready for the next cost, without retaining a selection
+      // that could accidentally group the new vanguard with a cost card.
+      apply(next);
+      setInspected(strideTarget ? "g" : zone);
       setQuery("");
       setAnnouncement(
-        `${keys.length === 1 ? "Card" : `${keys.length} cards`} moved to ${ZONES[zone]}${zone === "deck" ? " bottom" : ""}.`,
+        strideTarget
+          ? "Strided G unit. Vanguard retained as heart."
+          : gZoneAction
+            ? (next.log.at(-1) ?? "G zone updated.")
+            : `${keys.length === 1 ? "Card" : `${keys.length} cards`} moved to ${ZONES[zone]}${zone === "deck" ? " bottom" : ""}.`,
       );
     },
     onCancel: () => setAnnouncement("Move cancelled. Cards stayed in place."),
@@ -258,15 +340,55 @@ export function HandTable({ version, copies }: Props) {
   const dragCard =
     session && drag ? findCard(session, drag.keys[0])?.card : undefined;
   const dragEntry = dragCard && entries.get(dragCard.entryId);
+  function getDragActionHint(): string | undefined {
+    if (!drag?.target) return undefined;
+    if (usesGZoneAction(drag.keys, drag.target)) {
+      if (!drag.valid) return "Choose a cost card or the stride";
+      return session?.zones.vanguard.some((card) => drag.keys.includes(card.key))
+        ? "Return stride · restore heart"
+        : "Turn face up";
+    }
+    if (!dragCard || !isGUnit(dragCard, dragEntry)) return undefined;
+    if (drag.target === "vanguard") {
+      return drag.valid ? "Stride · keep heart" : "Stride unavailable";
+    }
+    if (drag.target === "crest") return "Use G zone or Vanguard";
+    return undefined;
+  }
+
+  useTableShortcuts({
+    root: tableRef,
+    disabled: setup || (compactInspector && inspectorOpen && Boolean(focused)),
+    dragging: Boolean(drag),
+    canUndo: history.past.length > 0,
+    hasSelection: selected.length > 0,
+    onUndo: undo,
+    onClearSelection: () => {
+      setSelected([]);
+      setAnnouncement("Card selection cleared.");
+    },
+  });
 
   function dragKeys(card: TableCard) {
     // Drag the selected group only when grabbing one of its members.
     return selected.includes(card.key) ? selected : [card.key];
   }
 
+  function canDropOnZone(keys: string[], zone: Zone) {
+    if (!session || setup) return false;
+    if (zone === "vanguard" && ruleContext) {
+      const target = selectedStrideTarget(ruleContext, keys);
+      if (target) return canStride(ruleContext, target.key);
+    }
+    if (ruleContext && usesGZoneAction(keys, zone)) {
+      return canDropInGZone(ruleContext, keys);
+    }
+    return canDropCards(session, keys, zone);
+  }
+
   function dropClass(zone: Zone) {
     if (!drag || !session) return "";
-    const valid = canDropCards(session, drag.keys, zone);
+    const valid = canDropOnZone(drag.keys, zone);
     return `${valid ? "is-destination" : "is-unavailable"} ${drag.target === zone ? (valid ? "is-drop-over" : "is-drop-blocked") : ""}`;
   }
 
@@ -275,15 +397,25 @@ export function HandTable({ version, copies }: Props) {
       <PlaytestZone
         key={zone}
         zone={zone}
-        cards={session?.zones[zone] ?? []}
+        cards={
+          zone === "soul" && session
+            ? soulCards(session)
+            : (session?.zones[zone] ?? [])
+        }
         entries={entries}
         selected={selected}
         draggedKeys={drag?.keys ?? []}
         draggable={playing && !setup}
         dropClassName={dropClass(zone)}
-        soul={zone === "vanguard" ? session?.zones.soul : undefined}
+        soul={zone === "vanguard" && session ? soulCards(session) : undefined}
+        heart={
+          zone === "vanguard" && ruleContext
+            ? heartCard(ruleContext)
+            : undefined
+        }
         soulDropClassName={zone === "vanguard" ? dropClass("soul") : undefined}
         onOpen={openZone}
+        onSelect={selectCard}
         onRest={restUnit}
         onDragStart={(event, card, hidden) =>
           start(event, dragKeys(card), hidden)
@@ -311,7 +443,11 @@ export function HandTable({ version, copies }: Props) {
         disabled={!playing && inspected !== "hand" && compact}
         onSelect={selectCard}
         onRest={
-          compact && CIRCLES.includes(inspected) && playing && !setup
+          compact &&
+          !card.crest &&
+          CIRCLES.includes(inspected) &&
+          playing &&
+          !setup
             ? restUnit
             : undefined
         }
@@ -326,7 +462,11 @@ export function HandTable({ version, copies }: Props) {
     return (
       <ResourceZone
         zone={zone}
-        cards={session?.zones[zone] ?? []}
+        cards={
+          zone === "soul" && session
+            ? soulCards(session)
+            : (session?.zones[zone] ?? [])
+        }
         entries={entries}
         selected={selected}
         draggedKeys={drag?.keys ?? []}
@@ -334,11 +474,7 @@ export function HandTable({ version, copies }: Props) {
         canCharge={drawable && !setup}
         dropClassName={dropClass(zone)}
         onOpen={openZone}
-        onSelect={(card) => {
-          setInspected(zone);
-          setQuery("");
-          selectCard(card);
-        }}
+        onSelect={selectCard}
         onUse={(card) => {
           if (!session || !playing || setup) return;
           // These shortcuts target one physical copy, regardless of the current selection.
@@ -366,7 +502,10 @@ export function HandTable({ version, copies }: Props) {
   }
 
   const nextLabel = getNextPhaseLabel(session);
-  const zoneCards = session?.zones[inspected] ?? [];
+  const zoneCards =
+    inspected === "soul" && session
+      ? soulCards(session)
+      : (session?.zones[inspected] ?? []);
   // Show the card immediately beneath the vanguard first in the soul browser.
   const orderedCards =
     inspected === "soul" ? [...zoneCards].reverse() : zoneCards;
@@ -375,12 +514,13 @@ export function HandTable({ version, copies }: Props) {
       .toLowerCase()
       .includes(query.toLowerCase()),
   );
-  const inspectingUnit = CIRCLES.includes(inspected);
   const selectedCardDetails = focused && focusedEntry?.card && (
     <CardInspector
+      key={focused.card.key}
       card={focused.card}
       entry={focusedEntry}
       zone={focused.zone}
+      showName={!compactInspector}
       effectiveGrade={
         ruleContext
           ? effectiveGrade(ruleContext, focused.card, focused.zone)
@@ -405,7 +545,7 @@ export function HandTable({ version, copies }: Props) {
     >
       <div className="hand-table-header">
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="section-title">Playtest</h2>
+          <h2 className={session ? "sr-only" : "section-title"}>Playtest</h2>
           <span className="hand-phase">
             {session
               ? session.phase === "mulligan"
@@ -423,7 +563,8 @@ export function HandTable({ version, copies }: Props) {
             onClick={undo}
             disabled={!history.past.length || setup}
             aria-label="Undo last action"
-            title="Undo"
+            title="Undo · Ctrl/Cmd+Z"
+            aria-keyshortcuts="Control+Z Meta+Z"
           >
             <Undo2 size={15} />
           </button>
@@ -517,25 +658,15 @@ export function HandTable({ version, copies }: Props) {
           <BattleStatus
             session={session!}
             disabled={setup}
-            energyMax={energyMax}
             nextLabel={nextLabel}
             onAdvance={() => apply(nextPhase(session!))}
             onInspect={openZone}
-            onEnergy={(delta) => apply(changeEnergy(session!, delta, energyMax), false)}
           />
           <RuleControls
             context={ruleContext!}
             disabled={setup}
             onApply={(next) => apply(next, false)}
             onInspect={openZone}
-          />
-          <PowerControls
-            session={session!}
-            selected={selected}
-            disabled={setup}
-            onApply={(effect) =>
-              apply(applyPowerEffect(session!, selected, effect), false)
-            }
           />
         </>
       )}
@@ -544,31 +675,65 @@ export function HandTable({ version, copies }: Props) {
         inert={setup && session ? true : undefined}
       >
         <div className="pt-board-column">
-          {session?.check && (
-            <div className="pt-check" role="status">
-              {checkEntry?.card && (
+          {compactInspector && !setup && (
+            <button
+              type="button"
+              className="pt-inspector-dock"
+              onClick={() => setInspectorOpen(true)}
+              disabled={!focusedEntry?.card}
+              aria-label={
+                focusedEntry?.card
+                  ? `Inspect ${focusedEntry.card.name}`
+                  : "Card details"
+              }
+              aria-haspopup="dialog"
+            >
+              {focusedEntry?.card && (
                 <CardArtwork
-                  card={checkEntry.card}
-                  printing={checkEntry.printing}
+                  card={focusedEntry.card}
+                  printing={focusedEntry.printing}
                 />
               )}
-              <span className="pt-check-info">
-                <small>
-                  {session.check.kind === "drive"
-                    ? "Drive check"
-                    : "Damage check"}
-                </small>
-                <strong>{checkEntry?.card?.name}</strong>
-                <small>
-                  {checkEntry?.card?.trigger_type ||
-                    (checkEntry?.card?.card_type
-                      .toLowerCase()
-                      .includes("trigger")
-                      ? "Trigger unit"
-                      : "No trigger")}{" "}
-                  · effects manual
-                </small>
-              </span>
+              <span>{focusedEntry?.card?.name ?? "Card details"}</span>
+              <Eye size={16} />
+            </button>
+          )}
+          {session?.check && (
+            <div className="pt-check" role="status">
+              {checkCard && (
+                <button
+                  type="button"
+                  className="pt-check-card"
+                  onClick={() => selectCard(checkCard)}
+                  aria-pressed={selected.includes(checkCard.key)}
+                  aria-label={`${selected.includes(checkCard.key) ? "Deselect" : "Select"} checked card: ${checkEntry?.card?.name ?? "Revealed card"}`}
+                  title="Card details"
+                >
+                  {checkEntry?.card && (
+                    <CardArtwork
+                      card={checkEntry.card}
+                      printing={checkEntry.printing}
+                    />
+                  )}
+                  <span className="pt-check-info">
+                    <small>
+                      {session.check.kind === "drive"
+                        ? "Drive check"
+                        : "Damage check"}
+                    </small>
+                    <strong>{checkEntry?.card?.name}</strong>
+                    <small>
+                      {checkEntry?.card?.trigger_type ||
+                        (checkEntry?.card?.card_type
+                          .toLowerCase()
+                          .includes("trigger")
+                          ? "Trigger unit"
+                          : "No trigger")}{" "}
+                      · effects manual
+                    </small>
+                  </span>
+                </button>
+              )}
               <button
                 type="button"
                 className="cinema-button"
@@ -587,7 +752,27 @@ export function HandTable({ version, copies }: Props) {
             aria-label="Playmat"
           >
             <div className="pt-mat">
-              {resourceZone("damage")}
+              <div className="pt-resource-rail" aria-label="Resources">
+                {resourceZone("damage")}
+                {resourceZone("soul")}
+                {ruleContext && (
+                  <CrestZone
+                    context={ruleContext}
+                    disabled={!playing || setup}
+                    selected={selected}
+                    draggedKeys={drag?.keys ?? []}
+                    dropClassName={dropClass("crest")}
+                    onInspect={selectCard}
+                    onToggle={(crest) => apply(toggleCrest(ruleContext, crest))}
+                    onEnergy={(delta) =>
+                      apply(changeEnergy(session!, delta, energyMax), false)
+                    }
+                    onDragStart={(event, card) =>
+                      start(event, dragKeys(card), card.faceDown)
+                    }
+                  />
+                )}
+              </div>
               <div className="pt-field">
                 {zoneButton("guardian")}
                 {CIRCLES.map(zoneButton)}
@@ -595,11 +780,24 @@ export function HandTable({ version, copies }: Props) {
               <div className="pt-side">
                 {(["ride", "deck", "drop", "reveal"] as Zone[]).map(zoneButton)}
               </div>
-              {resourceZone("soul")}
+              {ruleContext && showGZone && (
+                <GZoneTracker
+                  context={ruleContext}
+                  disabled={!playing || setup}
+                  selected={selected}
+                  draggedKeys={drag?.keys ?? []}
+                  dropClassName={dropClass("g")}
+                  onOpen={() => openZone("g")}
+                  onSelect={selectCard}
+                  onDragStart={(event, card) =>
+                    start(event, dragKeys(card), card.faceDown)
+                  }
+                />
+              )}
               <div className="pt-aux">
-                {(
-                  ["crest", "order", "bind", "g", "token", "reserve"] as Zone[]
-                ).map(zoneButton)}
+                {(["order", "bind", "token", "reserve"] as Zone[]).map(
+                  zoneButton,
+                )}
               </div>
             </div>
           </div>
@@ -627,7 +825,7 @@ export function HandTable({ version, copies }: Props) {
                 }
                 onClick={() => {
                   apply(beginCheck(session!, "drive", driveAttacker?.card.key));
-                  setInspected("reveal");
+                  openZone("reveal");
                 }}
                 title={
                   driveAttackerName
@@ -644,12 +842,13 @@ export function HandTable({ version, copies }: Props) {
                 type="button"
                 className="hand-button"
                 disabled={
-                  !drawable || Boolean(session?.check) ||
+                  !drawable ||
+                  Boolean(session?.check) ||
                   Boolean(session?.rules.pending.length)
                 }
                 onClick={() => {
                   apply(beginCheck(session!, "damage"));
-                  setInspected("reveal");
+                  openZone("reveal");
                 }}
               >
                 Damage check
@@ -660,7 +859,7 @@ export function HandTable({ version, copies }: Props) {
                 disabled={!drawable}
                 onClick={() => {
                   apply(takeTop(session!, "reveal"));
-                  setInspected("reveal");
+                  openZone("reveal");
                 }}
               >
                 <Eye size={14} />
@@ -676,6 +875,16 @@ export function HandTable({ version, copies }: Props) {
                 Shuffle deck
               </button>
             </div>
+            {playing && (
+              <PowerControls
+                session={session!}
+                selected={selected}
+                disabled={setup}
+                onApply={(effect) =>
+                  apply(applyPowerEffect(session!, selected, effect), false)
+                }
+              />
+            )}
           </div>
           <div className="pt-hand-header">
             <span>
@@ -715,7 +924,6 @@ export function HandTable({ version, copies }: Props) {
           className={`pt-inspector ${LARGE_PILES.includes(inspected) ? "is-browsing-pile" : ""}`}
           aria-label="Zone inspector"
         >
-          {!inspectingUnit && selectedCardDetails}
           <div className="pt-inspector-browser">
             <div className="pt-inspector-header">
               <label className="sr-only" htmlFor="pt-zone-select">
@@ -730,9 +938,12 @@ export function HandTable({ version, copies }: Props) {
                   setQuery("");
                 }}
               >
-                {(Object.keys(ZONES) as Zone[]).map((zone) => (
+                {inspectedZones.map((zone) => (
                   <option key={zone} value={zone}>
-                    {ZONES[zone]} · {session?.zones[zone].length ?? 0}
+                    {ZONES[zone]} ·{" "}
+                    {zone === "soul" && session
+                      ? soulCards(session).length
+                      : (session?.zones[zone].length ?? 0)}
                   </option>
                 ))}
               </select>
@@ -769,8 +980,8 @@ export function HandTable({ version, copies }: Props) {
             )}
             <div
               key={inspected}
-              className={`pt-zone-list ${dropClass(inspected)}`}
-              data-drop-zone={inspected}
+              className={`pt-zone-list ${inspected === "g" ? "" : dropClass(inspected)}`}
+              data-drop-zone={inspected === "g" ? undefined : inspected}
               data-drag-scroll
               role="group"
               aria-label={`${ZONES[inspected]} cards`}
@@ -786,20 +997,62 @@ export function HandTable({ version, copies }: Props) {
               )}
             </div>
           </div>
-          {/* Keep a unit's click target above details so it cannot move between clicks. */}
-          {inspectingUnit && selectedCardDetails}
+          {!compactInspector && selectedCardDetails}
         </aside>
       </div>
+      {compactInspector && inspectorOpen && selectedCardDetails && !setup && (
+        <ModalDialog
+          title={focusedEntry?.card?.name ?? "Card details"}
+          variant="drawer"
+          className="pt-card-drawer"
+          onClose={() => setInspectorOpen(false)}
+        >
+          {selectedCardDetails}
+        </ModalDialog>
+      )}
       {selected.length > 0 && !setup && (
         <SelectedCardActions
           selection={selection}
+          zones={moveZones}
           playing={playing}
           canAttack={Boolean(
             session &&
-              selectedAttacker &&
-              canAttack(session, selectedAttacker.key),
+            selectedAttacker &&
+            canAttack(session, selectedAttacker.key),
           )}
           onAttack={attackSelectedCard}
+          gUnitSelection={gUnitSelection}
+          stridingVanguard={stridingVanguardSelected}
+          canReturnStride={Boolean(
+            ruleContext &&
+            stridingVanguardSelected &&
+            canDropInGZone(ruleContext, selected),
+          )}
+          canDropToGZone={canDropOnZone(selected, "g")}
+          strideTargetName={
+            strideCandidate
+              ? (entries.get(strideCandidate.entryId)?.card?.name ?? "G unit")
+              : undefined
+          }
+          canStride={Boolean(
+            ruleContext &&
+            strideCandidate &&
+            canStride(ruleContext, strideCandidate.key),
+          )}
+          canFaceUpGUnits={Boolean(
+            ruleContext && canTurnFaceUpGUnits(ruleContext, selected),
+          )}
+          onStride={() => {
+            if (!ruleContext || !strideCandidate) return;
+            const next = stride(ruleContext, strideCandidate.key);
+            if (next === session) return;
+            apply(next);
+            openZone("g");
+          }}
+          onFaceUpGUnits={() => {
+            if (ruleContext)
+              apply(turnFaceUpGUnits(ruleContext, selected));
+          }}
           destination={destination}
           onClear={() => setSelected([])}
           onDestinationChange={setDestination}
@@ -829,7 +1082,9 @@ export function HandTable({ version, copies }: Props) {
       <p role="status" className="sr-only">
         {announcement}
       </p>
-      {drag && <CardDragPreview drag={drag} entry={dragEntry} />}
+      {drag && (
+        <CardDragPreview drag={drag} entry={dragEntry} hint={getDragActionHint()} />
+      )}
     </section>
   );
 }

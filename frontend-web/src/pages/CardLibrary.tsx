@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ChevronDown,
   ChevronLeft,
@@ -20,12 +27,8 @@ import {
 } from "../api/cards";
 import { CardCreationTools } from "../components/cards/CardCreationTools";
 import { CardArtwork } from "../components/cards/CardArtwork";
-import {
-  artworkFromPrinting,
-  artworkPayload,
-} from "../components/cards/cardArtworkState";
-import { CardAbilityText } from "../components/cards/CardAbilityText";
-import { normalizeCardText } from "../utils/cardText";
+import { CardInspector } from "../components/cards/CardInspector";
+import { artworkPayload } from "../components/cards/cardArtworkState";
 import { CardPrintingForm } from "../components/cards/CardPrintingForm";
 import {
   clearCardSetSelection,
@@ -40,6 +43,7 @@ import {
   EMPTY_MANUAL_CARD_FORM,
   DEFAULT_CARD_FORM_OPTIONS,
   cardAnalysisToManualForm,
+  cardToManualForm,
   manualCardFormIsComplete,
   type ManualCardFormState,
   withSavedCardSet,
@@ -47,6 +51,8 @@ import {
 import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
 import { WorkspaceSectionHeader } from "../components/layout/WorkspaceSectionHeader";
+import { usePersistentState } from "../hooks/usePersistentState";
+import { readScrollPosition, writeScrollPosition } from "../utils/viewState";
 import type {
   Card,
   CardFormOptions,
@@ -58,8 +64,11 @@ import type {
 } from "../types/api";
 import {
   cardNationToApiValue,
-  cardNationToFormValue,
+  cardGradeBadge,
+  cardGradeToApiValue,
+  CREST_CARD_TYPES,
   formatCardNation,
+  isCrestCard,
   NATIONLESS_CARD_OPTION,
 } from "../utils/cards";
 
@@ -82,6 +91,7 @@ const CARD_TYPE_OPTIONS = [
   "Normal Order",
   "Blitz Order",
   "Set Order",
+  ...CREST_CARD_TYPES,
 ];
 
 const DEFAULT_CATALOG = {
@@ -104,16 +114,6 @@ const EMPTY_PAGINATION: PaginatedCardsResponse["pagination"] = {
   has_prev: false,
 };
 
-function primaryPrintingLabel(card: Card) {
-  const printing = card.primary_printing;
-
-  if (!printing) return "No primary printing";
-
-  return [printing.set_code, printing.card_number, printing.rarity]
-    .filter(Boolean)
-    .join(" · ");
-}
-
 function printingLabel(printing: CardPrinting) {
   return [printing.set_code, printing.card_number, printing.rarity]
     .filter(Boolean)
@@ -122,7 +122,7 @@ function printingLabel(printing: CardPrinting) {
 
 function cardMeta(card: Card) {
   const chunks = [
-    card.grade !== null ? `Grade ${card.grade}` : null,
+    !isCrestCard(card) && card.grade !== null ? `Grade ${card.grade}` : null,
     formatCardNation(card.nation),
     card.card_type,
   ].filter(Boolean);
@@ -134,48 +134,42 @@ function printingCount(card: Card) {
   return card.printings?.length ?? 0;
 }
 
-function cardToManualForm(card: Card): ManualCardFormState {
-  const printing = card.primary_printing;
-
-  return {
-    name: card.name,
-    grade: card.grade !== null ? String(card.grade) : "",
-    nation: cardNationToFormValue(card.nation),
-    card_type: card.card_type,
-    skill_text: normalizeCardText(card.skill_text),
-    artwork: artworkFromPrinting(printing),
-    set_selection: printing?.set_code ?? "",
-    set_code: printing?.set_code ?? "",
-    set_name: printing?.set_name ?? "",
-    card_number: printing?.card_number ?? "",
-    rarity: printing?.rarity ?? "",
-  };
-}
-
 export function CardLibrary() {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const loadRequestRef = useRef(0);
   const loadControllerRef = useRef<AbortController | null>(null);
 
   const [cards, setCards] = useState<Card[]>([]);
-  const [expandedCardId, setExpandedCardId] = useState<number | null>(null);
-  const [query, setQuery] = useState("");
-  const [catalog, setCatalog] = useState(DEFAULT_CATALOG);
+  const [inspectedCard, setInspectedCard] = useState<Card | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [query, setQuery] = usePersistentState("cardfight.cards.query", "");
+  const [catalog, setCatalog] = usePersistentState(
+    "cardfight.cards.catalog",
+    DEFAULT_CATALOG,
+  );
+  const initialLoadRef = useRef(true);
+  const scrollKey = `cardfight.scroll.cards:${JSON.stringify(catalog)}`;
   const catalogRef = useRef(catalog);
   const displayedCatalogRef = useRef<typeof DEFAULT_CATALOG | null>(null);
   const { nation, grade, card_type: cardType, set_code: setCode } = catalog;
 
-  const [editingCard, setEditingCard] = useState<Card | null>(null);
-  const [addingPrintingCard, setAddingPrintingCard] = useState<Card | null>(
+  const [editingCard, setEditingCard] = usePersistentState<Card | null>(
+    "cardfight.cards.editing",
     null,
   );
-  const [editForm, setEditForm] = useState<ManualCardFormState>(
+  const [addingPrintingCard, setAddingPrintingCard] =
+    usePersistentState<Card | null>("cardfight.cards.printing-card", null);
+  const [editForm, setEditForm] = usePersistentState<ManualCardFormState>(
+    "cardfight.cards.edit-draft",
     EMPTY_MANUAL_CARD_FORM,
   );
-  const [printingForm, setPrintingForm] = useState<CardPrintingFormState>(
-    EMPTY_CARD_PRINTING_FORM,
-  );
-  const [createForm, setCreateForm] = useState<ManualCardFormState>(
+  const [printingForm, setPrintingForm] =
+    usePersistentState<CardPrintingFormState>(
+      "cardfight.cards.printing-draft",
+      EMPTY_CARD_PRINTING_FORM,
+    );
+  const [createForm, setCreateForm] = usePersistentState<ManualCardFormState>(
+    "cardfight.cards.create-draft",
     EMPTY_MANUAL_CARD_FORM,
   );
   const [cardAnalysis, setCardAnalysis] =
@@ -196,10 +190,10 @@ export function CardLibrary() {
   const toast = useToast();
 
   useEffect(() => {
-    if (!error) return;
+    if (!error || editorOpen || inspectedCard) return;
     toast.error(error);
     setError(null);
-  }, [error, toast]);
+  }, [error, toast, editorOpen, inspectedCard]);
 
   // TanStack Virtual intentionally returns function refs that React Compiler cannot memoize.
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -212,8 +206,7 @@ export function CardLibrary() {
   });
 
   const activeFilterCount = useMemo(() => {
-    return [catalog.q, setCode, nation, grade, cardType].filter(Boolean)
-      .length;
+    return [catalog.q, setCode, nation, grade, cardType].filter(Boolean).length;
   }, [catalog.q, setCode, nation, grade, cardType]);
 
   const searchPending = query.trim() !== catalog.q;
@@ -221,20 +214,41 @@ export function CardLibrary() {
 
   useLayoutEffect(() => {
     if (!loading && !loadFailed && !preservingResults) {
-      // Reset after the new rows mount so virtual measurements cannot restore the old offset.
-      rowVirtualizer.scrollToOffset(0);
+      rowVirtualizer.scrollToOffset(
+        initialLoadRef.current ? readScrollPosition(scrollKey) : 0,
+      );
+      initialLoadRef.current = false;
     }
-  }, [cards, loading, loadFailed, preservingResults, rowVirtualizer]);
+  }, [
+    cards,
+    loading,
+    loadFailed,
+    preservingResults,
+    rowVirtualizer,
+    scrollKey,
+  ]);
+
+  useEffect(() => {
+    const element = parentRef.current;
+    if (!element || showLoading) return;
+    const save = () => writeScrollPosition(scrollKey, element.scrollTop);
+    element.addEventListener("scroll", save, { passive: true });
+    return () => element.removeEventListener("scroll", save);
+  }, [scrollKey, showLoading]);
 
   const firstItem = pagination.total_items
     ? (pagination.page - 1) * pagination.page_size + 1
     : 0;
-  const lastItem = Math.min(pagination.page * pagination.page_size, pagination.total_items);
-  const resultSummary = loading || searchPending
-    ? "Searching the catalog…"
-    : loadFailed
-      ? "Could not load this page. Try refreshing."
-      : `${firstItem}–${lastItem} of ${pagination.total_items.toLocaleString()} ${activeFilterCount ? "matching " : ""}card${pagination.total_items === 1 ? "" : "s"}`;
+  const lastItem = Math.min(
+    pagination.page * pagination.page_size,
+    pagination.total_items,
+  );
+  const resultSummary =
+    loading || searchPending
+      ? "Searching the catalog…"
+      : loadFailed
+        ? "Could not load this page. Try refreshing."
+        : `${firstItem}–${lastItem} of ${pagination.total_items.toLocaleString()} ${activeFilterCount ? "matching " : ""}card${pagination.total_items === 1 ? "" : "s"}`;
 
   function updateCatalog(changes: Partial<typeof DEFAULT_CATALOG>) {
     setCatalog((current) => ({ ...current, ...changes, page: 1 }));
@@ -247,7 +261,7 @@ export function CardLibrary() {
       setCatalog((current) => ({ ...current, q: query.trim(), page: 1 }));
     }, 300);
     return () => window.clearTimeout(timeout);
-  }, [query, searchPending]);
+  }, [query, searchPending, setCatalog]);
 
   const editFormIsComplete = useMemo(() => {
     return manualCardFormIsComplete(editForm);
@@ -262,7 +276,9 @@ export function CardLibrary() {
       .then(setCardFormOptions)
       .catch((err) => {
         setError(
-          err instanceof Error ? err.message : "Failed to load card form options",
+          err instanceof Error
+            ? err.message
+            : "Failed to load card form options",
         );
       });
   }, []);
@@ -290,9 +306,11 @@ export function CardLibrary() {
     setPrintingForm((current) =>
       replaceCardSetSelection(current, previousCode, cardSet),
     );
-    setCatalog((current) => current.set_code === previousCode
-      ? { ...current, set_code: cardSet.code, page: 1 }
-      : current);
+    setCatalog((current) =>
+      current.set_code === previousCode
+        ? { ...current, set_code: cardSet.code, page: 1 }
+        : current,
+    );
   }
 
   function handleSetDeleted(setCode: string) {
@@ -303,9 +321,11 @@ export function CardLibrary() {
     setCreateForm((current) => clearCardSetSelection(current, setCode));
     setEditForm((current) => clearCardSetSelection(current, setCode));
     setPrintingForm((current) => clearCardSetSelection(current, setCode));
-    setCatalog((current) => current.set_code === setCode
-      ? { ...current, set_code: "", page: 1 }
-      : current);
+    setCatalog((current) =>
+      current.set_code === setCode
+        ? { ...current, set_code: "", page: 1 }
+        : current,
+    );
   }
 
   function rememberFormSet(
@@ -320,7 +340,8 @@ export function CardLibrary() {
   const loadCards = useCallback(async ({ preserveScroll = false } = {}) => {
     // A save can finish after the user changes filters. Reload the current view.
     const requestedCatalog = catalogRef.current;
-    const keepResults = preserveScroll && displayedCatalogRef.current === requestedCatalog;
+    const keepResults =
+      preserveScroll && displayedCatalogRef.current === requestedCatalog;
     const requestId = ++loadRequestRef.current;
     loadControllerRef.current?.abort();
     const controller = new AbortController();
@@ -332,7 +353,10 @@ export function CardLibrary() {
     setError(null);
 
     try {
-      const response = await getCardLibraryPage(requestedCatalog, controller.signal);
+      const response = await getCardLibraryPage(
+        requestedCatalog,
+        controller.signal,
+      );
 
       if (requestId === loadRequestRef.current && !controller.signal.aborted) {
         setCards(response.items);
@@ -360,6 +384,7 @@ export function CardLibrary() {
   }, [catalog, loadCards]);
 
   function refreshCards() {
+    initialLoadRef.current = false;
     setQuery("");
     setCatalog((current) => ({ ...current, q: "", page: 1 }));
   }
@@ -383,7 +408,9 @@ export function CardLibrary() {
       const result = await analyzeCardImage(file);
       setCardAnalysis(result);
       applyCardAnalysis(result);
-      toast.success("Card image analyzed. Review the suggested fields before creating it.");
+      toast.success(
+        "Card image analyzed. Review the suggested fields before creating it.",
+      );
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to analyze card image",
@@ -410,7 +437,7 @@ export function CardLibrary() {
     try {
       const created = await createCard({
         name: createForm.name,
-        grade: createForm.grade,
+        grade: cardGradeToApiValue(createForm),
         nation: cardNationToApiValue(createForm.nation),
         card_type: createForm.card_type,
         skill_text: createForm.skill_text,
@@ -438,36 +465,76 @@ export function CardLibrary() {
 
   function clearFilters() {
     setQuery("");
-    updateCatalog({ q: "", nation: "", grade: "", card_type: "", set_code: "" });
+    updateCatalog({
+      q: "",
+      nation: "",
+      grade: "",
+      card_type: "",
+      set_code: "",
+    });
   }
 
   function startEditingCard(card: Card) {
+    if (!canReplaceEditor(card.id, "edit")) return;
+    if (editingCard?.id !== card.id) setEditForm(cardToManualForm(card));
     setAddingPrintingCard(null);
     setPrintingForm(EMPTY_CARD_PRINTING_FORM);
     setEditingCard(card);
-    setEditForm(cardToManualForm(card));
+    setInspectedCard(null);
+    setEditorOpen(true);
     setError(null);
   }
 
   function cancelEditingCard() {
+    setEditorOpen(false);
     setEditingCard(null);
     setEditForm(EMPTY_MANUAL_CARD_FORM);
     setError(null);
   }
 
   function startAddingPrinting(card: Card) {
+    if (!canReplaceEditor(card.id, "printing")) return;
+    if (addingPrintingCard?.id !== card.id)
+      setPrintingForm(EMPTY_CARD_PRINTING_FORM);
     setEditingCard(null);
     setEditForm(EMPTY_MANUAL_CARD_FORM);
     setAddingPrintingCard(card);
-    setPrintingForm(EMPTY_CARD_PRINTING_FORM);
+    setInspectedCard(null);
+    setEditorOpen(true);
     setError(null);
   }
 
   function cancelAddingPrinting() {
+    setEditorOpen(false);
     setAddingPrintingCard(null);
     setPrintingForm(EMPTY_CARD_PRINTING_FORM);
     setError(null);
   }
+
+  function canReplaceEditor(cardId: number, mode: "edit" | "printing") {
+    if (
+      (mode === "edit" && editingCard?.id === cardId) ||
+      (mode === "printing" && addingPrintingCard?.id === cardId)
+    )
+      return true;
+    const dirty = editingCard
+      ? JSON.stringify(editForm) !==
+        JSON.stringify(cardToManualForm(editingCard))
+      : addingPrintingCard &&
+        JSON.stringify(printingForm) !==
+          JSON.stringify(EMPTY_CARD_PRINTING_FORM);
+    return !dirty || window.confirm("Discard the unfinished card edit?");
+  }
+
+  function closeInspector() {
+    if (savingEdit || savingPrinting) return;
+    // Closing the drawer keeps its draft; Cancel explicitly discards it.
+    setInspectedCard(null);
+    setEditorOpen(false);
+  }
+
+  const inspectorCard =
+    inspectedCard ?? (editorOpen ? (editingCard ?? addingPrintingCard) : null);
 
   async function saveNewPrinting() {
     if (!addingPrintingCard) return;
@@ -513,7 +580,7 @@ export function CardLibrary() {
     try {
       const saved = await updateCard(editingCard.id, {
         name: editForm.name,
-        grade: editForm.grade,
+        grade: cardGradeToApiValue(editForm),
         nation: cardNationToApiValue(editForm.nation),
         card_type: editForm.card_type,
         skill_text: editForm.skill_text,
@@ -542,14 +609,9 @@ export function CardLibrary() {
 
   return (
     <div className="min-w-0">
-      <PageHeader
-          title="Card Library"
-      />
+      <PageHeader title="Card Library" />
 
-      <details
-        data-anime="motion-panel"
-        className="workspace-panel group mb-4"
-      >
+      <details data-anime="motion-panel" className="workspace-panel group mb-4">
         <summary className="cursor-pointer list-none select-none [&::-webkit-details-marker]:hidden">
           <WorkspaceSectionHeader
             title="Add cards"
@@ -580,129 +642,152 @@ export function CardLibrary() {
         </div>
       </details>
 
-      <section
-        data-anime="motion-panel"
-        className="workspace-panel min-w-0"
-      >
+      <section data-anime="motion-panel" className="workspace-panel min-w-0">
         <WorkspaceSectionHeader
           title="Catalog"
           description={`${resultSummary}${activeFilterCount ? ` · ${activeFilterCount} active filter${activeFilterCount === 1 ? "" : "s"}` : ""}`}
           actions={
-          <button
-            type="button"
-            onClick={refreshCards}
-            disabled={loading}
-            className="workspace-button inline-flex items-center gap-2 border border-white/10 bg-white/[0.05] px-3 text-xs font-bold text-slate-300 transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-50"
-            title="Refresh card records"
-            aria-label="Refresh card records"
-          >
-            <RefreshCcw className="h-4 w-4" />
-            <span className="hidden sm:inline">Refresh</span>
-          </button>
+            <div className="flex gap-2">
+              {(editingCard || addingPrintingCard) && (
+                <button
+                  type="button"
+                  className="workspace-button"
+                  onClick={() => {
+                    setInspectedCard(null);
+                    setEditorOpen(true);
+                  }}
+                >
+                  Resume edit
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={refreshCards}
+                disabled={loading}
+                className="workspace-button inline-flex items-center gap-2 border border-white/10 bg-white/[0.05] px-3 text-xs font-bold text-slate-300 transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-50"
+                title="Refresh card records"
+                aria-label="Refresh card records"
+              >
+                <RefreshCcw className="h-4 w-4" />
+                <span className="hidden sm:inline">Refresh</span>
+              </button>
+            </div>
           }
         />
 
         <div className="workspace-inset mt-4 p-3 sm:p-4">
           <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2">
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                applySearch();
-              }
-            }}
-            placeholder="Search name, set, number, rarity, skill..."
-            title="Search card records"
-            className="workspace-control col-span-3 min-w-0 placeholder:text-slate-600 sm:col-span-1"
-          />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  applySearch();
+                }
+              }}
+              placeholder="Search name, set, number, rarity, skill..."
+              title="Search card records"
+              className="workspace-control col-span-3 min-w-0 placeholder:text-slate-600 sm:col-span-1"
+            />
 
-          <button
-            type="button"
-            onClick={applySearch}
-            disabled={loading}
-            className="workspace-button col-span-2 inline-flex items-center justify-center gap-2 border border-cyan-300/20 bg-cyan-300/10 px-4 text-xs font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-1"
-            title="Apply filters"
-          >
-            <Search className="h-4 w-4" />
-            Search
-          </button>
+            <button
+              type="button"
+              onClick={applySearch}
+              disabled={loading}
+              className="workspace-button col-span-2 inline-flex items-center justify-center gap-2 border border-cyan-300/20 bg-cyan-300/10 px-4 text-xs font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-1"
+              title="Apply filters"
+            >
+              <Search className="h-4 w-4" />
+              Search
+            </button>
 
-          <button
-            type="button"
-            onClick={clearFilters}
-            disabled={!activeFilterCount && !query.trim()}
-            className="workspace-button inline-flex items-center justify-center border border-white/10 bg-white/[0.035] px-3 text-xs font-bold text-slate-300 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
-            title="Clear all filters"
-          >
-            Clear
-          </button>
+            <button
+              type="button"
+              onClick={clearFilters}
+              disabled={!activeFilterCount && !query.trim()}
+              className="workspace-button inline-flex items-center justify-center border border-white/10 bg-white/[0.035] px-3 text-xs font-bold text-slate-300 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+              title="Clear all filters"
+            >
+              Clear
+            </button>
           </div>
 
           <div className="mt-2 grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,0.65fr)_minmax(0,1fr)]">
-          <select
-            value={setCode}
-            onChange={(event) => updateCatalog({ set_code: event.target.value })}
-            title="Filter by card set"
-            className="workspace-control w-full min-w-0"
-          >
-            <option value="">All card sets</option>
-            {cardFormOptions.sets.map((option) => (
-              <option key={option.code} value={option.code}>
-                {option.code} — {option.name}
+            <select
+              value={setCode}
+              onChange={(event) =>
+                updateCatalog({ set_code: event.target.value })
+              }
+              title="Filter by card set"
+              className="workspace-control w-full min-w-0"
+            >
+              <option value="">All card sets</option>
+              {cardFormOptions.sets.map((option) => (
+                <option key={option.code} value={option.code}>
+                  {option.code} — {option.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={nation}
+              onChange={(event) =>
+                updateCatalog({ nation: event.target.value })
+              }
+              title="Filter by nation"
+              className="workspace-control w-full min-w-0"
+            >
+              {NATION_OPTIONS.map((option) => (
+                <option key={option || "all"} value={option}>
+                  {option || "All nations"}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={grade}
+              disabled={isCrestCard(cardType)}
+              onChange={(event) => updateCatalog({ grade: event.target.value })}
+              title="Filter by grade"
+              className="workspace-control w-full min-w-0"
+            >
+              <option value="">
+                {isCrestCard(cardType) ? "No grade" : "All grades"}
               </option>
-            ))}
-          </select>
+              <option value="0">Grade 0</option>
+              <option value="1">Grade 1</option>
+              <option value="2">Grade 2</option>
+              <option value="3">Grade 3</option>
+              <option value="4">Grade 4</option>
+            </select>
 
-          <select
-            value={nation}
-            onChange={(event) => updateCatalog({ nation: event.target.value })}
-            title="Filter by nation"
-            className="workspace-control w-full min-w-0"
-          >
-            {NATION_OPTIONS.map((option) => (
-              <option key={option || "all"} value={option}>
-                {option || "All nations"}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={grade}
-            onChange={(event) => updateCatalog({ grade: event.target.value })}
-            title="Filter by grade"
-            className="workspace-control w-full min-w-0"
-          >
-            <option value="">All grades</option>
-            <option value="0">Grade 0</option>
-            <option value="1">Grade 1</option>
-            <option value="2">Grade 2</option>
-            <option value="3">Grade 3</option>
-            <option value="4">Grade 4</option>
-          </select>
-
-          <select
-            value={cardType}
-            onChange={(event) => updateCatalog({ card_type: event.target.value })}
-            title="Filter by card type"
-            className="workspace-control w-full min-w-0"
-          >
-            {CARD_TYPE_OPTIONS.map((option) => (
-              <option key={option || "all"} value={option}>
-                {option || "All types"}
-              </option>
-            ))}
-          </select>
-
+            <select
+              value={cardType}
+              onChange={(event) =>
+                updateCatalog({
+                  card_type: event.target.value,
+                  ...(isCrestCard(event.target.value) ? { grade: "" } : {}),
+                })
+              }
+              title="Filter by card type"
+              className="workspace-control w-full min-w-0"
+            >
+              {CARD_TYPE_OPTIONS.map((option) => (
+                <option key={option || "all"} value={option}>
+                  {option || "All types"}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-
           <div className="flex flex-wrap items-center gap-2">
             <select
               value={catalog.sort}
-              onChange={(event) => updateCatalog({ sort: event.target.value as CardLibrarySort })}
+              onChange={(event) =>
+                updateCatalog({ sort: event.target.value as CardLibrarySort })
+              }
               aria-label="Sort card records"
               className="workspace-control min-w-0 text-xs"
             >
@@ -715,71 +800,20 @@ export function CardLibrary() {
             </select>
             <select
               value={catalog.page_size}
-              onChange={(event) => updateCatalog({ page_size: Number(event.target.value) })}
+              onChange={(event) =>
+                updateCatalog({ page_size: Number(event.target.value) })
+              }
               aria-label="Cards per page"
               className="workspace-control min-w-0 text-xs"
             >
-              {[24, 48, 96].map((size) => <option key={size} value={size}>{size} per page</option>)}
+              {[24, 48, 96].map((size) => (
+                <option key={size} value={size}>
+                  {size} per page
+                </option>
+              ))}
             </select>
           </div>
         </div>
-
-        {addingPrintingCard ? (
-          <div className="mt-4 rounded-2xl border border-violet-300/20 bg-violet-300/[0.06] p-3 sm:p-4">
-            <WorkspaceSectionHeader
-              title={`New printing · ${addingPrintingCard.name}`}
-              className="mb-3"
-            />
-
-            {addingPrintingCard.printings.length ? (
-              <div className="mb-3 flex flex-wrap gap-1.5">
-                {addingPrintingCard.printings.map((printing) => (
-                  <span
-                    key={printing.id}
-                    className="max-w-full break-words rounded-lg border border-white/10 bg-black/20 px-2 py-1 text-[0.65rem] font-bold text-slate-400"
-                  >
-                    {printingLabel(printing) || `Printing ${printing.id}`}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-
-            <CardPrintingForm
-              key={addingPrintingCard.id}
-              value={printingForm}
-              options={cardFormOptions}
-              disabled={savingPrinting}
-              onChange={setPrintingForm}
-              onSubmit={saveNewPrinting}
-              onCancel={cancelAddingPrinting}
-              onSetSaved={handleSetSaved}
-            />
-          </div>
-        ) : null}
-
-        {editingCard ? (
-          <div className="mt-4 rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.06] p-3 sm:p-4">
-            <WorkspaceSectionHeader
-              title={`Edit · ${editingCard.name}`} description="Updates this card in every deck."
-            />
-            <p className="mb-3 mt-2 break-words text-xs text-slate-500">
-              {primaryPrintingLabel(editingCard)}
-            </p>
-
-            <ManualCardForm
-              key={editingCard.id}
-              value={editForm}
-              mode="edit"
-              onChange={setEditForm}
-              onSubmit={saveEditingCard}
-              onCancelEdit={cancelEditingCard}
-              disabled={savingEdit}
-              canSubmit={editFormIsComplete}
-              options={cardFormOptions}
-              onSetSaved={handleSetSaved}
-            />
-          </div>
-        ) : null}
 
         <div
           ref={parentRef}
@@ -787,9 +821,10 @@ export function CardLibrary() {
           aria-label="Card search results"
           className="workspace-inset mt-4 overflow-auto p-1.5"
           style={{
-            height: cards.length && !showLoading && !loadFailed
-              ? `min(42rem, 72dvh, ${rowVirtualizer.getTotalSize() + 12}px)`
-              : "14rem",
+            height:
+              cards.length && !showLoading && !loadFailed
+                ? `min(42rem, 72dvh, ${rowVirtualizer.getTotalSize() + 12}px)`
+                : "14rem",
           }}
         >
           {showLoading ? (
@@ -806,7 +841,6 @@ export function CardLibrary() {
                 <p className="text-base font-black text-slate-300">
                   No cards found.
                 </p>
-
               </div>
             </div>
           ) : (
@@ -835,19 +869,21 @@ export function CardLibrary() {
                         <div className="min-w-0">
                           <div className="flex min-w-0 items-start gap-2">
                             <span className="shrink-0 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-2 py-1 text-[0.65rem] font-black text-cyan-100">
-                              {card.grade !== null ? `G${card.grade}` : "G?"}
+                              {cardGradeBadge(card)}
                             </span>
 
                             <h4 className="min-w-0 break-words text-sm font-black leading-6 text-slate-50">
                               <button
                                 type="button"
                                 className="catalog-card-title"
-                                aria-expanded={expandedCardId === card.id}
-                                aria-controls={`card-details-${card.id}`}
-                                onClick={() => setExpandedCardId(expandedCardId === card.id ? null : card.id)}
+                                aria-haspopup="dialog"
+                                onClick={() => setInspectedCard(card)}
                               >
                                 <span>{card.name}</span>
-                                <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                                <ChevronDown
+                                  aria-hidden="true"
+                                  className="h-3.5 w-3.5 shrink-0"
+                                />
                               </button>
                             </h4>
                           </div>
@@ -899,20 +935,6 @@ export function CardLibrary() {
                             Edit
                           </button>
                         </div>
-                        <div
-                          id={`card-details-${card.id}`}
-                          hidden={expandedCardId !== card.id}
-                          className="catalog-card-details lg:col-span-2"
-                        >
-                          {expandedCardId === card.id && (
-                            <div className="catalog-card-details-artwork">
-                              {card.printings.some((printing) => printing.image_url) && (
-                                <CardArtwork card={card} detail />
-                              )}
-                              <CardAbilityText text={card.skill_text} />
-                            </div>
-                          )}
-                        </div>
                       </div>
                     </div>
                   </article>
@@ -921,26 +943,47 @@ export function CardLibrary() {
             </div>
           )}
         </div>
-        <nav aria-label="Card catalog pages" className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3">
-          <p role="status" className="text-xs text-slate-400">{resultSummary}</p>
+        <nav
+          aria-label="Card catalog pages"
+          className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3"
+        >
+          <p role="status" className="text-xs text-slate-400">
+            {resultSummary}
+          </p>
           <div className="flex items-center gap-3">
             <button
               type="button"
               aria-label="Previous card page"
-              disabled={loading || searchPending || loadFailed || !pagination.has_prev}
-              onClick={() => setCatalog((current) => ({ ...current, page: pagination.page - 1 }))}
+              disabled={
+                loading || searchPending || loadFailed || !pagination.has_prev
+              }
+              onClick={() =>
+                setCatalog((current) => ({
+                  ...current,
+                  page: pagination.page - 1,
+                }))
+              }
               className="workspace-button inline-flex items-center gap-1 border border-white/10 bg-white/[0.05] px-3 text-xs text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronLeft className="h-4 w-4" /> Previous
             </button>
             <span className="text-xs tabular-nums text-slate-400">
-              {loading || searchPending || loadFailed ? "Page …" : `Page ${pagination.page} of ${pagination.total_pages}`}
+              {loading || searchPending || loadFailed
+                ? "Page …"
+                : `Page ${pagination.page} of ${pagination.total_pages}`}
             </span>
             <button
               type="button"
               aria-label="Next card page"
-              disabled={loading || searchPending || loadFailed || !pagination.has_next}
-              onClick={() => setCatalog((current) => ({ ...current, page: pagination.page + 1 }))}
+              disabled={
+                loading || searchPending || loadFailed || !pagination.has_next
+              }
+              onClick={() =>
+                setCatalog((current) => ({
+                  ...current,
+                  page: pagination.page + 1,
+                }))
+              }
               className="workspace-button inline-flex items-center gap-1 border border-white/10 bg-white/[0.05] px-3 text-xs text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Next <ChevronRight className="h-4 w-4" />
@@ -948,6 +991,70 @@ export function CardLibrary() {
           </div>
         </nav>
       </section>
+      {inspectorCard && (
+        <CardInspector
+          key={inspectorCard.id}
+          card={inspectorCard}
+          onClose={closeInspector}
+          editingPrimary={editorOpen && Boolean(editingCard)}
+          footer={
+            !editorOpen ? (
+              <>
+                <button
+                  type="button"
+                  className="workspace-button"
+                  onClick={() => startAddingPrinting(inspectorCard)}
+                >
+                  <Layers3 size={16} /> Add printing
+                </button>
+                <button
+                  type="button"
+                  className="workspace-button"
+                  onClick={() => startEditingCard(inspectorCard)}
+                >
+                  <Pencil size={16} /> Edit
+                </button>
+              </>
+            ) : undefined
+          }
+        >
+          {error && (
+            <p
+              role="alert"
+              className="mb-3 rounded-xl border border-rose-300/30 bg-rose-300/10 p-3 text-sm text-rose-100"
+            >
+              {error}
+            </p>
+          )}
+          {editorOpen && editingCard && (
+            <ManualCardForm
+              key={editingCard.id}
+              value={editForm}
+              mode="edit"
+              onChange={setEditForm}
+              onSubmit={saveEditingCard}
+              onCancelEdit={cancelEditingCard}
+              disabled={savingEdit}
+              canSubmit={editFormIsComplete}
+              options={cardFormOptions}
+              onSetSaved={handleSetSaved}
+            />
+          )}
+          {editorOpen && addingPrintingCard && (
+            <CardPrintingForm
+              key={addingPrintingCard.id}
+              cardType={addingPrintingCard.card_type}
+              value={printingForm}
+              options={cardFormOptions}
+              disabled={savingPrinting}
+              onChange={setPrintingForm}
+              onSubmit={saveNewPrinting}
+              onCancel={cancelAddingPrinting}
+              onSetSaved={handleSetSaved}
+            />
+          )}
+        </CardInspector>
+      )}
     </div>
   );
 }

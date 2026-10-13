@@ -3,7 +3,11 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 from backend.database import db
 from backend.models import CardImage
-from backend.services.card_images import prepare_image, serialize_image
+from backend.services.card_images import (
+    prepare_existing_image,
+    prepare_image,
+    serialize_image,
+)
 from backend.services.image_processing import MAX_IMAGE_BYTES, read_image_upload
 from backend.services.remote_images import download_image
 
@@ -19,13 +23,24 @@ def import_image():
             payload = request.get_json(silent=True)
             if not isinstance(payload, dict):
                 raise ValueError("Enter an image URL or upload a file.")
-            data = download_image(payload.get("url"))
+            card_type = payload.get("card_type")
+            if card_type is not None and not isinstance(card_type, str):
+                raise ValueError("Card type must be text")
+            if "image_id" in payload:
+                if "url" in payload:
+                    raise ValueError("Choose one image source")
+                image = prepare_existing_image(payload.get("image_id"), card_type)
+            else:
+                data = download_image(payload.get("url"))
+                image = prepare_image(data, card_type)
         else:
             data = read_image_upload(request.files.get("image"))
-        image = prepare_image(data)
+            image = prepare_image(data, request.form.get("card_type"))
     except RequestEntityTooLarge:
+        db.session.rollback()
         return jsonify(error="Image file is too large. Maximum size is 8 MB."), 413
     except ValueError:
+        db.session.rollback()
         return jsonify(error="Invalid image input."), 400
     return jsonify(serialize_image(image)), 201
 

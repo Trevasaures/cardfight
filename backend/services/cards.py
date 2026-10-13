@@ -11,7 +11,8 @@ from sqlalchemy import or_
 
 from backend.database import db
 from backend.models import Card, CardPrinting, DeckCard
-from backend.services.card_images import checked_image_id, touch_images
+from backend.services.card_images import checked_image_id, normalize_image_id, touch_images
+from backend.services.card_types import CREST_CARD_TYPES, crest_card_type
 from backend.services.card_set_names import (
     list_set_options,
     lookup_set_name,
@@ -37,6 +38,8 @@ CARD_TYPE_OPTIONS = [
     "Normal Order",
     "Blitz Order",
     "Set Order",
+    "Crest",
+    "Ride Deck Crest",
 ]
 
 CARD_GRADE_OPTIONS = [0, 1, 2, 3, 4]
@@ -119,6 +122,17 @@ def _grade_or_none(value):
     return grade
 
 
+def _grade_for_card_type(value, card_type):
+    # Crests are markers with no printed grade; old form values must not turn
+    # them into units when the user changes the type.
+    if card_type in CREST_CARD_TYPES:
+        return None
+    grade = _grade_or_none(value)
+    if grade is None:
+        raise ValueError("grade is required for cards other than crests")
+    return grade
+
+
 def _validate_grade_change_for_ride_decks(card, next_grade):
     ride_entries = card.deck_entries.filter(DeckCard.zone == "ride").all()
     if not ride_entries:
@@ -156,6 +170,13 @@ def _required_string(payload, field_name):
     return value
 
 
+def _card_type_value(value):
+    cleaned = _clean_string(value)
+    if not cleaned:
+        raise ValueError("card_type is required")
+    return crest_card_type(cleaned) or cleaned
+
+
 def _card_nation_or_none(value):
     nation = _clean_string(value)
 
@@ -184,17 +205,21 @@ def _filter_card_nation(query, value):
 
 
 def _card_payload(payload):
+    card_type = _card_type_value(payload.get("card_type"))
+    crest = card_type in CREST_CARD_TYPES
     return {
         "name": _required_string(payload, "name"),
-        "grade": _grade_or_none(payload.get("grade")),
+        "grade": _grade_for_card_type(payload.get("grade"), card_type),
         "nation": _card_nation_or_none(payload.get("nation")),
-        "card_type": _required_string(payload, "card_type"),
+        "card_type": card_type,
         "clan": _clean_string(payload.get("clan")),
         "race": _clean_string(payload.get("race")),
-        "power": _int_or_none(payload.get("power"), "power"),
-        "shield": _int_or_none(payload.get("shield"), "shield"),
-        "critical": _int_or_none(payload.get("critical"), "critical"),
-        "trigger_type": _clean_string(payload.get("trigger_type")),
+        "power": None if crest else _int_or_none(payload.get("power"), "power"),
+        "shield": None if crest else _int_or_none(payload.get("shield"), "shield"),
+        "critical": (
+            None if crest else _int_or_none(payload.get("critical"), "critical")
+        ),
+        "trigger_type": None if crest else _clean_string(payload.get("trigger_type")),
         "skill_text": _clean_string(payload.get("skill_text")) or "",
         "flavor_text": _clean_string(payload.get("flavor_text")) or "",
         "source": _clean_string(payload.get("source")) or "manual",
@@ -231,7 +256,7 @@ def get_card_form_options():
         if (cleaned := _clean_string(value)) and cleaned.lower() != "none"
     }
     stored_card_types = {
-        cleaned
+        _card_type_value(cleaned)
         for (value,) in db.session.query(Card.card_type).distinct().all()
         if (cleaned := _clean_string(value))
     }
@@ -523,9 +548,16 @@ def create_card(payload):
     card_data = _card_payload(payload)
     printing_data = _find_printing_payload(payload)
 
-    existing_card = Card.query.filter(
+    existing_query = Card.query.filter(
         db.func.lower(Card.name) == card_data["name"].lower()
-    ).first()
+    )
+    # Markers can share the printed name of a unit. Keep printing identity
+    # within the same marker type without weakening normal card deduplication.
+    if card_data["card_type"] in CREST_CARD_TYPES:
+        existing_query = existing_query.filter(Card.card_type == card_data["card_type"])
+    else:
+        existing_query = existing_query.filter(Card.card_type.notin_(CREST_CARD_TYPES))
+    existing_card = existing_query.first()
 
     if existing_card:
         if printing_data:
@@ -544,6 +576,9 @@ def create_card(payload):
             set_code=printing_data.get("set_code"),
             card_number=printing_data.get("card_number"),
             rarity=printing_data.get("rarity"),
+        )
+        printing_data["image_id"] = normalize_image_id(
+            printing_data["image_id"], card_data["card_type"]
         )
 
     card = Card(**card_data)
@@ -569,6 +604,9 @@ def update_card(card_id, payload):
 
     card = get_card_or_raise(card_id)
 
+    next_type = _card_type_value(payload.get("card_type", card.card_type))
+    next_is_crest = next_type in CREST_CARD_TYPES
+
     next_values = {}
 
     for field_name in CARD_FIELDS:
@@ -576,21 +614,60 @@ def update_card(card_id, payload):
             continue
 
         if field_name == "grade":
-            next_values[field_name] = _grade_or_none(payload.get(field_name))
+            # Resolve the final card type below, independent of payload ordering.
+            next_values[field_name] = payload.get(field_name)
         elif field_name in {"power", "shield", "critical"}:
-            next_values[field_name] = _int_or_none(payload.get(field_name), field_name)
+            next_values[field_name] = (
+                None
+                if next_is_crest
+                else _int_or_none(payload.get(field_name), field_name)
+            )
         elif field_name in {"skill_text", "flavor_text"}:
             next_values[field_name] = _clean_string(payload.get(field_name)) or ""
-        elif field_name in {"name", "card_type"}:
+        elif field_name == "card_type":
+            next_values[field_name] = next_type
+        elif field_name == "name":
             next_values[field_name] = _required_string(payload, field_name)
         elif field_name == "nation":
-            next_values[field_name] = _card_nation_or_none(
-                payload.get(field_name)
-            )
+            next_values[field_name] = _card_nation_or_none(payload.get(field_name))
         else:
             next_values[field_name] = _clean_string(payload.get(field_name))
 
     next_name = next_values.get("name", card.name)
+
+    if next_type != card.card_type:
+        next_values["card_type"] = next_type
+    if "grade" in next_values or "card_type" in next_values:
+        next_values["grade"] = _grade_for_card_type(
+            next_values.get("grade", card.grade), next_type
+        )
+    if next_is_crest:
+        for field_name in ("grade", "power", "shield", "critical", "trigger_type"):
+            next_values[field_name] = None
+    if next_type != card.card_type:
+        invalid_entries = card.deck_entries.filter(
+            DeckCard.zone != "crest" if next_is_crest else DeckCard.zone == "crest"
+        ).first()
+        if invalid_entries:
+            raise ValueError(
+                "Remove this card from incompatible deck zones before changing its type"
+            )
+        if next_type == "Ride Deck Crest":
+            for entry in card.deck_entries.all():
+                another_ride_crest = (
+                    DeckCard.query.join(Card)
+                    .filter(
+                        DeckCard.deck_version_id == entry.deck_version_id,
+                        DeckCard.zone == "crest",
+                        DeckCard.card_id != card.id,
+                        Card.card_type == "Ride Deck Crest",
+                    )
+                    .first()
+                )
+                if another_ride_crest:
+                    raise ValueError(
+                        "A deck can include only one Ride Deck Crest; remove the other crest first"
+                    )
 
     if "grade" in next_values:
         _validate_grade_change_for_ride_decks(card, next_values["grade"])
@@ -618,13 +695,33 @@ def update_card(card_id, payload):
             )
             if primary:
                 update_card_printing(
-                    primary.id, printing_payload, commit=False, card_name=next_name
+                    primary.id,
+                    printing_payload,
+                    commit=False,
+                    card_name=next_name,
+                    card_type=next_type,
                 )
             else:
                 add_card_printing(
-                    card.id, printing_payload, commit=False, card_name=next_name
+                    card.id,
+                    printing_payload,
+                    commit=False,
+                    card_name=next_name,
+                    card_type=next_type,
                 )
         except (ValueError, LookupError):
+            db.session.rollback()
+            raise
+
+    if next_is_crest:
+        try:
+            # A text-only save also fixes old linked artwork, across this card's
+            # printings. Other cards sharing the old bytes are never changed.
+            for printing in printings:
+                normalized_id = normalize_image_id(printing.image_id, next_type)
+                touch_images(printing.image_id, normalized_id)
+                printing.image_id = normalized_id
+        except ValueError:
             db.session.rollback()
             raise
 
@@ -635,7 +732,7 @@ def update_card(card_id, payload):
     return card
 
 
-def add_card_printing(card_id, payload, *, commit=True, card_name=None):
+def add_card_printing(card_id, payload, *, commit=True, card_name=None, card_type=None):
     if not isinstance(payload, dict):
         raise ValueError("Request body must be a JSON object")
 
@@ -647,6 +744,9 @@ def add_card_printing(card_id, payload, *, commit=True, card_name=None):
         set_code=printing_data.get("set_code"),
         card_number=printing_data.get("card_number"),
         rarity=printing_data.get("rarity"),
+    )
+    printing_data["image_id"] = normalize_image_id(
+        printing_data["image_id"], card_type or card.card_type
     )
 
     printing = CardPrinting(card_id=card.id, **printing_data)
@@ -663,7 +763,9 @@ def add_card_printing(card_id, payload, *, commit=True, card_name=None):
     return printing
 
 
-def update_card_printing(printing_id, payload, *, commit=True, card_name=None):
+def update_card_printing(
+    printing_id, payload, *, commit=True, card_name=None, card_type=None
+):
     if not isinstance(payload, dict):
         raise ValueError("Request body must be a JSON object")
 
@@ -687,7 +789,9 @@ def update_card_printing(printing_id, payload, *, commit=True, card_name=None):
             continue
 
         if field_name in {"set_code", "card_number", "rarity"}:
-            next_values[field_name] = _normalize_printing_value(payload.get(field_name)) or None
+            next_values[field_name] = (
+                _normalize_printing_value(payload.get(field_name)) or None
+            )
         elif field_name == "image_id":
             next_values[field_name] = checked_image_id(payload.get(field_name))
         elif field_name == "source":
@@ -705,6 +809,10 @@ def update_card_printing(printing_id, payload, *, commit=True, card_name=None):
         card_number=next_values.get("card_number"),
         rarity=next_values.get("rarity"),
         exclude_printing_id=printing.id,
+    )
+
+    next_values["image_id"] = normalize_image_id(
+        next_values["image_id"], card_type or card.card_type
     )
 
     touch_images(printing.image_id, next_values.get("image_id"))

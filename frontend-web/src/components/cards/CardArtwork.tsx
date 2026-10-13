@@ -1,7 +1,8 @@
 import { useState, type CSSProperties } from "react";
-import { Layers3 } from "lucide-react";
+import { Layers3, Shield } from "lucide-react";
 import type { Card, CardPrinting } from "../../types/api";
 import { nationColor } from "../../utils/nations";
+import { cardGradeLabel, isCrestCard } from "../../utils/cards";
 import { apiAssetUrl } from "../../api/client";
 import { ArtworkDialog } from "./ArtworkDialog";
 
@@ -34,7 +35,7 @@ export function CardArtwork({
     ) : null;
   return (
     <div
-      className="catalog-artwork"
+      className={`catalog-artwork${isCrestCard(card) ? " crest-artwork" : ""}`}
       style={{ "--nation-color": nationColor(card.nation) } as CSSProperties}
     >
       {image ? (
@@ -52,14 +53,19 @@ export function CardArtwork({
         )
       ) : (
         <>
-          <Layers3 size={24} strokeWidth={1} aria-hidden="true" />
-          <span>GRADE {card.grade ?? "?"}</span>
+          {isCrestCard(card) ? (
+            <Shield size={24} strokeWidth={1} aria-hidden="true" />
+          ) : (
+            <Layers3 size={24} strokeWidth={1} aria-hidden="true" />
+          )}
+          <span>{cardGradeLabel(card)}</span>
         </>
       )}
       {expanded && source && (
         <ArtworkDialog
           source={source}
           name={card.name}
+          landscape={isCrestCard(card)}
           onClose={() => setExpanded(false)}
         />
       )}

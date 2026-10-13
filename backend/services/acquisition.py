@@ -11,6 +11,7 @@ from backend.models import (
     Deck,
     DeckCard,
     DeckVersion,
+    now_central,
 )
 
 
@@ -116,6 +117,40 @@ def get_acquisition_item_or_raise(item_id):
         raise LookupError("Acquisition plan item not found")
 
     return item
+
+
+def _require_active_plan(plan):
+    if plan.archived_at is not None:
+        raise ValueError("Restore this purchase plan before editing it")
+
+
+def archive_acquisition_plan(plan_id):
+    plan = get_acquisition_plan_or_raise(plan_id)
+    if plan.archived_at is not None:
+        return plan
+
+    items = plan.items.all()
+    targets = [max(item.required_quantity - item.removed_quantity, 0) for item in items]
+    # Incoming copies are not received copies. Check every printing separately
+    # so an overage on one card cannot hide a shortage on another.
+    complete = sum(targets) > 0 and all(
+        item.owned_quantity >= target and item.ordered_quantity == 0
+        for item, target in zip(items, targets)
+    )
+    if not complete:
+        raise ValueError("Receive all planned cards before archiving this plan")
+
+    plan.status = "complete"
+    plan.archived_at = now_central()
+    db.session.commit()
+    return plan
+
+
+def restore_acquisition_plan(plan_id):
+    plan = get_acquisition_plan_or_raise(plan_id)
+    plan.archived_at = None
+    db.session.commit()
+    return plan
 
 
 def list_acquisition_plans():
@@ -265,6 +300,7 @@ def update_acquisition_plan(plan_id, payload):
         raise ValueError("Request body must be a JSON object")
 
     plan = get_acquisition_plan_or_raise(plan_id)
+    _require_active_plan(plan)
 
     if "name" in payload:
         name = _clean_string(payload.get("name"))
@@ -313,6 +349,7 @@ def add_acquisition_item(plan_id, payload):
         raise ValueError("Request body must be a JSON object")
 
     plan = get_acquisition_plan_or_raise(plan_id)
+    _require_active_plan(plan)
     card_id = _int_value(payload.get("card_id"), "card_id")
 
     if card_id is None:
@@ -409,6 +446,7 @@ def update_acquisition_item(item_id, payload):
         raise ValueError("Request body must be a JSON object")
 
     item = get_acquisition_item_or_raise(item_id)
+    _require_active_plan(item.plan)
 
     quantity_fields = {
         "required_quantity": True,
@@ -466,6 +504,7 @@ def receive_acquisition_item(item_id, payload):
         raise ValueError("Request body must be a JSON object")
 
     item = get_acquisition_item_or_raise(item_id)
+    _require_active_plan(item.plan)
     quantity = _int_value(
         payload.get("quantity"),
         "quantity",
@@ -484,7 +523,65 @@ def receive_acquisition_item(item_id, payload):
     return item
 
 
+def batch_acquisition_items(plan_id, payload):
+    """Update a selection in one transaction, validating it before any mutation."""
+    if not isinstance(payload, dict):
+        raise ValueError("Request body must be a JSON object")
+
+    plan = get_acquisition_plan_or_raise(plan_id)
+    _require_active_plan(plan)
+    action = _choice(payload.get("action"), "action", {"mark_incoming", "receive"})
+    requested_ids = payload.get("item_ids")
+    if not isinstance(requested_ids, list) or not requested_ids:
+        raise ValueError("Select at least one card line")
+    item_ids = [_int_value(value, "item_ids") for value in requested_ids]
+    if any(value is None or value <= 0 for value in item_ids):
+        raise ValueError("item_ids must contain positive whole numbers")
+    if len(set(item_ids)) != len(item_ids):
+        raise ValueError("Select each card line only once")
+
+    items = AcquisitionPlanItem.query.filter(
+        AcquisitionPlanItem.plan_id == plan.id,
+        AcquisitionPlanItem.id.in_(item_ids),
+    ).all()
+    if len(items) != len(item_ids):
+        raise ValueError("Every selected card line must belong to this purchase plan")
+
+    # Compute from saved quantities rather than client counts. This also keeps
+    # an already-ready line harmless when a mixed selection is updated.
+    quantities = [
+        (
+            item.ordered_quantity
+            if action == "receive"
+            else max(
+                item.required_quantity
+                - item.removed_quantity
+                - item.owned_quantity
+                - item.ordered_quantity,
+                0,
+            )
+        )
+        for item in items
+    ]
+    if not any(quantities):
+        raise ValueError(
+            "No incoming cards to receive"
+            if action == "receive"
+            else "Selected cards are already accounted for"
+        )
+
+    for item, quantity in zip(items, quantities):
+        if action == "receive":
+            item.ordered_quantity -= quantity
+            item.owned_quantity += quantity
+        else:
+            item.ordered_quantity += quantity
+    db.session.commit()
+    return plan
+
+
 def remove_acquisition_item(item_id):
     item = get_acquisition_item_or_raise(item_id)
+    _require_active_plan(item.plan)
     db.session.delete(item)
     db.session.commit()

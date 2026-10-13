@@ -12,19 +12,28 @@ without writing practice state back to the API.
 - `sessionStore.ts`: tab recovery, source compatibility, save validation, and storage fallback.
 - `PlaytestZone.tsx`: circles and piles, including the top card and unit stats.
 - `SoulStack.tsx` / `vanguard-stack.css`: ordered artwork layers beneath the vanguard.
-- `BattleStatus.tsx` / `battle-status.css`: phase, resource shortcuts, and manual energy.
+- `BattleStatus.tsx` / `battle-status.css`: phase and compact resource shortcuts.
+- `EnergyGenerator.tsx` / `energy-generator.css`: combined Generator, energy, and change feedback.
 - `CardInspector.tsx` / `card-inspector.css`: selected artwork, current stats, and ability text.
 - `cardDisplay.ts`: shared formatting for power totals and missing catalog stats.
-- `ResourceZone.tsx`: ordered damage and soul cards, per-card costs, and soul charge.
+- `ResourceZone.tsx` / `resource-zone.css`: contained damage/soul fans and per-card costs.
+- `CrestZone.tsx` / `crests.css`: landscape crest tiles with explicit activation.
+- `crests.ts` / `crestActions.ts`: auxiliary card identity and physical/virtual crest views.
+- `GZoneTracker.tsx` / `g-zone.css`: the separate G-zone drop tray and face-up copies.
+- `stride.ts`: G-unit identity, Generation Break, stride/heart association, and End return.
+- `strideSelection.ts`: one G-unit placement target with an optional selected current vanguard.
 - `PlaytestCard.tsx`: the shared hand and inspector card display.
 - `SelectedCardActions.tsx`: the gold action bar; actions are delegated to the table.
+- `useCompactInspector.ts`: the inspector breakpoint shared with the table layout.
+- `useTableShortcuts.ts`: table-only Undo/clear shortcuts that respect inputs and dialogs.
 - `PowerControls.tsx` / `power-controls.css`: front-row shortcut and custom effect calculator.
 - `powerEffects.ts`: current field targets, manual/G-zone multipliers, and effect application.
 - `CardDragPreview.tsx`: the floating drag preview and destination hint.
 - `useCardDrag.ts`: pointer capture, hit testing, edge scrolling, and cancellation.
 - `playtest.ts`: pure table operations, zones, checks, turns, and manual effects.
 - `engine.ts`: physical card copies, shuffling, dealing, and mulligans.
-- `hand-lab.css`: page and shared controls; `playtest.css`: table layout and interaction states.
+- `hand-lab.css`: page and shared controls; `playtest.css`: card/interaction states.
+- `tabletop.css`: resource rail, circles, piles, hand, and container-based layout.
 
 ## State and interaction contracts
 
@@ -54,16 +63,91 @@ before inserting the outgoing card. This prevents duplication when moving into
 soul itself. The uncovered unit enters standing with cleared temporary modifiers.
 These are generic sandbox movements, not automatic card-specific effects.
 
+Saved `crest` entries begin in Reserve. Legacy entries typed `Crest` or `Ride Deck
+Crest` follow the same setup, even if their old deck section was Main or Other.
+They never enter the opening hand, ride deck, unit circles, soul, or damage through
+normal table movement. A crest can move only between Reserve and Crest; mixed
+selections reject the whole move rather than moving only the other cards. Printed
+card quantities remain physical copies and are conserved by every snapshot.
+
+Deck-specific crests are optional. Activate them manually when their card effect
+grants the crest, such as Nightrose's grade-one ride. Placement does not automate
+the crest's power, stride restrictions, or other abilities. Crest artwork is
+contained in landscape tiles, and its inspector omits unit grade/power/critical.
+
+Every game shows a combined Energy Generator and energy control. Without a printed crest entry,
+its tile is a view of `rules.tokens.energyGenerator`, with no invented card ID or
+inventory copy. A printed Energy Generator replaces that virtual tile; face-up
+presence in Crest is its normal activation source. The rules layer activates it on
+the first normal ride, grants three energy at placement when going second, and
+charges three at subsequent ride-phase entries. Manual activation and energy
+adjustments remain available for correction and costs. The timing is described in the publisher's
+[Energy Generator card text](https://en.cf-vanguard.com/cardlist/cardsearch/?keyword=Energy+Generator&view=text).
+The previous Energy Generator checkbox is replaced by this visible crest control.
+
+Old saves keep their rule-token flags and card locations, including every Undo
+frame. Restore adds crest/G-unit identity flags from the current deck metadata.
+A legacy virtual activation alongside a printed generator appears on one tile;
+operating that tile explicitly returns it to physical presence semantics. No
+crest effect or energy gain is replayed during recovery.
+
 The circle draws one layer per soul copy and compresses large stacks to fit. Its
-soul badge opens the browser in top-first order. The separate resource tray keeps
-individual soul blasts and charges accessible. Six empty damage slots are visual
-guides, not a game limit. All moves use the same undo and session recovery state.
+soul badge opens the browser in top-first order. The compact resource rail keeps
+individual soul blasts and charges accessible. Damage is an arrival-ordered fan;
+soul is a top-first fan with grade badges. Both scroll when needed and neither
+creates blank slots or changes the physical card order. All moves use the same
+undo and session recovery state.
+
+Stride retains the original vanguard key in `session.stride.heartKey`. Its copy
+shares the underlying stack storage but is a heart, not usable soul: use
+`soulCards(session)` for browsers, counts, and costs. `heartCard(context)` supplies
+the separate visual layer and name. Printed heart power is inherited once when
+striding; temporary bonuses and crest-specific changes remain manual. Entering
+End returns the G unit face up and restores its associated heart with the same
+rest/stand orientation. An explicitly empty heart association never promotes an
+unrelated soul card. Legacy snapshots without stride metadata can use only the
+immediate normal predecessor as their fallback.
+
+The G-zone tray is separate from Crests and replaces the old auxiliary G pile.
+Drag a G-zone unit onto Vanguard to stride; the G browser stays open for the next
+cost. Drag a face-down G copy onto the tray to turn it face up in place. Drag the
+active stride back to the tray, or use **Return to G zone**, to restore its heart;
+entering End performs the same return automatically. The browser is a source list,
+not a cost drop target. Cost flips and a stride return are separate actions, so a
+mixed selection cannot accidentally end the stride while paying another cost.
+
+G-zone previews mirror physical copies; G units cannot enter the Crest
+zone. Previously hidden G units in Crest recover face up into G in the active
+game and all saved Undo frames. Derive GB through `generationBreak(context)` so only face-up G units in G
+zone or Vanguard count. A typed normal unit never qualifies merely by entering
+G zone. The face-up cost action is idempotent; mixed invalid selections reject
+the whole action. Named-card cost requirements and opponent stride eligibility
+stay manual.
+
+Normal stride starts from a face-down G unit during Ride. The sandbox also accepts
+Main and face-up G copies for correcting earlier manual actions. Selection can
+contain just the G unit or that unit plus the current vanguard; placement moves
+only the G unit onto Vanguard and retains the original as its linked heart.
+Multiple G units or unrelated selected cards never choose an arbitrary stride.
 
 Double-clicking a field unit toggles only that copy's rest state, including from
 the zone browser. It does not attack or start a drive check. The second click
 does not toggle selection again; the shortcut focuses the affected unit. Hand,
 deck, and resource cards retain ordinary selection behavior. The action bar keeps
 keyboard/touch alternatives and offers both 2k and 5k power adjustments.
+
+The action bar prioritizes the selected zone's usual operations. Field units show
+Attack, Retire, Rest/Stand, and positive power adjustments; damage exposes CB/CC;
+soul exposes Soul Blast. The More disclosure preserves all uncommon manual edits.
+Ctrl/Cmd+Z uses the existing Undo history, and Escape clears selection outside a
+drag or dialog. Inputs, native selects, editable text, and other page controls
+retain their keyboard behavior.
+
+When the table has at most 1,000 pixels of content width, selected card details open from a compact dock above the
+playmat into a focus-contained drawer. The wide-screen inspector stays beside the
+field. A ResizeObserver follows the table's width, including navigation collapse,
+and matches the CSS container query. Only one card-detail instance mounts, so artwork and ability text are not
+duplicated. Closing the drawer returns focus without moving the game state.
 
 Large piles (deck, drop, soul, bind, G zone, reserve) get a taller, viewport-bounded
 browser. Smaller zones shrink to their contents. Changing zones resets the list's

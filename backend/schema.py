@@ -5,6 +5,8 @@ This is intentionally lightweight while the project is still local/dev.
 Later, we can replace this with Flask-Migrate/Alembic.
 """
 
+import re
+
 from sqlalchemy import inspect, text
 
 from backend.database import db
@@ -19,7 +21,72 @@ def _column_names(table_name: str) -> set[str]:
     return {column["name"] for column in inspector.get_columns(table_name)}
 
 
+def _upgrade_deck_card_crest_zone():
+    """Expand SQLite's existing zone CHECK without changing deck entry IDs."""
+    if db.engine.dialect.name != "sqlite":
+        return
+    with db.engine.connect() as connection:
+        ddl = connection.execute(
+            text(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='deck_card'"
+            )
+        ).scalar()
+        if not ddl:
+            return
+        zone_rule = re.search(r"zone\s+IN\s*\(([^)]*)\)", ddl, re.IGNORECASE)
+        # Legacy tables without this check already accept the new auxiliary zone.
+        if not zone_rule or "'crest'" in zone_rule.group(1).lower():
+            return
+        indexes = (
+            connection.execute(
+                text(
+                    "SELECT sql FROM sqlite_master WHERE tbl_name='deck_card' "
+                    "AND type IN ('index', 'trigger') AND sql IS NOT NULL"
+                )
+            )
+            .scalars()
+            .all()
+        )
+        columns = [
+            column["name"] for column in inspect(connection).get_columns("deck_card")
+        ]
+        column_list = ", ".join('"' + name.replace('"', '""') + '"' for name in columns)
+        next_ddl = (
+            ddl[: zone_rule.start()]
+            + ("zone IN ('main','ride','g','token','other','crest')")
+            + ddl[zone_rule.end() :]
+        )
+        next_ddl = re.sub(
+            r'^(CREATE\s+TABLE\s+)(?:"deck_card"|`deck_card`|\[deck_card\]|deck_card)',
+            r'\1"deck_card_crest_upgrade"',
+            next_ddl,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+        connection.commit()
+        # SQLite's legacy transaction mode does not wrap DDL automatically.
+        # Explicit BEGIN keeps the copy, replacement, and index recreation atomic.
+        connection.exec_driver_sql("BEGIN IMMEDIATE")
+        try:
+            connection.exec_driver_sql(next_ddl)
+            connection.exec_driver_sql(
+                f"INSERT INTO deck_card_crest_upgrade ({column_list}) "
+                f"SELECT {column_list} FROM deck_card"
+            )
+            connection.exec_driver_sql("DROP TABLE deck_card")
+            connection.exec_driver_sql(
+                "ALTER TABLE deck_card_crest_upgrade RENAME TO deck_card"
+            )
+            for index in indexes:
+                connection.exec_driver_sql(index)
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+
+
 def ensure_schema_upgrades():
+    _upgrade_deck_card_crest_zone()
     inspector = inspect(db.engine)
     table_names = set(inspector.get_table_names())
 
@@ -59,6 +126,12 @@ def ensure_schema_upgrades():
         if "deck2_version_id" not in match_columns:
             db.session.execute(
                 text("ALTER TABLE match ADD COLUMN deck2_version_id INTEGER")
+            )
+
+    if "acquisition_plan" in table_names:
+        if "archived_at" not in _column_names("acquisition_plan"):
+            db.session.execute(
+                text("ALTER TABLE acquisition_plan ADD COLUMN archived_at DATETIME")
             )
 
     if "acquisition_plan_item" in table_names:

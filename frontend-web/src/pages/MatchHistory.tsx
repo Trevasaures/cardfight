@@ -6,6 +6,7 @@ import { deleteMatch, getMatchesPage } from "../api/matches";
 import { MatchCard } from "../components/cards/MatchCard";
 import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
+import { usePersistentState } from "../hooks/usePersistentState";
 import type { Match, MatchFormat } from "../types/api";
 
 type ResultFilter = "All" | "Decided" | "Undecided";
@@ -33,19 +34,51 @@ export function MatchHistory() {
   });
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const search = searchParams.get("q") ?? "";
+  const [rememberedSearch, setRememberedSearch] = usePersistentState(
+    "cardfight.match-history.search",
+    "",
+  );
+  const linkedSearch = searchParams.get("q");
+  const search = linkedSearch ?? rememberedSearch;
+
+  useEffect(() => {
+    // A link from a deck or rivalry takes priority over the last general search.
+    if (linkedSearch !== null) setRememberedSearch(linkedSearch);
+  }, [linkedSearch, setRememberedSearch]);
 
   function setSearch(value: string) {
-    setSearchParams((current) => {
-      const next = new URLSearchParams(current);
-      if (value) next.set("q", value);
-      else next.delete("q");
-      return next;
-    }, { replace: true });
+    setRememberedSearch(value);
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (value) next.set("q", value);
+        else next.delete("q");
+        return next;
+      },
+      { replace: true },
+    );
   }
-  const [format, setFormat] = useState<MatchFormat | "All">("All");
-  const [result, setResult] = useState<ResultFilter>("All");
-  const [pageSize, setPageSize] = useState(12);
+  const [format, setFormat] = usePersistentState<MatchFormat | "All">(
+    "cardfight.match-history.format",
+    "All",
+  );
+  const [result, setResult] = usePersistentState<ResultFilter>(
+    "cardfight.match-history.result",
+    "All",
+  );
+  const [pageSize, setPageSize] = usePersistentState(
+    "cardfight.match-history.page-size",
+    12,
+  );
+  const [rememberedPage, setRememberedPage] = usePersistentState(
+    "cardfight.match-history.page",
+    { page: 1, filters: "" },
+  );
+  const filterKey = JSON.stringify([search, format, result, pageSize]);
+  // A page belongs to its filters. Changing them starts a fresh result set,
+  // while returning from another page keeps the last page of those results.
+  const selectedPage =
+    rememberedPage.filters === filterKey ? rememberedPage.page : 1;
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,42 +91,54 @@ export function MatchHistory() {
     setError(null);
   }, [error, toast]);
 
-  const loadMatches = useCallback(async (
-    page: number,
-    size: number,
-    query: string,
-    matchFormat: MatchFormat | "All",
-    matchResult: ResultFilter,
-  ) => {
-    const requestId = latestRequest.current + 1;
-    latestRequest.current = requestId;
-    setError(null);
-    setLoading(true);
+  const loadMatches = useCallback(
+    async (
+      page: number,
+      size: number,
+      query: string,
+      matchFormat: MatchFormat | "All",
+      matchResult: ResultFilter,
+    ) => {
+      const requestId = latestRequest.current + 1;
+      latestRequest.current = requestId;
+      setError(null);
+      setLoading(true);
 
-    try {
-      const response = await getMatchesPage(page, size, {
-        q: query,
-        format: matchFormat,
-        result: matchResult,
-      });
-      if (requestId !== latestRequest.current) return;
-      setMatches(response.items ?? []);
-      setPagination(response.pagination);
-    } catch (err) {
-      if (requestId !== latestRequest.current) return;
-      setError(err instanceof Error ? err.message : "Failed to load matches");
-    } finally {
-      if (requestId === latestRequest.current) setLoading(false);
-    }
-  }, []);
+      try {
+        const response = await getMatchesPage(page, size, {
+          q: query,
+          format: matchFormat,
+          result: matchResult,
+        });
+        if (requestId !== latestRequest.current) return;
+        setMatches(response.items ?? []);
+        setPagination(response.pagination);
+        setRememberedPage({
+          page: response.pagination.page,
+          filters: JSON.stringify([query, matchFormat, matchResult, size]),
+        });
+      } catch (err) {
+        if (requestId !== latestRequest.current) return;
+        setError(err instanceof Error ? err.message : "Failed to load matches");
+      } finally {
+        if (requestId === latestRequest.current) setLoading(false);
+      }
+    },
+    [setRememberedPage],
+  );
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
-      void loadMatches(1, pageSize, search, format, result);
+      void loadMatches(selectedPage, pageSize, search, format, result);
     }, 300);
 
-    return () => window.clearTimeout(timeout);
-  }, [format, loadMatches, pageSize, result, search]);
+    return () => {
+      window.clearTimeout(timeout);
+      // A previous request must not overwrite a newly selected view while its
+      // search debounce is waiting, or after this page has been left.
+      latestRequest.current += 1;
+    };
+  }, [format, loadMatches, pageSize, result, search, selectedPage]);
 
   async function handleDelete(matchId: number) {
     const confirmed = window.confirm(
@@ -110,7 +155,12 @@ export function MatchHistory() {
           ? pagination.page - 1
           : pagination.page;
 
-      await loadMatches(nextPage, pageSize, search, format, result);
+      if (nextPage === pagination.page) {
+        await loadMatches(nextPage, pageSize, search, format, result);
+      } else {
+        setLoading(true);
+        setRememberedPage({ page: nextPage, filters: filterKey });
+      }
       toast.success("Match deleted and deck records updated.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete match");
@@ -119,7 +169,8 @@ export function MatchHistory() {
 
   function goToPage(page: number) {
     if (page < 1 || page > pagination.total_pages) return;
-    void loadMatches(page, pageSize, search, format, result);
+    setLoading(true);
+    setRememberedPage({ page, filters: filterKey });
   }
 
   const hasFilters = Boolean(
@@ -131,7 +182,6 @@ export function MatchHistory() {
       <PageHeader title="Match History" />
 
       <section className="workspace-panel">
-
         <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto]">
           <label className="relative col-span-2 block min-w-0 sm:col-span-4 xl:col-span-1">
             <span className="sr-only">Search decks or match notes</span>
@@ -185,17 +235,28 @@ export function MatchHistory() {
           <button
             type="button"
             onClick={() =>
-              void loadMatches(pagination.page, pageSize, search, format, result)
+              void loadMatches(
+                pagination.page,
+                pageSize,
+                search,
+                format,
+                result,
+              )
             }
             disabled={loading}
             className="workspace-button inline-flex items-center justify-center gap-2 border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-slate-300 transition hover:bg-white/[0.08] disabled:opacity-50"
           >
-            <RefreshCcw className={`h-3.5 w-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} />
+            <RefreshCcw
+              className={`h-3.5 w-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`}
+            />
             Refresh
           </button>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500" aria-live="polite">
+        <div
+          className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500"
+          aria-live="polite"
+        >
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold text-slate-400">
               {hasFilters
@@ -203,7 +264,9 @@ export function MatchHistory() {
                 : `${pagination.total_items} total matches`}
             </span>
             <span aria-hidden="true">·</span>
-            <span>{loading ? "Updating results…" : `${matches.length} on this page`}</span>
+            <span>
+              {loading ? "Updating results…" : `${matches.length} on this page`}
+            </span>
           </div>
 
           {hasFilters && (
@@ -223,12 +286,18 @@ export function MatchHistory() {
       </section>
 
       {loading ? (
-        <div className="workspace-inset mt-4 flex items-center gap-2 p-5 text-sm text-slate-400" role="status">
+        <div
+          className="workspace-inset mt-4 flex items-center gap-2 p-5 text-sm text-slate-400"
+          role="status"
+        >
           <RefreshCcw className="h-4 w-4 animate-spin motion-reduce:animate-none" />
           Loading matches...
         </div>
       ) : matches.length ? (
-        <section className="mt-4 grid min-w-0 gap-3 lg:grid-cols-2" aria-label="Match results">
+        <section
+          className="mt-4 grid min-w-0 gap-3 lg:grid-cols-2"
+          aria-label="Match results"
+        >
           {matches.map((match) => (
             <MatchCard key={match.id} match={match} onDelete={handleDelete} />
           ))}
@@ -236,11 +305,13 @@ export function MatchHistory() {
       ) : (
         <section className="mt-4 rounded-2xl border border-dashed border-white/15 bg-white/[0.025] p-6 text-center">
           <p className="text-sm font-bold text-slate-300">No matches found.</p>
-
         </section>
       )}
 
-      <nav aria-label="Match history pages" className="workspace-inset mt-4 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 p-3">
+      <nav
+        aria-label="Match history pages"
+        className="workspace-inset mt-4 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 p-3"
+      >
         <button
           type="button"
           onClick={() => goToPage(pagination.page - 1)}
@@ -253,7 +324,9 @@ export function MatchHistory() {
         </button>
 
         <div className="text-center text-xs text-slate-500">
-          <p className="mb-1 font-semibold text-slate-300">Page {pagination.page} of {pagination.total_pages}</p>
+          <p className="mb-1 font-semibold text-slate-300">
+            Page {pagination.page} of {pagination.total_pages}
+          </p>
           <span className="hidden sm:inline">Showing </span>
           <span className="font-bold text-slate-300">
             {pagination.total_items === 0

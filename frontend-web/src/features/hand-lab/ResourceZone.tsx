@@ -3,6 +3,7 @@ import { Check, Layers3, Plus } from "lucide-react";
 import { CardArtwork } from "../../components/cards/CardArtwork";
 import type { DeckCardEntry } from "../../types/api";
 import { ZONES, type TableCard } from "./playtest";
+import "./resource-zone.css";
 
 type Resource = "damage" | "soul";
 
@@ -22,7 +23,8 @@ type Props = {
   onDragStart: (event: PointerEvent<HTMLElement>, card: TableCard) => void;
 };
 
-/** Keep resource copies in zone order; flipping never moves a card to a new slot. */
+/** Damage retains arrival order; soul shows the card nearest the vanguard first.
+ * Reversing the soul view never changes the underlying stack or physical keys. */
 export function ResourceZone({
   zone,
   cards,
@@ -40,10 +42,11 @@ export function ResourceZone({
 }: Props) {
   const damage = zone === "damage";
   const faceUp = cards.filter((card) => !card.faceDown).length;
+  const visibleCards = damage ? cards : [...cards].reverse();
 
   return (
     <section
-      className={`pt-zone pt-resource pt-resource-${zone} ${dropClassName}`}
+      className={`pt-zone pt-resource pt-resource-compact pt-resource-${zone} ${dropClassName}`}
       data-drop-zone={zone}
       aria-label={`${ZONES[zone]} zone`}
     >
@@ -70,8 +73,12 @@ export function ResourceZone({
           </button>
         )}
       </div>
-      <ol className="pt-resource-cards" data-drag-scroll>
-        {cards.map((card, index) => {
+      <ol
+        className="pt-resource-cards"
+        data-drag-scroll
+        aria-label={damage ? "Damage in arrival order" : "Soul, top first"}
+      >
+        {visibleCards.map((card, index) => {
           const entry = entries.get(card.entryId);
           const name = entry?.card?.name ?? "Card";
           const grade = entry?.card?.grade ?? "?";
@@ -84,11 +91,14 @@ export function ResourceZone({
             : "Soul blast";
 
           return (
-            <li key={card.key} className="pt-resource-slot">
+            <li
+              key={card.key}
+              className={`pt-resource-slot ${isSelected ? "is-selected" : ""}`}
+            >
               <button
                 type="button"
                 className={`pt-resource-card ${card.faceDown ? "is-face-down" : ""} ${isSelected ? "is-selected" : ""} ${playing ? "pt-draggable" : ""} ${draggedKeys.includes(card.key) ? "is-drag-source" : ""}`}
-                aria-label={`Select ${ZONES[zone]} card ${index + 1}: ${name}${damage ? "" : `, grade ${grade}`}, ${state}`}
+                aria-label={`${isSelected ? "Deselect" : "Select"} ${ZONES[zone]} card ${index + 1}: ${name}${damage ? "" : `, grade ${grade}`}, ${state}`}
                 aria-pressed={isSelected}
                 title={`${name}${damage ? "" : ` · G${grade}`} · ${state}`}
                 disabled={!playing}
@@ -115,36 +125,24 @@ export function ResourceZone({
                   </span>
                 )}
               </button>
-              <span className="pt-resource-name" title={name}>
-                {name}
-              </span>
               <button
                 type="button"
                 className={`pt-resource-use ${damage && card.faceDown ? "is-spent" : ""}`}
                 disabled={!playing}
                 onClick={() => onUse(card)}
                 title={`${action} · ${name}`}
-                aria-label={`${action} ${ZONES[zone].toLowerCase()} card ${index + 1}${damage ? "" : `: ${name}, grade ${grade}`}`}
+                aria-label={`${action} ${ZONES[zone].toLowerCase()} card ${index + 1}: ${name}${damage ? "" : `, grade ${grade}`}`}
               >
                 {damage ? (card.faceDown ? "CC" : "CB") : "Blast"}
               </button>
             </li>
           );
         })}
-        {/* Six visible positions make damage easy to count, without capping a sandbox. */}
-        {damage &&
-          Array.from({ length: Math.max(0, 6 - cards.length) }, (_, index) => (
-            <li
-              className="pt-resource-empty"
-              key={`empty-${index}`}
-              aria-hidden="true"
-            >
-              {cards.length + index + 1}
-            </li>
-          ))}
       </ol>
-      {!damage && !cards.length && (
-        <span className="pt-resource-empty-soul">Empty</span>
+      {!cards.length && (
+        <span className="pt-resource-empty-table">
+          <Layers3 size={16} strokeWidth={1} aria-hidden="true" /> Empty
+        </span>
       )}
     </section>
   );

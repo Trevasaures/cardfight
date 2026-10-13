@@ -2,9 +2,16 @@ import { useId, useState } from "react";
 import { Pencil, Plus, RotateCcw } from "lucide-react";
 
 import { FieldLabel, FormSelect, FormTextInput } from "../forms/HelpfulField";
-import type { ManualCardFormState } from "./manualCardFormState";
+import {
+  updateManualCardType,
+  type ManualCardFormState,
+} from "./manualCardFormState";
 import type { CardFormOptions, CardSetOption } from "../../types/api";
-import { NATIONLESS_CARD_OPTION } from "../../utils/cards";
+import {
+  CREST_CARD_TYPES,
+  isCrestCard,
+  NATIONLESS_CARD_OPTION,
+} from "../../utils/cards";
 import { normalizeCardText } from "../../utils/cardText";
 import { CardSetFields } from "../cards/CardSetFields";
 import { CardArtworkInput } from "../cards/CardArtworkInput";
@@ -35,6 +42,7 @@ export function ManualCardForm({
   onSetSaved,
 }: ManualCardFormProps) {
   const isEditing = mode === "edit";
+  const isCrest = isCrestCard(value);
   const abilityTextId = useId();
   const [importingArtwork, setImportingArtwork] = useState(false);
 
@@ -42,10 +50,13 @@ export function ManualCardForm({
     value.nation && !options.nations.includes(value.nation)
       ? [value.nation, ...options.nations]
       : options.nations;
+  const availableTypes = [
+    ...new Set([...options.card_types, ...CREST_CARD_TYPES]),
+  ];
   const cardTypeOptions =
     value.card_type && !options.card_types.includes(value.card_type)
-      ? [value.card_type, ...options.card_types]
-      : options.card_types;
+      ? [...new Set([value.card_type, ...availableTypes])]
+      : availableTypes;
   const gradeOptions =
     value.grade && !options.grades.includes(Number(value.grade))
       ? [Number(value.grade), ...options.grades]
@@ -59,135 +70,162 @@ export function ManualCardForm({
   }
 
   return (
-    <div className="mt-4">
-      {isEditing ? (
-        <div className="flex justify-end">
+    <form
+      className="mt-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!disabled && !importingArtwork && canSubmit) onSubmit();
+      }}
+    >
+      <fieldset disabled={disabled}>
+        {isEditing ? (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={onCancelEdit}
+              className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-bold text-slate-300 transition hover:bg-white/[0.09]"
+              title="Cancel editing and return to create mode"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Cancel
+            </button>
+          </div>
+        ) : null}
+
+        <div className={`${isEditing ? "mt-4" : ""} grid gap-3 sm:grid-cols-2`}>
+          <FormTextInput
+            label="Card name"
+            value={value.name}
+            onChange={(fieldValue) => updateField("name", fieldValue)}
+            placeholder="Example: Blangdmire"
+            required
+          />
+
+          {isCrest ? (
+            <FormTextInput
+              label="Grade"
+              value="No grade"
+              readOnly
+              placeholder=""
+              onChange={() => undefined}
+            />
+          ) : (
+            <FormSelect
+              label="Grade"
+              value={value.grade}
+              onChange={(fieldValue) => updateField("grade", fieldValue)}
+              placeholder="Choose a grade"
+              required
+              options={gradeOptions.map((grade) => ({
+                value: String(grade),
+                label: `Grade ${grade}`,
+              }))}
+            />
+          )}
+
+          <FormSelect
+            label="Nation"
+            value={value.nation}
+            onChange={(fieldValue) => updateField("nation", fieldValue)}
+            placeholder="Choose a nation"
+            required
+            options={nationOptions.map((nation) => ({
+              value: nation,
+              label: nation === NATIONLESS_CARD_OPTION ? "Nationless" : nation,
+            }))}
+          />
+
+          <FormSelect
+            label="Card type"
+            value={value.card_type}
+            onChange={(fieldValue) =>
+              onChange(updateManualCardType(value, fieldValue))
+            }
+            placeholder="Choose a card type"
+            required
+            options={cardTypeOptions.map((cardType) => ({
+              value: cardType,
+              label: cardType,
+            }))}
+          />
+
+          <CardSetFields
+            value={value}
+            options={options}
+            disabled={disabled}
+            onChange={(setFields) => onChange({ ...value, ...setFields })}
+            onSetSaved={onSetSaved}
+          />
+
+          <FormTextInput
+            label="Card number"
+            value={value.card_number}
+            onChange={(fieldValue) => updateField("card_number", fieldValue)}
+            placeholder="Example: DZ-BT01/001"
+            required
+          />
+
+          <FormTextInput
+            label="Rarity"
+            value={value.rarity}
+            onChange={(fieldValue) => updateField("rarity", fieldValue)}
+            placeholder="Example: RRR"
+            required
+          />
+
+          <div className="sm:col-span-2">
+            <FieldLabel
+              htmlFor={abilityTextId}
+              label="Ability text (optional)"
+            />
+            <textarea
+              id={abilityTextId}
+              value={value.skill_text}
+              onChange={(event) =>
+                updateField("skill_text", event.target.value)
+              }
+              onBlur={(event) =>
+                updateField("skill_text", normalizeCardText(event.target.value))
+              }
+              placeholder="Card effects or a short description…"
+              rows={5}
+              disabled={disabled}
+              className="w-full resize-y rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm leading-6 text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-300/50 disabled:opacity-50"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <CardArtworkInput
+              value={value.artwork}
+              cardType={value.card_type}
+              disabled={disabled}
+              onChange={(artwork) => onChange({ ...value, artwork })}
+              onBusyChange={setImportingArtwork}
+            />
+          </div>
+        </div>
+
+        <div className="inspector-form-actions">
           <button
-            type="button"
-            onClick={onCancelEdit}
-            className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-bold text-slate-300 transition hover:bg-white/[0.09]"
-            title="Cancel editing and return to create mode"
+            type="submit"
+            disabled={disabled || importingArtwork || !canSubmit}
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+            title={
+              canSubmit
+                ? isEditing
+                  ? "Save changes to this card"
+                  : "Create this manual card"
+                : "Complete all required fields before saving"
+            }
           >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Cancel
+            {isEditing ? (
+              <Pencil className="h-4 w-4" />
+            ) : (
+              <Plus className="h-4 w-4" />
+            )}
+            {isEditing ? "Save card changes" : "Create card"}
           </button>
         </div>
-      ) : null}
-
-      <div className={`${isEditing ? "mt-4" : ""} grid gap-3 sm:grid-cols-2`}>
-        <FormTextInput
-          label="Card name"
-          value={value.name}
-          onChange={(fieldValue) => updateField("name", fieldValue)}
-          placeholder="Example: Blangdmire"
-          required
-        />
-
-        <FormSelect
-          label="Grade"
-          value={value.grade}
-          onChange={(fieldValue) => updateField("grade", fieldValue)}
-          placeholder="Choose a grade"
-          required
-          options={gradeOptions.map((grade) => ({
-            value: String(grade),
-            label: `Grade ${grade}`,
-          }))}
-        />
-
-        <FormSelect
-          label="Nation"
-          value={value.nation}
-          onChange={(fieldValue) => updateField("nation", fieldValue)}
-          placeholder="Choose a nation"
-          required
-          options={nationOptions.map((nation) => ({
-            value: nation,
-            label: nation === NATIONLESS_CARD_OPTION ? "Nationless" : nation,
-          }))}
-        />
-
-        <FormSelect
-          label="Card type"
-          value={value.card_type}
-          onChange={(fieldValue) => updateField("card_type", fieldValue)}
-          placeholder="Choose a card type"
-          required
-          options={cardTypeOptions.map((cardType) => ({
-            value: cardType,
-            label: cardType,
-          }))}
-        />
-
-        <CardSetFields
-          value={value}
-          options={options}
-          disabled={disabled}
-          onChange={(setFields) => onChange({ ...value, ...setFields })}
-          onSetSaved={onSetSaved}
-        />
-
-        <FormTextInput
-          label="Card number"
-          value={value.card_number}
-          onChange={(fieldValue) => updateField("card_number", fieldValue)}
-          placeholder="Example: DZ-BT01/001"
-          required
-        />
-
-        <FormTextInput
-          label="Rarity"
-          value={value.rarity}
-          onChange={(fieldValue) => updateField("rarity", fieldValue)}
-          placeholder="Example: RRR"
-          required
-        />
-
-        <div className="sm:col-span-2">
-          <FieldLabel htmlFor={abilityTextId} label="Ability text (optional)" />
-          <textarea
-            id={abilityTextId}
-            value={value.skill_text}
-            onChange={(event) => updateField("skill_text", event.target.value)}
-            onBlur={(event) =>
-              updateField("skill_text", normalizeCardText(event.target.value))
-            }
-            placeholder="Card effects or a short description…"
-            rows={5}
-            disabled={disabled}
-            className="w-full resize-y rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm leading-6 text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-300/50 disabled:opacity-50"
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <CardArtworkInput
-            value={value.artwork}
-            disabled={disabled}
-            onChange={(artwork) => onChange({ ...value, artwork })}
-            onBusyChange={setImportingArtwork}
-          />
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={onSubmit}
-        disabled={disabled || importingArtwork || !canSubmit}
-        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
-        title={
-          canSubmit
-            ? isEditing
-              ? "Save changes to this card"
-              : "Create this manual card"
-            : "Complete all required fields before saving"
-        }
-      >
-        {isEditing ? (
-          <Pencil className="h-4 w-4" />
-        ) : (
-          <Plus className="h-4 w-4" />
-        )}
-        {isEditing ? "Save card changes" : "Create card"}
-      </button>
-    </div>
+      </fieldset>
+    </form>
   );
 }

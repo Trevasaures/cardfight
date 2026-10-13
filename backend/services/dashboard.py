@@ -32,10 +32,11 @@ def get_dashboard_summary() -> dict:
 
     deck_stats = _calculate_deck_stats_from_matches(decks, matches)
     active_versions = _active_versions()
-    purchase_plans = AcquisitionPlan.query.order_by(
-        AcquisitionPlan.updated_at.desc(),
-        AcquisitionPlan.id.desc(),
-    ).all()
+    purchase_plans = (
+        AcquisitionPlan.query.filter(AcquisitionPlan.archived_at.is_(None))
+        .order_by(AcquisitionPlan.updated_at.desc(), AcquisitionPlan.id.desc())
+        .all()
+    )
     build_readiness = [
         _version_brief(version)
         for version in active_versions[:3]

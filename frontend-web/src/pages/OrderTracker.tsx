@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Archive,
-  PackageOpen,
-  Plus,
-  Search,
-  X,
-} from "lucide-react";
-import { Link } from "react-router-dom";
+import { Archive, PackageOpen, Plus } from "lucide-react";
 
 import {
   addAcquisitionItem,
+  batchAcquisitionItems,
+  type AcquisitionBatchAction,
+  archiveAcquisitionPlan,
+  restoreAcquisitionPlan,
   createAcquisitionPlan,
   deleteAcquisitionPlan,
   getAcquisitionPlan,
@@ -23,10 +20,30 @@ import { searchCards } from "../api/cards";
 import { getDeckOptions, getDecks } from "../api/decks";
 import { AcquisitionGradeSection } from "../components/order-tracker/AcquisitionGradeSection";
 import { OrderTrackerSetup } from "../components/order-tracker/OrderTrackerSetup";
+import {
+  PurchasePlanRail,
+  type PlanScope,
+} from "../components/order-tracker/PurchasePlanRail";
+import { PurchaseSelectionBar } from "../components/order-tracker/PurchaseSelectionBar";
+import { PurchaseCatalog } from "../components/order-tracker/PurchaseCatalog";
+import "../components/collection-workspace.css";
+import "../components/order-tracker/order-tracker-ux.css";
+import { ModalDialog } from "../components/layout/ModalDialog";
+import { CardInspector } from "../components/cards/CardInspector";
+import {
+  createPlanDraft,
+  EMPTY_PURCHASE_DRAFT,
+  type NewPurchaseDraft,
+  isItemDraftDirty,
+  withoutDraft,
+  type PurchaseItemDraft,
+  type PurchasePlanDraft,
+} from "../components/order-tracker/order-drafts";
 import { PurchasePlanWorkspace } from "../components/order-tracker/PurchasePlanWorkspace";
 import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
 import { usePersistentState } from "../hooks/usePersistentState";
+import { isCrestCard } from "../utils/cards";
 import type {
   AcquisitionPlan,
   AcquisitionPlanItem,
@@ -45,14 +62,28 @@ const EMPTY_OPTIONS: DeckOptionsResponse = {
   nations: [],
 };
 
-const ITEM_FILTERS = [["changes", "Changes"], ["all", "All cards"], ["needed", "Needs cards"], ["incoming", "Incoming"], ["owned", "Ready"]] as const;
+const ITEM_FILTERS = [
+  ["changes", "Changes"],
+  ["all", "All cards"],
+  ["needed", "Needs cards"],
+  ["incoming", "Incoming"],
+  ["owned", "Ready"],
+] as const;
 
 function matchesItemFilter(item: AcquisitionPlanItem, filter: ItemFilter) {
-  return filter === "all" ||
-    (filter === "changes" && (item.missing_quantity > 0 || item.ordered_quantity > 0 || item.removed_quantity > 0 || item.source_quantity === 0)) ||
+  return (
+    filter === "all" ||
+    (filter === "changes" &&
+      (item.missing_quantity > 0 ||
+        item.ordered_quantity > 0 ||
+        item.removed_quantity > 0 ||
+        item.source_quantity === 0)) ||
     (filter === "needed" && item.missing_quantity > 0) ||
     (filter === "incoming" && item.ordered_quantity > 0) ||
-    (filter === "owned" && item.available_quantity >= item.target_quantity && item.removed_quantity === 0);
+    (filter === "owned" &&
+      item.available_quantity >= item.target_quantity &&
+      item.removed_quantity === 0)
+  );
 }
 
 export function OrderTracker() {
@@ -64,9 +95,46 @@ export function OrderTracker() {
     number | null
   >("cardfight.order-tracker.selected-plan", null);
   const initialPreferredPlanIdRef = useRef(preferredPlanId);
+  const [scope, setScope] = usePersistentState<PlanScope>(
+    "cardfight.order-tracker.scope",
+    "active",
+  );
+  const initialScopeRef = useRef(scope);
+  const planRequestRef = useRef(0);
+  const [showCatalog, setShowCatalog] = useState(false);
+  const [inspected, setInspected] = useState<{
+    card: Card;
+    printing: CardPrinting | null;
+  } | null>(null);
+  const [selection, setSelection] = useState<{
+    planId: number;
+    ids: number[];
+  } | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [newPlanError, setNewPlanError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<
+    | { kind: "plan"; plan: AcquisitionPlan }
+    | { kind: "item"; item: AcquisitionPlanItem }
+    | null
+  >(null);
+  const [itemDrafts, setItemDrafts] = usePersistentState<
+    Record<string, PurchaseItemDraft>
+  >("cardfight.order-tracker.item-drafts", {});
+  const [planDrafts, setPlanDrafts] = usePersistentState<
+    Record<string, PurchasePlanDraft>
+  >("cardfight.order-tracker.plan-drafts", {});
+  const [newPlanDraft, setNewPlanDraft] = usePersistentState<NewPurchaseDraft>(
+    "cardfight.order-tracker.new-plan-draft",
+    EMPTY_PURCHASE_DRAFT,
+  );
+  const planView =
+    selectedPlan && !selectedPlan.archived_at
+      ? { ...selectedPlan, ...planDrafts[String(selectedPlan.id)] }
+      : selectedPlan;
+
   const [decks, setDecks] = useState<Deck[]>([]);
-  const [options, setOptions] =
-    useState<DeckOptionsResponse>(EMPTY_OPTIONS);
+  const [options, setOptions] = useState<DeckOptionsResponse>(EMPTY_OPTIONS);
 
   const [loading, setLoading] = useState(true);
   const [loadingPlan, setLoadingPlan] = useState(false);
@@ -98,6 +166,28 @@ export function OrderTracker() {
     [toast],
   );
 
+  function editPlan(plan: AcquisitionPlan) {
+    setPlanDrafts((current) => ({
+      ...current,
+      [String(plan.id)]: createPlanDraft(plan),
+    }));
+  }
+
+  function editItem(itemId: number, draft: PurchaseItemDraft | null) {
+    setItemDrafts((current) =>
+      draft
+        ? { ...current, [String(itemId)]: draft }
+        : withoutDraft(current, String(itemId)),
+    );
+    // A pending edit cannot participate in a batch that uses saved quantities.
+    if (draft)
+      setSelection((current) =>
+        current
+          ? { ...current, ids: current.ids.filter((id) => id !== itemId) }
+          : null,
+      );
+  }
+
   const loadPlanSummaries = useCallback(async () => {
     const rows = await getAcquisitionPlans();
     setPlans(rows);
@@ -106,9 +196,11 @@ export function OrderTracker() {
 
   const selectPlan = useCallback(
     async (planId: number) => {
+      const requestId = ++planRequestRef.current;
       setLoadingPlan(true);
       try {
         const plan = await getAcquisitionPlan(planId);
+        if (requestId !== planRequestRef.current) return;
         setSelectedPlan(plan);
         setPreferredPlanId(planId);
       } catch (error) {
@@ -116,7 +208,7 @@ export function OrderTracker() {
           error instanceof Error ? error.message : "Failed to load plan",
         );
       } finally {
-        setLoadingPlan(false);
+        if (requestId === planRequestRef.current) setLoadingPlan(false);
       }
     },
     [setPreferredPlanId, showError],
@@ -132,17 +224,22 @@ export function OrderTracker() {
         setDecks(deckRows);
         setOptions(deckOptions);
 
-        if (planRows.length) {
+        const visiblePlans = planRows.filter(
+          (plan) =>
+            Boolean(plan.archived_at) ===
+            (initialScopeRef.current === "archived"),
+        );
+        if (visiblePlans.length) {
           const preferredPlan =
-            planRows.find(
+            visiblePlans.find(
               (plan) => plan.id === initialPreferredPlanIdRef.current,
-            ) ?? planRows[0];
+            ) ?? visiblePlans[0];
           const plan = await getAcquisitionPlan(preferredPlan.id);
           if (!cancelled) {
             setSelectedPlan(plan);
             setPreferredPlanId(plan.id);
           }
-        } else {
+        } else if (!planRows.length && initialScopeRef.current === "active") {
           setShowSetup(true);
         }
       })
@@ -165,44 +262,47 @@ export function OrderTracker() {
 
   async function refreshSelectedPlan() {
     if (!selectedPlan) return;
-    await Promise.all([
-      selectPlan(selectedPlan.id),
-      loadPlanSummaries(),
-    ]);
+    await Promise.all([selectPlan(selectedPlan.id), loadPlanSummaries()]);
   }
 
   async function handleCreate(payload: CreateAcquisitionPlanPayload) {
+    setNewPlanError("");
     setCreating(true);
     try {
       const created = await createAcquisitionPlan(payload);
-      await loadPlanSummaries();
+      setPlans((current) => [created, ...current]);
+      setNewPlanDraft(EMPTY_PURCHASE_DRAFT);
       setSelectedPlan(created);
       setPreferredPlanId(created.id);
+      setScope("active");
       setShowSetup(false);
       setItemFilter("changes");
       setItemSearch("");
       toast.success(`Created ${created.name}.`);
+      return true;
     } catch (error) {
-      showError(
+      setNewPlanError(
         error instanceof Error ? error.message : "Failed to create plan",
       );
+      return false;
     } finally {
       setCreating(false);
     }
   }
 
   async function handleSavePlan() {
-    if (!selectedPlan) return;
+    if (!planView) return;
 
     setSavingPlan(true);
     try {
-      const updated = await updateAcquisitionPlan(selectedPlan.id, {
-        name: selectedPlan.name.trim(),
-        status: selectedPlan.status,
-        build_mode: selectedPlan.build_mode,
-        notes: selectedPlan.notes,
+      const updated = await updateAcquisitionPlan(planView.id, {
+        name: planView.name.trim(),
+        status: planView.status,
+        build_mode: planView.build_mode,
+        notes: planView.notes,
       });
       setSelectedPlan(updated);
+      setPlanDrafts((current) => withoutDraft(current, String(updated.id)));
       await loadPlanSummaries();
       toast.success("Purchase plan updated.");
     } catch (error) {
@@ -216,27 +316,94 @@ export function OrderTracker() {
 
   async function handleDeletePlan() {
     if (!selectedPlan) return;
-    if (!window.confirm(`Delete "${selectedPlan.name}" and its card list?`)) {
-      return;
-    }
-
+    setSavingPlan(true);
     try {
       await deleteAcquisitionPlan(selectedPlan.id);
-      const remaining = await loadPlanSummaries();
+      setPlanDrafts((current) =>
+        withoutDraft(current, String(selectedPlan.id)),
+      );
+      setItemDrafts((current) => {
+        const next = { ...current };
+        selectedPlan.items.forEach((item) => delete next[String(item.id)]);
+        return next;
+      });
+      setSelection(null);
+      setPendingDelete(null);
+      const remaining = plans.filter((plan) => plan.id !== selectedPlan.id);
+      setPlans(remaining);
       setSelectedPlan(null);
 
-      if (remaining.length) {
-        await selectPlan(remaining[0].id);
+      const visiblePlans = remaining.filter(
+        (plan) => Boolean(plan.archived_at) === (scope === "archived"),
+      );
+      if (visiblePlans.length) {
+        await selectPlan(visiblePlans[0].id);
       } else {
         setPreferredPlanId(null);
-        setShowSetup(true);
       }
 
       toast.success("Purchase plan deleted.");
     } catch (error) {
-      showError(
+      setDeleteError(
         error instanceof Error ? error.message : "Failed to delete plan",
       );
+    } finally {
+      setSavingPlan(false);
+    }
+  }
+
+  async function changeScope(nextScope: PlanScope) {
+    setScope(nextScope);
+    setShowSetup(false);
+    const first = plans.find(
+      (plan) => Boolean(plan.archived_at) === (nextScope === "archived"),
+    );
+    if (first) await selectPlan(first.id);
+    else {
+      // Invalidate a pending selection when the requested view has no plans.
+      planRequestRef.current += 1;
+      setSelectedPlan(null);
+      setPreferredPlanId(null);
+      setLoadingPlan(false);
+    }
+  }
+
+  async function handleArchive() {
+    if (!selectedPlan) return;
+    setSavingPlan(true);
+    try {
+      await archiveAcquisitionPlan(selectedPlan.id);
+      const rows = await loadPlanSummaries();
+      const next = rows.find((plan) => !plan.archived_at);
+      setSelectedPlan(null);
+      setScope("active");
+      setPreferredPlanId(null);
+      if (next) await selectPlan(next.id);
+      toast.success("Plan archived. You can restore it from Archive.");
+    } catch (error) {
+      showError(
+        error instanceof Error ? error.message : "Failed to archive plan",
+      );
+    } finally {
+      setSavingPlan(false);
+    }
+  }
+
+  async function handleRestore() {
+    if (!selectedPlan) return;
+    setSavingPlan(true);
+    try {
+      const restored = await restoreAcquisitionPlan(selectedPlan.id);
+      setSelectedPlan(restored);
+      setScope("active");
+      await loadPlanSummaries();
+      toast.success("Plan restored.");
+    } catch (error) {
+      showError(
+        error instanceof Error ? error.message : "Failed to restore plan",
+      );
+    } finally {
+      setSavingPlan(false);
     }
   }
 
@@ -262,10 +429,7 @@ export function OrderTracker() {
     }
   }
 
-  async function handleAddCard(
-    card: Card,
-    printing: CardPrinting | null,
-  ) {
+  async function handleAddCard(card: Card, printing: CardPrinting | null) {
     if (!selectedPlan) return;
 
     const lineKey = `${card.id}-${printing?.id ?? "any"}`;
@@ -281,9 +445,7 @@ export function OrderTracker() {
         `Added ${card.name}${printing?.rarity ? ` (${printing.rarity})` : ""}.`,
       );
     } catch (error) {
-      showError(
-        error instanceof Error ? error.message : "Failed to add card",
-      );
+      showError(error instanceof Error ? error.message : "Failed to add card");
     } finally {
       setBusyCatalogLine(null);
     }
@@ -296,6 +458,7 @@ export function OrderTracker() {
     setBusyItemId(itemId);
     try {
       await updateAcquisitionItem(itemId, payload);
+      setItemDrafts((current) => withoutDraft(current, String(itemId)));
       await refreshSelectedPlan();
       toast.success("Card purchase details updated.");
     } catch (error) {
@@ -313,31 +476,84 @@ export function OrderTracker() {
       await receiveAcquisitionItem(itemId, quantity);
       await refreshSelectedPlan();
       toast.success(`Received ${quantity} card${quantity === 1 ? "" : "s"}.`);
+      return null;
     } catch (error) {
-      showError(
-        error instanceof Error ? error.message : "Failed to receive cards",
-      );
+      return error instanceof Error ? error.message : "Failed to receive cards";
     } finally {
       setBusyItemId(null);
     }
   }
 
   async function handleRemoveItem(item: AcquisitionPlanItem) {
-    if (!window.confirm(`Remove ${item.card.name} from this purchase plan?`)) {
-      return;
-    }
-
     setBusyItemId(item.id);
     try {
       await removeAcquisitionItem(item.id);
+      setPendingDelete(null);
+      setItemDrafts((current) => withoutDraft(current, String(item.id)));
       await refreshSelectedPlan();
       toast.success(`Removed ${item.card.name}.`);
     } catch (error) {
-      showError(
+      setDeleteError(
         error instanceof Error ? error.message : "Failed to remove card",
       );
     } finally {
       setBusyItemId(null);
+    }
+  }
+
+  const selectedIds =
+    selectedPlan && selection?.planId === selectedPlan.id
+      ? selection.ids.filter((id) =>
+          selectedPlan.items.some(
+            (item) =>
+              item.id === id &&
+              (!itemDrafts[String(id)] ||
+                !isItemDraftDirty(item, itemDrafts[String(id)])),
+          ),
+        )
+      : [];
+  const selectedItems =
+    selectedPlan?.items.filter((item) => selectedIds.includes(item.id)) ?? [];
+  const dirtyItemCount =
+    selectedPlan?.items.filter(
+      (item) =>
+        itemDrafts[String(item.id)] &&
+        isItemDraftDirty(item, itemDrafts[String(item.id)]),
+    ).length ?? 0;
+
+  function toggleSelection(itemId: number, selected: boolean) {
+    if (!selectedPlan) return;
+    const ids = selected
+      ? [...new Set([...selectedIds, itemId])]
+      : selectedIds.filter((id) => id !== itemId);
+    setSelection({ planId: selectedPlan.id, ids });
+  }
+
+  async function handleBatch(action: AcquisitionBatchAction) {
+    if (!selectedPlan || !selectedIds.length) return;
+    setBulkBusy(true);
+    try {
+      const plan = await batchAcquisitionItems(
+        selectedPlan.id,
+        action,
+        selectedIds,
+      );
+      setSelectedPlan(plan);
+      setSelection(null);
+      await loadPlanSummaries();
+      toast.success(
+        action === "receive"
+          ? "Selected deliveries received."
+          : "Selected cards marked incoming.",
+      );
+    } catch (error) {
+      showError(
+        error instanceof Error
+          ? error.message
+          : "Failed to update selected cards",
+      );
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -352,7 +568,8 @@ export function OrderTracker() {
         (item.printing?.set_code ?? "").toLowerCase().includes(needle) ||
         (item.printing?.rarity ?? "").toLowerCase().includes(needle);
 
-      const matchesFilter = matchesItemFilter(item, itemFilter);
+      const matchesFilter =
+        selectedPlan.archived_at || matchesItemFilter(item, itemFilter);
 
       return matchesSearch && matchesFilter;
     });
@@ -361,23 +578,38 @@ export function OrderTracker() {
   const groupedItems = useMemo(() => {
     const groups = new Map<
       string,
-      { grade: number | null; items: AcquisitionPlanItem[] }
+      {
+        key: string;
+        label: string;
+        grade: number | null;
+        items: AcquisitionPlanItem[];
+      }
     >();
 
     for (const item of filteredItems) {
       const grade = item.card.grade;
-      const key = grade === null ? "unknown" : String(grade);
-      const group = groups.get(key) ?? { grade, items: [] };
+      const crest = isCrestCard(item.card);
+      const key = crest ? "crest" : grade === null ? "unknown" : String(grade);
+      const label = crest
+        ? "Crests"
+        : grade === null
+          ? "Unknown grade"
+          : `Grade ${grade}`;
+      const group = groups.get(key) ?? { key, label, grade, items: [] };
       group.items.push(item);
       groups.set(key, group);
     }
 
     for (const group of groups.values()) {
       group.items.sort((first, second) => {
-        const nameSort = first.card.name.localeCompare(second.card.name, undefined, {
-          sensitivity: "base",
-          numeric: true,
-        });
+        const nameSort = first.card.name.localeCompare(
+          second.card.name,
+          undefined,
+          {
+            sensitivity: "base",
+            numeric: true,
+          },
+        );
 
         if (nameSort !== 0) return nameSort;
 
@@ -404,6 +636,8 @@ export function OrderTracker() {
     }
 
     return Array.from(groups.values()).sort((first, second) => {
+      if (first.grade === null && second.grade === null)
+        return first.key.localeCompare(second.key);
       if (first.grade === null) return 1;
       if (second.grade === null) return -1;
       return second.grade - first.grade;
@@ -411,14 +645,20 @@ export function OrderTracker() {
   }, [filteredItems]);
 
   const filterCounts = Object.fromEntries(
-    ITEM_FILTERS.map(([value]) => [value, selectedPlan?.items.filter((item) => matchesItemFilter(item, value)).length ?? 0]),
+    ITEM_FILTERS.map(([value]) => [
+      value,
+      selectedPlan?.items.filter((item) => matchesItemFilter(item, value))
+        .length ?? 0,
+    ]),
   ) as Record<ItemFilter, number>;
 
   function setVisibleGradesOpen(open: boolean) {
     if (!selectedPlan) return;
     setGradeOpenState((current) => ({
       ...current,
-      ...Object.fromEntries(groupedItems.map((group) => [`${selectedPlan.id}:${group.grade ?? "unknown"}`, open])),
+      ...Object.fromEntries(
+        groupedItems.map((group) => [`${selectedPlan.id}:${group.key}`, open]),
+      ),
     }));
   }
 
@@ -426,144 +666,342 @@ export function OrderTracker() {
     return (
       <>
         <PageHeader title="Orders" />
-        <div role="status" className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-8 text-slate-400">Loading order tracker...</div>
+        <div className="collection-empty" role="status">
+          Loading orders…
+        </div>
       </>
     );
   }
 
-  const newPlanAction = (
-    <button type="button" onClick={() => setShowSetup((current) => !current)} aria-expanded={showSetup} aria-controls="new-purchase-plan" className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-cyan-200">
-      {showSetup ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-      {showSetup ? "Close new plan" : "New plan"}
-    </button>
-  );
+  const archived = Boolean(selectedPlan?.archived_at);
+  const planBusy =
+    loadingPlan ||
+    savingPlan ||
+    bulkBusy ||
+    busyItemId !== null ||
+    busyCatalogLine !== null;
 
   return (
     <>
       <PageHeader title="Orders" />
-
-      <div className="space-y-4">
-      {showSetup ? (
-          <div id="new-purchase-plan">
-            <OrderTrackerSetup decks={decks} options={options} creating={creating} onCreate={handleCreate} onError={showError} />
-          </div>
-        ) : null}
-
-        {selectedPlan ? (
-          <>
-            <PurchasePlanWorkspace
-              actions={newPlanAction}
-              plans={plans} plan={selectedPlan} loading={loadingPlan} saving={savingPlan}
-              onSelect={selectPlan} onChange={setSelectedPlan} onRefresh={refreshSelectedPlan}
-              onSave={handleSavePlan} onDelete={handleDeletePlan}
-            />
-
-            <section data-anime="motion-panel" aria-label="Add cards from the catalog" className="min-w-0 rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
-              <div className="grid gap-3 xl:grid-cols-[minmax(15rem,0.7fr)_minmax(0,1.3fr)] xl:items-center">
-                <div className="flex items-center gap-3">
-
-                  <div>
-                    <h3 className="text-lg font-black text-slate-50">Add cards</h3>
-
-                  </div>
-                </div>
-                <div className="flex min-w-0 gap-2">
-                  <label className="relative min-w-0 flex-1">
-                    <span className="sr-only">Search card catalog</span>
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                    <input value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") handleSearchCatalog(); }} placeholder="Card name, set, nation..." className="w-full min-w-0 rounded-xl border border-white/10 bg-black/30 py-2.5 pl-9 pr-3 text-sm outline-none placeholder:text-slate-500 focus:border-cyan-300/50" />
-                  </label>
-                  <button type="button" onClick={handleSearchCatalog} disabled={searchingCatalog} className="rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2.5 text-xs font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:opacity-50">{searchingCatalog ? "Searching..." : "Search"}</button>
-                  {catalogSearch || catalogResults.length ? <button type="button" aria-label="Clear catalog search" onClick={() => { setCatalogSearch(""); setCatalogResults([]); setCatalogSearched(false); }} className="rounded-xl border border-white/10 px-2.5 text-slate-400 transition hover:bg-white/5"><X className="h-4 w-4" /></button> : null}
-                </div>
-              </div>
-
-              {catalogResults.length ? (
-                <div className="mt-3 max-h-72 overflow-y-auto rounded-2xl border border-white/10 bg-black/20 p-2">
-
-                  <div className="grid gap-2 md:grid-cols-2 2xl:grid-cols-3">
-                    {catalogResults.flatMap((card) => (card.printings.length ? card.printings : [null]).map((printing) => {
-                      const lineKey = `${card.id}-${printing?.id ?? "any"}`;
-                      const printingLabel = printing ? [printing.set_code, printing.card_number, printing.rarity].filter(Boolean).join(" · ") : "Any printing";
-                      return <button key={lineKey} type="button" onClick={() => handleAddCard(card, printing)} disabled={busyCatalogLine !== null || loadingPlan} className="flex min-w-0 items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.025] p-3 text-left transition hover:border-cyan-300/30 hover:bg-cyan-300/5 disabled:opacity-50">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-cyan-300/15 bg-cyan-300/5 text-[0.68rem] font-black text-cyan-100">G{card.grade ?? "?"}</span>
-                        <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-slate-100">{card.name}</span><span className="mt-0.5 block break-words text-xs text-slate-400">{printingLabel}</span></span>
-                        <Plus className="h-4 w-4 shrink-0 text-cyan-200" />
-                      </button>;
-                    }))}
-                  </div>
-                </div>
-              ) : catalogSearched && !searchingCatalog ? (
-                <p role="status" className="mt-3 rounded-xl border border-dashed border-white/15 p-4 text-sm text-slate-400">No cards found. <Link to="/cards" className="font-bold text-cyan-200 underline underline-offset-4">Add a card</Link>.</p>
-              ) : null}
-            </section>
-
-            <section data-anime="motion-panel" aria-label="Purchase checklist" className="min-w-0 rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-
-                  <div><h3 className="text-xl font-black text-slate-50 sm:text-2xl">Checklist</h3></div>
-                </div>
-                <label className="relative w-full min-w-0 sm:w-72">
-                  <span className="sr-only">Search purchase checklist</span>
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                  <input value={itemSearch} onChange={(event) => setItemSearch(event.target.value)} placeholder="Find a card or printing..." className="w-full rounded-xl border border-white/10 bg-black/30 py-2.5 pl-9 pr-3 text-sm outline-none placeholder:text-slate-500 focus:border-cyan-300/50" />
-                </label>
-              </div>
-
-              <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-2.5 sm:p-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div role="group" aria-label="Filter purchase cards" className="flex flex-wrap gap-1.5">
-                    {ITEM_FILTERS.map(([value, label]) => (
-                      <button key={value} type="button" onClick={() => setItemFilter(value)} aria-pressed={itemFilter === value} className={`inline-flex items-center gap-2 rounded-xl border px-2.5 py-2 text-xs font-bold transition ${itemFilter === value ? "border-cyan-300/30 bg-cyan-300/10 text-cyan-100" : "border-transparent text-slate-400 hover:bg-white/[0.05] hover:text-slate-200"}`}>
-                        {label}<span className="rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[0.65rem] tabular-nums">{filterCounts[value]}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex gap-1">
-                    <button type="button" onClick={() => setVisibleGradesOpen(true)} disabled={!groupedItems.length || loadingPlan} className="rounded-lg px-2 py-1.5 text-xs font-bold text-slate-400 transition hover:bg-white/5 hover:text-slate-100 disabled:opacity-40">Expand grades</button>
-                    <button type="button" onClick={() => setVisibleGradesOpen(false)} disabled={!groupedItems.length || loadingPlan} className="rounded-lg px-2 py-1.5 text-xs font-bold text-slate-400 transition hover:bg-white/5 hover:text-slate-100 disabled:opacity-40">Collapse grades</button>
-                  </div>
-                </div>
-                <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-2.5 text-xs text-slate-400">
-
-                  <span className="shrink-0 tabular-nums">{filteredItems.length} of {selectedPlan.items.length} card lines</span>
-                </div>
-              </div>
-
-              {loadingPlan ? (
-                <div role="status" className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-6 text-slate-400">Loading purchase checklist...</div>
-              ) : filteredItems.length ? (
-                <div className="mt-3 grid gap-3">
-                  {groupedItems.map((group) => (
-                    <AcquisitionGradeSection key={`${selectedPlan.id}:${group.grade ?? "unknown"}`} grade={group.grade} items={group.items} busyItemId={busyItemId}
-                      open={gradeOpenState[`${selectedPlan.id}:${group.grade ?? "unknown"}`] ?? true}
-                      onOpenChange={(open) => { const gradeKey = `${selectedPlan.id}:${group.grade ?? "unknown"}`; setGradeOpenState((current) => current[gradeKey] === open ? current : { ...current, [gradeKey]: open }); }}
-                      onSave={handleSaveItem} onReceive={handleReceiveItem} onRemove={handleRemoveItem} />
-                  ))}
-                </div>
-              ) : selectedPlan.items.length ? (
-                <div className="mt-3 rounded-2xl border border-dashed border-white/15 bg-black/10 p-6 text-center">
-                  <PackageOpen className="mx-auto h-6 w-6 text-slate-500" />
-                  <p className="mt-2 text-sm text-slate-400">{itemSearch.trim() ? "No cards match your search and filter." : itemFilter === "changes" ? "No changes yet." : "No cards match this filter."}</p>
-                  <button type="button" onClick={() => { setItemFilter("all"); setItemSearch(""); }} className="mt-3 rounded-xl border border-cyan-300/20 px-3 py-2 text-xs font-bold text-cyan-100 transition hover:bg-cyan-300/10">Show all cards</button>
-                </div>
-              ) : (
-                <div className="mt-3 rounded-2xl border border-dashed border-white/15 bg-black/10 p-8 text-center">
-                  <PackageOpen className="mx-auto h-7 w-7 text-slate-500" /><p className="mt-3 font-bold text-slate-300">No cards yet</p>
-
-                </div>
+      <div className="collection-workspace orders-columns">
+        <PurchasePlanRail
+          plans={plans}
+          selectedId={selectedPlan?.id}
+          scope={scope}
+          loading={planBusy}
+          onScopeChange={changeScope}
+          onSelect={selectPlan}
+          onNewPlan={() => {
+            setNewPlanError("");
+            setShowSetup((value) => !value);
+          }}
+        />
+        <div className="orders-main">
+          {showSetup && (
+            <ModalDialog
+              title="New purchase plan"
+              onClose={() => {
+                if (!creating) setShowSetup(false);
+              }}
+            >
+              {newPlanError && (
+                <p className="orders-dialog-error" role="alert">
+                  {newPlanError}
+                </p>
               )}
-            </section>
-          </>
-        ) : !plans.length ? (
-          <section className="rounded-[1.75rem] border border-dashed border-white/15 bg-white/[0.025] p-8 text-center">
-            <Archive className="mx-auto h-8 w-8 text-slate-500" /><h3 className="mt-3 text-xl font-black text-slate-200">No purchase plans yet</h3>
-            <div className="mt-4">{newPlanAction}</div>
-
-          </section>
-        ) : null}
+              <OrderTrackerSetup
+                decks={decks}
+                options={options}
+                creating={creating}
+                draft={newPlanDraft}
+                onDraftChange={setNewPlanDraft}
+                onClose={() => setShowSetup(false)}
+                onCreate={handleCreate}
+                onError={setNewPlanError}
+              />
+            </ModalDialog>
+          )}
+          {selectedPlan ? (
+            <>
+              <PurchasePlanWorkspace
+                plans={plans}
+                plan={planView!}
+                loading={planBusy}
+                saving={savingPlan}
+                onChange={editPlan}
+                onDiscard={() =>
+                  setPlanDrafts((current) =>
+                    withoutDraft(current, String(selectedPlan.id)),
+                  )
+                }
+                hasRowDrafts={dirtyItemCount > 0}
+                onRefresh={refreshSelectedPlan}
+                onSave={handleSavePlan}
+                onDelete={() => {
+                  setDeleteError("");
+                  setPendingDelete({ kind: "plan", plan: selectedPlan });
+                }}
+                onArchive={handleArchive}
+                onRestore={handleRestore}
+              />
+              <section
+                data-anime="motion-panel"
+                aria-label="Purchase checklist"
+                aria-busy={loadingPlan}
+                className="collection-panel"
+              >
+                <div className="collection-panel-header">
+                  <h2>
+                    Checklist{" "}
+                    <span className="collection-muted ml-1">
+                      {filteredItems.length}
+                    </span>
+                  </h2>
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      aria-label="Search purchase checklist"
+                      value={itemSearch}
+                      onChange={(event) => setItemSearch(event.target.value)}
+                      placeholder="Find a card…"
+                      className="workspace-control w-full sm:w-48"
+                    />
+                    {!archived && (
+                      <button
+                        type="button"
+                        onClick={() => setShowCatalog((value) => !value)}
+                        disabled={loadingPlan || savingPlan}
+                        aria-expanded={showCatalog}
+                        className="collection-button"
+                      >
+                        <Plus /> Add cards
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {showCatalog && !archived && (
+                  <PurchaseCatalog
+                    query={catalogSearch}
+                    results={catalogResults}
+                    searched={catalogSearched}
+                    searching={searchingCatalog}
+                    busyLine={busyCatalogLine}
+                    disabled={loadingPlan || savingPlan}
+                    onQueryChange={setCatalogSearch}
+                    onSearch={handleSearchCatalog}
+                    onClear={() => {
+                      setCatalogSearch("");
+                      setCatalogResults([]);
+                      setCatalogSearched(false);
+                    }}
+                    onAdd={handleAddCard}
+                    onInspect={(card, printing) =>
+                      setInspected({ card, printing })
+                    }
+                  />
+                )}
+                <div className="orders-filters">
+                  {!archived && (
+                    <div
+                      role="group"
+                      aria-label="Filter purchase cards"
+                      className="collection-segments"
+                    >
+                      {ITEM_FILTERS.map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setItemFilter(value)}
+                          aria-pressed={itemFilter === value}
+                        >
+                          {label}
+                          <span>{filterCounts[value]}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setVisibleGradesOpen(true)}
+                      disabled={!groupedItems.length}
+                      className="collection-button subtle"
+                    >
+                      Expand
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVisibleGradesOpen(false)}
+                      disabled={!groupedItems.length}
+                      className="collection-button subtle"
+                    >
+                      Collapse
+                    </button>
+                  </div>
+                </div>
+                {!archived && (
+                  <PurchaseSelectionBar
+                    visibleItems={filteredItems}
+                    selectedItems={selectedItems}
+                    drafts={itemDrafts}
+                    dirtyCount={dirtyItemCount}
+                    disabled={planBusy}
+                    onSelect={(ids) =>
+                      setSelection({ planId: selectedPlan.id, ids })
+                    }
+                    onBatch={handleBatch}
+                  />
+                )}
+                <div className="orders-checklist">
+                  {groupedItems.map((group) => {
+                    const key = `${selectedPlan.id}:${group.key}`;
+                    return (
+                      <AcquisitionGradeSection
+                        key={key}
+                        label={group.label}
+                        items={group.items}
+                        busyItemId={busyItemId}
+                        drafts={itemDrafts}
+                        selectedIds={selectedIds}
+                        onSelectionChange={toggleSelection}
+                        onDraftChange={editItem}
+                        onInspect={(item) =>
+                          setInspected({
+                            card: item.card,
+                            printing: item.printing,
+                          })
+                        }
+                        readOnly={archived}
+                        disabled={planBusy}
+                        open={gradeOpenState[key] ?? true}
+                        onOpenChange={(open) =>
+                          setGradeOpenState((current) => ({
+                            ...current,
+                            [key]: open,
+                          }))
+                        }
+                        onSave={handleSaveItem}
+                        onReceive={handleReceiveItem}
+                        onRemove={(item) => {
+                          setDeleteError("");
+                          setPendingDelete({ kind: "item", item });
+                          return Promise.resolve();
+                        }}
+                      />
+                    );
+                  })}
+                  {!groupedItems.length && (
+                    <div className="collection-empty">
+                      <PackageOpen size={28} />
+                      <p>
+                        {selectedPlan.items.length
+                          ? "No cards match this view."
+                          : "Add cards to start your plan."}
+                      </p>
+                      {selectedPlan.items.length > 0 && !archived && (
+                        <button
+                          type="button"
+                          className="collection-button"
+                          onClick={() => {
+                            setItemFilter("all");
+                            setItemSearch("");
+                          }}
+                        >
+                          Show all cards
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </section>
+            </>
+          ) : (
+            !showSetup && (
+              <div className="collection-panel collection-empty">
+                {scope === "archived" ? (
+                  <Archive size={30} />
+                ) : (
+                  <PackageOpen size={30} />
+                )}
+                <p>
+                  {scope === "archived"
+                    ? "Completed plans will appear here."
+                    : "No active purchase plans."}
+                </p>
+                {scope === "active" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewPlanError("");
+                      setShowSetup(true);
+                    }}
+                    className="collection-button primary"
+                  >
+                    <Plus /> New plan
+                  </button>
+                )}
+              </div>
+            )
+          )}
+        </div>
       </div>
+      {pendingDelete && (
+        <ModalDialog
+          title={
+            pendingDelete.kind === "plan"
+              ? "Delete purchase plan?"
+              : "Remove card?"
+          }
+          onClose={() => {
+            if (!planBusy) setPendingDelete(null);
+          }}
+        >
+          <p className="collection-muted">
+            {pendingDelete.kind === "plan"
+              ? `Delete ${pendingDelete.plan.name} and its full checklist?`
+              : `Remove ${pendingDelete.item.card.name} from this purchase plan?`}
+          </p>
+          {deleteError && (
+            <p className="orders-dialog-error" role="alert">
+              {deleteError}
+            </p>
+          )}
+          <div className="flex justify-end gap-2 mt-4">
+            <button
+              type="button"
+              autoFocus
+              disabled={planBusy}
+              className="collection-button subtle"
+              onClick={() => setPendingDelete(null)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={planBusy}
+              className="collection-button orders-delete-button"
+              onClick={() =>
+                pendingDelete.kind === "plan"
+                  ? handleDeletePlan()
+                  : handleRemoveItem(pendingDelete.item)
+              }
+            >
+              {planBusy
+                ? "Removing…"
+                : pendingDelete.kind === "plan"
+                  ? "Delete plan"
+                  : "Remove card"}
+            </button>
+          </div>
+        </ModalDialog>
+      )}
+      {inspected && (
+        <CardInspector
+          card={inspected.card}
+          printing={inspected.printing}
+          onClose={() => setInspected(null)}
+        />
+      )}
     </>
   );
 }

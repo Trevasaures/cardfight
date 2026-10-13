@@ -1,13 +1,20 @@
 .pt-battle-status {
-  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-height: 62px;
+  padding: 10px 12px;
+  margin-top: 12px;
   border: 1px solid #dfb56d24;
   border-radius: 12px;
   background: linear-gradient(100deg, #dfb56d0a, #0a0d1400 65%);
 }
 .pt-battle-status .pt-turn-bar {
+  flex: 1 1 500px;
   margin: 0;
-  padding: 12px 14px;
-  gap: 18px;
+  padding: 0;
+  gap: 10px;
 }
 .pt-current-phase {
   display: grid;
@@ -20,7 +27,7 @@
 }
 .pt-current-phase > strong {
   color: #eed6ad;
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 650;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -29,18 +36,15 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  border-top: 1px solid #ffffff09;
-  padding: 9px 14px;
-  background: #00000018;
-  border-radius: 0 0 12px 12px;
+  gap: 5px;
+  padding: 0;
 }
 .pt-resource-counter {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 32px;
-  padding: 5px 9px;
+  gap: 5px;
+  min-height: 29px;
+  padding: 4px 7px;
   border-radius: 6px;
   border: 1px solid #ffffff0b;
   color: #9594a6;
@@ -51,12 +55,12 @@
   border-color: #dfb56d50;
 }
 .pt-resource-counter > strong {
-  font-size: 15px;
+  font-size: 12px;
   color: #e7d7bd;
   font-variant-numeric: tabular-nums;
 }
 .pt-resource-counter small {
-  padding-left: 8px;
+  padding-left: 5px;
   border-left: 1px solid #ffffff16;
   color: #bca581;
   font-size: 9px;
@@ -65,31 +69,12 @@
   margin-left: 3px;
   color: #e2c592;
 }
-.pt-resource-bar .pt-energy {
-  margin-left: auto;
-}
-.pt-energy-meter {
-  display: flex;
-  gap: 2px;
-  padding: 0 5px;
-}
-.pt-energy-meter i {
-  width: 4px;
-  height: 14px;
-  border-radius: 1px;
-  background: #ffffff12;
-}
-.pt-energy-meter .is-filled {
-  background: #e1bc79;
-}
-.pt-resource-counter:focus-visible,
-.pt-energy button:focus-visible {
+.pt-resource-counter:focus-visible {
   outline: 2px solid #e7c58f;
   outline-offset: 2px;
 }
 @media (max-width: 699px) {
-  .pt-battle-status .pt-turn-bar,
-  .pt-resource-bar {
+  .pt-battle-status {
     padding: 10px;
     gap: 8px;
   }
@@ -97,12 +82,8 @@
     justify-content: center;
   }
   .pt-resource-bar {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .pt-resource-bar .pt-energy {
-    grid-column: 1 / -1;
     width: 100%;
-    justify-content: flex-end;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }

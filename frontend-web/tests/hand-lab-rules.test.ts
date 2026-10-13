@@ -25,7 +25,7 @@ const list = [
   entry(4, "Hellfire Dragon Emperor, Wirbel Kenig", 3, 1, "ride"),
   entry(5, "Hellfire Dragon, Wirbel Dragon", 3),
   entry(6, "Starter", 0, 1, "ride"),
-  entry(7, "G unit", 4, 2, "g"),
+  { ...entry(7, "G unit", 4, 2, "g"), card: { ...entry(7, "G unit", 4).card!, card_type: "G Unit" } },
   entry(8, "Energy Generator", 0, 1, "token"),
   entry(9, "SYSTEM CODE: X-ceed", 1, 1, "token"),
   entry(10, "Dragwizard, Morfessa", 2, 1, "main", "G-BT09"),

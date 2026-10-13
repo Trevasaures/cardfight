@@ -1,19 +1,15 @@
-import { AlertTriangle, CheckCircle2, Plus, Trash2 } from "lucide-react";
-
-import { DeckBuilderStepHeader } from "./DeckBuilderStepHeader";
-import type {
-  Card,
-  DeckCardEntry,
-  DeckCardZone,
-  DeckVersion,
-} from "../../types/api";
-import { formatCardNation } from "../../utils/cards";
+import { AlertTriangle, CheckCircle2, Layers3, Trash2 } from "lucide-react";
+import { CardArtwork } from "../cards/CardArtwork";
+import { cardGradeBadge, isCrestCard } from "../../utils/cards";
+import { useRememberedScroll } from "../../hooks/useRememberedScroll";
+import type { DeckCardEntry, DeckCardZone, DeckVersion } from "../../types/api";
 
 const ZONES: { value: DeckCardZone; label: string }[] = [
-  { value: "main", label: "Main deck" },
-  { value: "ride", label: "Ride deck" },
+  { value: "main", label: "Main" },
+  { value: "ride", label: "Ride" },
   { value: "g", label: "G zone" },
-  { value: "token", label: "Token" },
+  { value: "crest", label: "Crests" },
+  { value: "token", label: "Tokens" },
   { value: "other", label: "Other" },
 ];
 
@@ -21,31 +17,21 @@ const ZONE_GRADE_SORT: Record<DeckCardZone, "asc" | "desc"> = {
   main: "desc",
   ride: "asc",
   g: "desc",
+  crest: "asc",
   token: "asc",
   other: "desc",
 };
 
-type DeckVersionContentsProps = {
+type Props = {
   currentVersion: DeckVersion | null;
   groupedCards: Map<DeckCardZone, DeckCardEntry[]>;
-  cardResults: Card[];
-  selectedCardId: string;
-  selectedPrintingId: string;
-  addQuantity: number;
-  addZone: DeckCardZone;
+  activeZone: DeckCardZone;
+  onActiveZoneChange: (zone: DeckCardZone) => void;
   saving: boolean;
-  selectedCard: Card | null;
-  onSelectedCardIdChange: (value: string) => void;
-  onSelectedPrintingIdChange: (value: string) => void;
-  onAddQuantityChange: (value: number) => void;
-  onAddZoneChange: (value: DeckCardZone) => void;
-  onAddCardToVersion: () => void;
-  onQuantityChange: (entry: DeckCardEntry, nextQuantity: number) => void;
-  onPrintingChange: (
-    entry: DeckCardEntry,
-    nextPrintingId: string,
-  ) => void;
+  onQuantityChange: (entry: DeckCardEntry, quantity: number) => void;
+  onPrintingChange: (entry: DeckCardEntry, printing: string) => void;
   onRemoveCard: (entry: DeckCardEntry) => void;
+  onInspectCard: (entry: DeckCardEntry) => void;
 };
 
 type GradeGroup = {
@@ -54,18 +40,6 @@ type GradeGroup = {
   total: number;
   entries: DeckCardEntry[];
 };
-
-function cardMeta(card: Card | null) {
-  if (!card) return "Unknown card";
-
-  const chunks = [
-    card.grade !== null ? `Grade ${card.grade}` : null,
-    formatCardNation(card.nation),
-    card.card_type,
-  ].filter(Boolean);
-
-  return chunks.join(" · ") || "No card metadata";
-}
 
 function printingLabel(entry: DeckCardEntry) {
   if (!entry.printing) return "No printing selected";
@@ -111,10 +85,14 @@ function compareEntriesForZone(zone: DeckCardZone) {
         : secondGrade - firstGrade;
     }
 
-    const nameSort = cardName(first).localeCompare(cardName(second), undefined, {
-      sensitivity: "base",
-      numeric: true,
-    });
+    const nameSort = cardName(first).localeCompare(
+      cardName(second),
+      undefined,
+      {
+        sensitivity: "base",
+        numeric: true,
+      },
+    );
 
     if (nameSort !== 0) return nameSort;
 
@@ -142,7 +120,12 @@ function buildGradeGroups(entries: DeckCardEntry[]) {
 
   for (const entry of entries) {
     const grade = cardGrade(entry);
-    const gradeKey = grade === null ? "unknown" : String(grade);
+    const isCrest = isCrestCard(entry.card);
+    const gradeKey = isCrest
+      ? "crest"
+      : grade === null
+        ? "unknown"
+        : String(grade);
     const existing = groups.find((group) => group.gradeKey === gradeKey);
 
     if (existing) {
@@ -153,7 +136,7 @@ function buildGradeGroups(entries: DeckCardEntry[]) {
 
     groups.push({
       gradeKey,
-      label: gradeLabel(grade),
+      label: isCrest ? "Crests" : gradeLabel(grade),
       total: entry.quantity,
       entries: [entry],
     });
@@ -162,465 +145,220 @@ function buildGradeGroups(entries: DeckCardEntry[]) {
   return groups;
 }
 
-function gradeSummary(entries: DeckCardEntry[]) {
-  const totals = new Map<string, number>();
-
-  for (const entry of entries) {
-    const label = gradeLabel(cardGrade(entry));
-    totals.set(label, (totals.get(label) ?? 0) + entry.quantity);
-  }
-
-  return Array.from(totals.entries())
-    .map(([label, total]) => `${label}: ${total}`)
-    .join(" · ");
-}
-
 export function DeckVersionContents({
   currentVersion,
   groupedCards,
-  cardResults,
-  selectedCardId,
-  selectedPrintingId,
-  addQuantity,
-  addZone,
+  activeZone: zone,
+  onActiveZoneChange,
   saving,
-  selectedCard,
-  onSelectedCardIdChange,
-  onSelectedPrintingIdChange,
-  onAddQuantityChange,
-  onAddZoneChange,
-  onAddCardToVersion,
   onQuantityChange,
   onPrintingChange,
   onRemoveCard,
-}: DeckVersionContentsProps) {
-  const rules = currentVersion?.deck_rules ?? null;
-  const selectedGrade = selectedCard?.grade ?? null;
-  const rideEntries = groupedCards.get("ride") ?? [];
-  const rideHasSelectedGrade = rideEntries.some(
-    (entry) => entry.card?.grade === selectedGrade,
+  onInspectCard,
+}: Props) {
+  const rules = currentVersion?.deck_rules;
+  const entries = sortEntriesForZone(zone, groupedCards.get(zone) ?? []);
+  const groups = buildGradeGroups(entries);
+  const listRef = useRememberedScroll<HTMLDivElement>(
+    `cardfight.scroll.builder-list:${currentVersion?.id ?? "none"}:${zone}`,
+    Boolean(currentVersion),
   );
-
-  let addRuleIssue: string | null = null;
-  if (
-    rules &&
-    selectedCard &&
-    (selectedGrade === null || selectedGrade < 0 || selectedGrade > 4)
-  ) {
-    addRuleIssue = "Deck cards must have a grade between 0 and 4.";
-  }
-
-  if (!addRuleIssue && rules && selectedCard && addZone === "main") {
-    if (rules.main_deck_count + addQuantity > rules.main_deck_limit) {
-      addRuleIssue = `Only ${rules.main_deck_limit - rules.main_deck_count} main-deck slots remain.`;
-    }
-  }
-
-  if (!addRuleIssue && rules && selectedCard && addZone === "ride") {
-    if (selectedGrade === null || selectedGrade < 0 || selectedGrade > 3) {
-      addRuleIssue = "The ride deck only accepts grade 0, 1, 2, or 3 cards.";
-    } else if (rideHasSelectedGrade) {
-      addRuleIssue = `The ride deck already has a grade ${selectedGrade} card.`;
-    } else if (rules.ride_deck_count >= rules.ride_deck_limit) {
-      addRuleIssue = "The ride deck already has four cards.";
-    }
-  }
 
   return (
     <section
       data-anime="motion-panel"
-      className="min-w-0 rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5"
+      className="collection-panel"
+      aria-label="Deck list"
     >
-      <DeckBuilderStepHeader
-        title={currentVersion?.version_name ?? "Deck list"}
-        action={
-          rules ? (
-            <div
-              className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black ${
-                rules.is_complete
-                  ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-100"
-                  : "border-amber-300/20 bg-amber-300/10 text-amber-100"
-              }`}
-            >
-              {rules.is_complete ? (
-                <CheckCircle2 className="h-4 w-4" />
-              ) : (
-                <AlertTriangle className="h-4 w-4" />
-              )}
-              <span className="hidden sm:inline">
-                {rules.is_complete ? "Deck complete" : "Needs work"}
-              </span>
-            </div>
-          ) : null
-        }
-      />
-
-      <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
-        {rules ? (
-          <>
-            <div className="grid grid-cols-3 divide-x divide-white/10 bg-white/[0.02]">
-              {[
-                {
-                  label: "Main deck",
-                  value: rules.main_deck_count,
-                  limit: rules.main_deck_limit,
-                },
-                {
-                  label: "Ride deck",
-                  value: rules.ride_deck_count,
-                  limit: rules.ride_deck_limit,
-                },
-                {
-                  label: "Core total",
-                  value: rules.core_card_count,
-                  limit: rules.required_total,
-                },
-              ].map((item) => {
-                const complete = item.value === item.limit;
-
-                return (
-                  <div key={item.label} className="min-w-0 px-3 py-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate-600">
-                        {item.label}
-                      </p>
-                      {complete ? (
-                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-300" />
-                      ) : null}
-                    </div>
-                    <p className="mt-0.5 text-lg font-black text-slate-50">
-                      {item.value}
-                      <span className="text-xs text-slate-600">
-                        /{item.limit}
-                      </span>
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-
-            {!rules.is_complete && rules.issues.length ? (
-              <div className="flex flex-wrap gap-2 border-t border-white/10 px-3 py-2.5">
-                {rules.issues.map((issue) => (
-                  <span
-                    key={issue}
-                    className="rounded-full border border-amber-300/15 bg-amber-300/[0.07] px-2.5 py-1 text-[0.68rem] font-bold text-amber-100/80"
-                  >
-                    {issue}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-          </>
-        ) : null}
-
-        <div className={rules ? "border-t border-white/10 p-3" : "p-3"}>
-          <div className="mb-2.5">
-            <p className="text-[0.65rem] font-bold uppercase tracking-[0.16em] text-slate-500">
-              Add a card
-            </p>
-          </div>
-
-          <div className="grid gap-2 sm:grid-cols-2">
-            <label className="min-w-0">
-              <span className="mb-1.5 block text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate-600">
-                Card
-              </span>
-              <select
-                value={selectedCardId}
-                onChange={(event) => onSelectedCardIdChange(event.target.value)}
-                title="Choose a card from the current search results to add to the selected deck version."
-                className="w-full min-w-0 rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50"
-              >
-                {cardResults.length === 0 ? (
-                  <option value="">No card selected</option>
-                ) : null}
-                {cardResults.map((card) => (
-                  <option key={card.id} value={card.id}>
-                    {card.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="min-w-0">
-              <span className="mb-1.5 block text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate-600">
-                Printing
-              </span>
-              <select
-                value={selectedPrintingId}
-                onChange={(event) =>
-                  onSelectedPrintingIdChange(event.target.value)
-                }
-                disabled={!selectedCard}
-                title="Choose the exact set and rarity to use for this deck entry."
-                className="w-full min-w-0 rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50 disabled:opacity-50"
-              >
-                {!selectedCard?.printings.length ? (
-                  <option value="">No printing recorded</option>
-                ) : null}
-                {selectedCard?.printings.map((printing) => (
-                  <option key={printing.id} value={printing.id}>
-                    {[
-                      printing.set_code,
-                      printing.card_number,
-                      printing.rarity,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ") || `Printing ${printing.id}`}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(5rem,0.35fr)_minmax(9rem,0.65fr)_minmax(10rem,1fr)] sm:items-end">
-            <label>
-              <span className="mb-1.5 block text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate-600">
-                Quantity
-              </span>
-              <input
-                type="number"
-                min={1}
-                max={addZone === "ride" ? 1 : undefined}
-                value={addQuantity}
-                onChange={(event) =>
-                  onAddQuantityChange(Number(event.target.value))
-                }
-                readOnly={addZone === "ride"}
-                title="Quantity of this card to add to the selected zone."
-                className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-cyan-300/50"
-              />
-            </label>
-
-            <label>
-              <span className="mb-1.5 block text-[0.6rem] font-bold uppercase tracking-[0.12em] text-slate-600">
-                Zone
-              </span>
-              <select
-                value={addZone}
-                onChange={(event) =>
-                  onAddZoneChange(event.target.value as DeckCardZone)
-                }
-                title="Choose where this card belongs in the deck list."
-                className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm font-semibold text-slate-100 outline-none focus:border-cyan-300/50"
-              >
-                {ZONES.map((zone) => (
-                  <option key={zone.value} value={zone.value}>
-                    {zone.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <button
-              type="button"
-              onClick={onAddCardToVersion}
-              disabled={
-                !currentVersion ||
-                !selectedCard ||
-                saving ||
-                Boolean(addRuleIssue)
-              }
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-2.5 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
-              title={
-                addRuleIssue ??
-                "Add the selected card to the current deck version"
-              }
-            >
-              <Plus className="h-4 w-4" />
-              Add selected card
-            </button>
-          </div>
-
-          {addRuleIssue ? (
-            <p className="mt-2 text-xs font-bold text-amber-200/80">
-              {addRuleIssue}
-            </p>
-          ) : null}
-        </div>
+      <div className="collection-panel-header">
+        <h2>Deck list</h2>
+        {rules && (
+          <span
+            className={`inline-flex items-center gap-1.5 text-xs ${rules.is_complete ? "text-emerald-200" : "text-cyan-200"}`}
+          >
+            {rules.is_complete ? (
+              <CheckCircle2 size={14} />
+            ) : (
+              <AlertTriangle size={14} />
+            )}
+            {rules.is_complete ? "Complete" : "Incomplete"}
+          </span>
+        )}
       </div>
-
-      <div className="mt-4 max-h-[34rem] space-y-3 overflow-auto pr-1">
-        {currentVersion ? (
-          ZONES.map((zone) => {
-            const rawEntries = groupedCards.get(zone.value) ?? [];
-            const entries = sortEntriesForZone(zone.value, rawEntries);
-            const gradeGroups = buildGradeGroups(entries);
-            const zoneTotal = currentVersion.totals_by_zone[zone.value] ?? 0;
-            const summary = gradeSummary(entries);
-
-            return (
-              <section
-                key={zone.value}
-                data-builder-anime="zone"
-                className="rounded-2xl border border-white/10 bg-black/10 p-3"
+      {rules && (
+        <>
+          <div className="builder-counts">
+            {[
+              ["Main", rules.main_deck_count, rules.main_deck_limit],
+              ["Ride", rules.ride_deck_count, rules.ride_deck_limit],
+              ["Total", rules.core_card_count, rules.required_total],
+            ].map(([label, count, limit]) => (
+              <div key={label}>
+                <span className="collection-label">{label}</span>
+                <strong>
+                  {count}
+                  <small> / {limit}</small>
+                </strong>
+              </div>
+            ))}
+          </div>
+          {!!rules.issues.length && (
+            <details className="builder-issues mt-3">
+              <summary className="cursor-pointer">
+                {rules.issues.length} deck{" "}
+                {rules.issues.length === 1 ? "issue" : "issues"}
+              </summary>
+              <ul className="mt-2 space-y-1">
+                {rules.issues.map((issue) => (
+                  <li key={issue}>{issue}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </>
+      )}
+      <div
+        className="collection-segments border-b border-white/10 p-3"
+        role="group"
+        aria-label="Deck zones"
+      >
+        {ZONES.map((item) => (
+          <button
+            key={item.value}
+            type="button"
+            onClick={() => onActiveZoneChange(item.value)}
+            aria-pressed={zone === item.value}
+          >
+            {item.label}
+            <span>{currentVersion?.totals_by_zone[item.value] ?? 0}</span>
+          </button>
+        ))}
+      </div>
+      <div ref={listRef} className="builder-zone-list">
+        {groups.map((group) => (
+          <section
+            key={group.gradeKey}
+            aria-label={group.label}
+            data-builder-anime="zone"
+          >
+            <h3 className="builder-zone-heading">
+              {group.label}
+              <span>
+                {group.total} {group.total === 1 ? "copy" : "copies"}
+              </span>
+            </h3>
+            {group.entries.map((entry) => (
+              <article
+                key={entry.id}
+                data-builder-anime="deck-entry"
+                className="builder-entry"
+                aria-label={cardName(entry)}
               >
-                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h4 className="font-black text-slate-100">{zone.label}</h4>
-                    {summary ? (
-                      <p className="mt-1 text-xs leading-5 text-slate-500">
-                        {summary}
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-bold text-slate-500">
-                    {zone.value === "main"
-                      ? `${zoneTotal}/50 cards`
-                      : zone.value === "ride"
-                        ? `${zoneTotal}/4 cards`
-                        : `${zoneTotal} cards`}
-                  </span>
-                </div>
-
-                {gradeGroups.length ? (
-                  <div className="space-y-4">
-                    {gradeGroups.map((group) => (
-                      <div key={group.gradeKey}>
-                        <div className="mb-2 flex items-center gap-3">
-                          <p className="shrink-0 text-xs font-black uppercase tracking-[0.16em] text-slate-500">
-                            {group.label}
-                          </p>
-
-                          <div className="h-px flex-1 bg-white/10" />
-
-                          <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.035] px-2.5 py-1 text-xs font-bold text-slate-500">
-                            {group.total} cards
-                          </span>
-                        </div>
-
-                        <div className="divide-y divide-white/10 overflow-hidden rounded-xl border border-white/10 bg-black/10">
-                          {group.entries.map((entry) => (
-                            <article
-                              key={entry.id}
-                              data-builder-anime="deck-entry"
-                              className="grid gap-3 px-3 py-2.5 transition hover:bg-white/[0.035] md:grid-cols-[1fr_auto] md:items-center"
-                            >
-                              <div className="min-w-0">
-                                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                                  <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2.5 py-1 text-xs font-black text-cyan-100">
-                                    x{entry.quantity}
-                                  </span>
-
-                                  <p className="min-w-0 truncate font-black text-slate-50">
-                                    {entry.card?.name ?? "Unknown card"}
-                                  </p>
-                                </div>
-
-                                <p className="mt-1 truncate text-sm text-slate-500">
-                                  {cardMeta(entry.card)}
-                                </p>
-
-                                <p className="mt-1 truncate text-xs text-slate-600">
-                                  {printingLabel(entry)}
-                                </p>
-                              </div>
-
-                              <div className="grid min-w-0 gap-2 sm:flex sm:items-center sm:justify-between sm:gap-3 md:justify-end">
-                                <select
-                                  value={entry.printing_id ?? ""}
-                                  onChange={(event) =>
-                                    onPrintingChange(entry, event.target.value)
-                                  }
-                                  disabled={saving}
-                                  title={`Choose the printing used for ${entry.card?.name ?? "this card"}`}
-                                  className="w-full min-w-0 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs font-semibold text-slate-300 outline-none focus:border-cyan-300/50 disabled:opacity-50 sm:w-auto sm:max-w-56"
-                                >
-                                  <option value="">No printing selected</option>
-                                  {entry.card?.printings.map((printing) => (
-                                    <option
-                                      key={printing.id}
-                                      value={printing.id}
-                                    >
-                                      {[
-                                        printing.set_code,
-                                        printing.card_number,
-                                        printing.rarity,
-                                      ]
-                                        .filter(Boolean)
-                                        .join(" · ") ||
-                                        `Printing ${printing.id}`}
-                                    </option>
-                                  ))}
-                                </select>
-
-                                <div className="flex items-center justify-end gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      onQuantityChange(
-                                        entry,
-                                        entry.quantity - 1,
-                                      )
-                                    }
-                                    disabled={entry.quantity <= 1 || saving}
-                                    className="h-8 w-8 rounded-xl border border-white/10 bg-white/[0.04] text-base font-black text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
-                                    title="Decrease quantity"
-                                  >
-                                    -
-                                  </button>
-
-                                  <span className="w-8 text-center text-base font-black text-slate-50">
-                                    {entry.quantity}
-                                  </span>
-
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      onQuantityChange(
-                                        entry,
-                                        entry.quantity + 1,
-                                      )
-                                    }
-                                    disabled={
-                                      saving ||
-                                      entry.zone === "ride" ||
-                                      (entry.zone === "main" &&
-                                        rules !== null &&
-                                        rules.main_deck_count >=
-                                          rules.main_deck_limit)
-                                    }
-                                    className="h-8 w-8 rounded-xl border border-white/10 bg-white/[0.04] text-base font-black text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
-                                    title="Increase quantity"
-                                  >
-                                    +
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => onRemoveCard(entry)}
-                                    className="h-8 w-8 rounded-xl border border-rose-300/20 bg-rose-300/10 text-rose-100 transition hover:bg-rose-300/20"
-                                    title="Remove this card from the deck version"
-                                  >
-                                    <Trash2 className="mx-auto h-4 w-4" />
-                                  </button>
-                                </div>
-                              </div>
-                            </article>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-white/15 bg-black/20 px-4 py-3 text-sm text-slate-600">
-                    No cards in this zone yet.
+                {entry.card && (
+                  <div className="collection-artwork">
+                    <CardArtwork card={entry.card} printing={entry.printing} />
+                    <span className="collection-grade">
+                      {cardGradeBadge(entry.card)}
+                    </span>
                   </div>
                 )}
-              </section>
-            );
-          })
-        ) : (
-          <div className="rounded-2xl border border-dashed border-white/15 bg-black/20 p-8 text-center">
-            <p className="font-black text-slate-300">
-              No deck version selected.
+                <div className="builder-entry-main">
+                  <button
+                    type="button"
+                    className="builder-card-name text-left hover:underline"
+                    title={cardName(entry)}
+                    aria-haspopup="dialog"
+                    onClick={() => onInspectCard(entry)}
+                  >
+                    {cardName(entry)}
+                  </button>
+                  <select
+                    value={entry.printing_id ?? ""}
+                    onChange={(event) =>
+                      onPrintingChange(entry, event.target.value)
+                    }
+                    disabled={saving}
+                    aria-label={`Printing for ${cardName(entry)}`}
+                  >
+                    <option value="">No printing selected</option>
+                    {entry.card?.printings.map((printing) => (
+                      <option key={printing.id} value={printing.id}>
+                        {[
+                          printing.set_code,
+                          printing.card_number,
+                          printing.rarity,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || `Printing ${printing.id}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="builder-quantity">
+                  {!isCrestCard(entry.card) && (
+                    <button
+                      type="button"
+                      disabled={saving || entry.quantity <= 1}
+                      onClick={() =>
+                        onQuantityChange(entry, entry.quantity - 1)
+                      }
+                      aria-label={`Decrease ${cardName(entry)} quantity`}
+                    >
+                      −
+                    </button>
+                  )}
+                  <span>{entry.quantity}</span>
+                  {!isCrestCard(entry.card) && (
+                    <button
+                      type="button"
+                      disabled={
+                        saving ||
+                        entry.zone === "ride" ||
+                        (entry.zone === "main" &&
+                          !!rules &&
+                          rules.main_deck_count >= rules.main_deck_limit)
+                      }
+                      onClick={() =>
+                        onQuantityChange(entry, entry.quantity + 1)
+                      }
+                      aria-label={`Increase ${cardName(entry)} quantity`}
+                    >
+                      +
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => onRemoveCard(entry)}
+                  className="collection-button subtle danger"
+                  aria-label={`Remove ${cardName(entry)}`}
+                >
+                  <Trash2 />
+                </button>
+              </article>
+            ))}
+          </section>
+        ))}
+        {!groups.length && (
+          <div className="collection-empty">
+            <Layers3 size={26} />
+            <p>
+              {currentVersion
+                ? zone === "crest"
+                  ? "Add a crest from the catalog."
+                  : "No cards in this zone."
+                : "Select or create a version."}
             </p>
-            <p className="mt-2 text-sm text-slate-500">Create a version to add cards.</p>
           </div>
         )}
       </div>
+      {currentVersion && (
+        <div className="collection-muted border-t border-white/10 px-4 py-3">
+          {currentVersion.unique_card_count} unique cards ·{" "}
+          {currentVersion.version_name}
+        </div>
+      )}
     </section>
   );
 }

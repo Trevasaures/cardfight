@@ -5,6 +5,7 @@ import type { DeckCardEntry } from "../../types/api";
 import { CIRCLES, ZONES, type TableCard, type Zone } from "./playtest";
 import { formatPower } from "./cardDisplay";
 import { SoulStack } from "./SoulStack";
+import { isSelectionClick, zoneCardTarget } from "./selection";
 import "./vanguard-stack.css";
 
 type Props = {
@@ -16,8 +17,10 @@ type Props = {
   draggable: boolean;
   dropClassName: string;
   soul?: TableCard[];
+  heart?: TableCard;
   soulDropClassName?: string;
   onOpen: (zone: Zone) => void;
+  onSelect: (card: TableCard) => void;
   onRest: (card: TableCard) => void;
   onDragStart: (
     event: PointerEvent<HTMLElement>,
@@ -36,24 +39,27 @@ export function PlaytestZone({
   draggable,
   dropClassName,
   soul = [],
+  heart,
   soulDropClassName = "",
   onOpen,
+  onSelect,
   onRest,
   onDragStart,
 }: Props) {
   // The deck draws from index 0; other piles display their most recently added card.
   const top = zone === "deck" ? cards[0] : cards.at(-1);
   const entry = top && entries.get(top.entryId);
+  const heartName = heart && entries.get(heart.entryId)?.card?.name;
   const circle = CIRCLES.includes(zone);
   const hidden = zone === "deck" || zone === "ride" || top?.faceDown;
   const unitName =
     circle || zone === "guardian" ? entry?.card?.name : undefined;
   const title = unitName ?? ZONES[zone];
   const selectedHere = cards.some((card) => selected.includes(card.key));
-  const restable = circle && top && draggable;
+  const restable = Boolean(circle && top && !top.crest && draggable);
   const tooltip = [
     unitName ? `${unitName} · ${ZONES[zone]}` : title,
-    restable ? `Double-click to ${top.rested ? "stand" : "rest"}` : "",
+    restable ? `Double-click to ${top?.rested ? "stand" : "rest"}` : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -64,16 +70,25 @@ export function PlaytestZone({
       data-drop-zone={zone}
       className={`pt-zone ${circle ? "pt-circle" : "pt-pile"} pt-${zone} ${unitName ? "has-unit" : ""} ${selectedHere ? "is-selected" : ""} ${dropClassName} ${top?.rested ? "is-rested" : ""}`}
       aria-label={
-        unitName
-          ? `View ${unitName} in ${ZONES[zone]}${cards.length > 1 ? ` (${cards.length})` : ""}`
+        circle && top && draggable
+          ? `${selected.includes(top.key) ? "Deselect" : "Select"} ${unitName ?? "unit"} in ${ZONES[zone]}`
           : `View ${ZONES[zone]} (${cards.length})`
+      }
+      aria-pressed={
+        circle && top && draggable ? selected.includes(top.key) : undefined
       }
       title={tooltip}
       onClick={(event) => {
-        if (event.detail < 2) onOpen(zone);
+        if (!isSelectionClick(event.detail, restable)) return;
+        const artworkClicked =
+          event.target instanceof Element &&
+          Boolean(event.target.closest("[data-zone-card]"));
+        const target = draggable && zoneCardTarget(zone, top, artworkClicked);
+        if (target) onSelect(target);
+        else onOpen(zone);
       }}
       onDoubleClick={() => {
-        if (restable) onRest(top);
+        if (restable && top) onRest(top);
       }}
     >
       <span className="pt-zone-title">
@@ -82,12 +97,18 @@ export function PlaytestZone({
           <span>{cards.length || ""}</span>
         )}
       </span>
+      {zone === "vanguard" && heart && (
+        <span className="pt-heart-label" title={heartName}>
+          Heart <strong>{heartName ?? "Vanguard"}</strong>
+        </span>
+      )}
       <span className="pt-zone-surface">
-        {zone === "vanguard" && soul.length > 0 && (
-          <SoulStack cards={soul} entries={entries} />
+        {zone === "vanguard" && (soul.length > 0 || heart) && (
+          <SoulStack cards={heart ? [...soul, heart] : soul} entries={entries} />
         )}
         {top && entry?.card ? (
           <span
+            data-zone-card
             className={`pt-miniature ${hidden ? "is-hidden" : ""} ${draggable ? "pt-draggable" : ""} ${draggedKeys.includes(top.key) ? "is-drag-source" : ""}`}
             onPointerDown={(event) => {
               if (draggable) onDragStart(event, top, Boolean(hidden));

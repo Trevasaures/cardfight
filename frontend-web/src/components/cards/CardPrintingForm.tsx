@@ -13,6 +13,7 @@ import { CardArtworkInput } from "./CardArtworkInput";
 type CardPrintingFormProps = {
   value: CardPrintingFormState;
   options: CardFormOptions;
+  cardType?: string | null;
   disabled?: boolean;
   onChange: (value: CardPrintingFormState) => void;
   onSubmit: () => void;
@@ -23,6 +24,7 @@ type CardPrintingFormProps = {
 export function CardPrintingForm({
   value,
   options,
+  cardType,
   disabled = false,
   onChange,
   onSubmit,
@@ -40,67 +42,74 @@ export function CardPrintingForm({
   }
 
   return (
-    <div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <CardSetFields
-          value={value}
-          options={options}
-          disabled={disabled}
-          onChange={(setFields) => onChange({ ...value, ...setFields })}
-          onSetSaved={onSetSaved}
-        />
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!disabled && !importingArtwork && canSubmit) onSubmit();
+      }}
+    >
+      <fieldset disabled={disabled}>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <CardSetFields
+            value={value}
+            options={options}
+            disabled={disabled}
+            onChange={(setFields) => onChange({ ...value, ...setFields })}
+            onSetSaved={onSetSaved}
+          />
 
-        <FormTextInput
-          label="Card number"
-          value={value.card_number}
-          onChange={(fieldValue) => updateField("card_number", fieldValue)}
-          placeholder="Example: DZ-BT01/001EN"
-          required
-        />
+          <FormTextInput
+            label="Card number"
+            value={value.card_number}
+            onChange={(fieldValue) => updateField("card_number", fieldValue)}
+            placeholder="Example: DZ-BT01/001EN"
+            required
+          />
 
-        <FormTextInput
-          label="Rarity"
-          value={value.rarity}
-          onChange={(fieldValue) => updateField("rarity", fieldValue)}
-          placeholder="Example: SR"
-          required
-        />
-      </div>
+          <FormTextInput
+            label="Rarity"
+            value={value.rarity}
+            onChange={(fieldValue) => updateField("rarity", fieldValue)}
+            placeholder="Example: SR"
+            required
+          />
+        </div>
 
-      <div className="mt-4">
-        <CardArtworkInput
-          value={value.artwork}
-          disabled={disabled}
-          onChange={(artwork) => onChange({ ...value, artwork })}
-          onBusyChange={setImportingArtwork}
-        />
-      </div>
+        <div className="mt-4">
+          <CardArtworkInput
+            value={value.artwork}
+            cardType={cardType}
+            disabled={disabled}
+            onChange={(artwork) => onChange({ ...value, artwork })}
+            onBusyChange={setImportingArtwork}
+          />
+        </div>
 
-      <div className="mt-4 flex flex-wrap justify-end gap-3">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={disabled}
-          className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-bold text-slate-300 transition hover:bg-white/[0.08] disabled:opacity-50"
-        >
-          Cancel
-        </button>
+        <div className="inspector-form-actions mt-4 flex flex-wrap justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={disabled}
+            className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-bold text-slate-300 transition hover:bg-white/[0.08] disabled:opacity-50"
+          >
+            Cancel
+          </button>
 
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={disabled || importingArtwork || !canSubmit}
-          className="inline-flex items-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
-          title={
-            canSubmit
-              ? "Add this printing to the existing card"
-              : "Complete all printing fields before saving"
-          }
-        >
-          <Layers3 className="h-4 w-4" />
-          Add printing
-        </button>
-      </div>
-    </div>
+          <button
+            type="submit"
+            disabled={disabled || importingArtwork || !canSubmit}
+            className="inline-flex items-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+            title={
+              canSubmit
+                ? "Add this printing to the existing card"
+                : "Complete all printing fields before saving"
+            }
+          >
+            <Layers3 className="h-4 w-4" />
+            Add printing
+          </button>
+        </div>
+      </fieldset>
+    </form>
   );
 }

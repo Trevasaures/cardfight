@@ -20,9 +20,13 @@ The project is designed primarily as a personal testing lab. Everything runs loc
 - Builds and versions deck lists without overwriting earlier builds.
 - Creates a new deck version from an empty list or an exact copy of an older version.
 - Compares two versions to surface card, quantity, zone, printing, and grade-curve changes.
+- Tracks purchase plans with per-printing quantities, prices, incoming orders, and received cards.
+- Updates selected purchase lines together and receives partial deliveries.
+- Archives fully received plans while retaining their card lists, prices, and notes; archived plans can be restored.
 - Enforces the current 54-card core deck rules: 50 main-deck cards and one grade 0, 1, 2, and 3 ride-deck card.
+- Catalogs grade-less Crest and Ride Deck Crest cards in a separate auxiliary deck section, including optional stride crests.
 - Derives deck nation identity from the selected version's ride line, with saved deck metadata as a fallback.
-- Supports manual card entry and optional card-image analysis.
+- Supports manual card entry in Deck Builder and optional card-image analysis in Card Library.
 - Includes a just-for-fun Vanguard nation quiz.
 
 ## How it works
@@ -38,21 +42,47 @@ A typical session looks like this:
 5. Use Play Lab to choose a matchup and record the result.
 6. Review the dashboard, analytics, match history, and rivalry pages over time.
 
+## Purchase plans
+
+Order Tracker keeps active plans and an Archive view. Archive becomes available when a non-empty plan has every target copy on hand and no incoming deliveries. Archived plans retain quantities, prices, and notes, are read-only until restored, and no longer appear in dashboard purchase work. Existing SQLite databases receive the archive column automatically on backend startup.
+
+Purchase rows and plan totals display actual **On hand / target** counts, including copies planned to leave the current deck. Changing a target preserves ownership and the working deck. Readiness only counts copies applied to each card's target, so outgoing or surplus copies cannot cover a missing replacement; incoming coverage follows the same rule.
+
+Select checklist lines to mark missing copies incoming or receive their deliveries together. Bulk actions validate the entire selection and save it in one transaction. Individual **Receive** actions accept partial quantities. Unfinished row, plan, and new-plan forms are retained locally; Save clears the relevant draft, and Discard removes it. Draft rows are excluded from bulk changes until saved or discarded.
+
+## Workspace interactions
+
+Card names open a shared inspector in Card Library, Deck Builder, and Order Tracker. Artwork, printing choices, and ability text stay together in a drawer. Card Library and Deck Builder retain unfinished edits when the drawer closes; **Resume edit** reopens them. The card editor identifies its primary printing separately from the inspector's printing preview. Forms support Enter to save and Escape to close, with focus returned to their opener.
+
+Deck Library, Match History, and Rivalries remember their filters; Match History also remembers its page. Page and builder-list scroll positions are restored when returning to a view. Deck Builder card removal offers a temporary **Undo** action, including after navigating away and returning.
+
 ## Hand Lab
 
-Cards can include optional **Ability text** in the create/edit forms in Card Library and Deck Builder. Save card effects or a description once per card; its text is shared by all decks and appears in the Hand Lab inspector. Click a card's name in Card Library to expand its text. Copied text is cleaned when leaving the field and saving: extra whitespace, escaped/doubled quotes, common HTML entities, and line-break markup become readable plain text. Existing text gets the same formatting when displayed. Line breaks are preserved, and clearing the field removes the saved text.
+Catalog **Crest** and **Ride Deck Crest** cards with the same printing, artwork, and ability-text tools as other cards; no grade is required. Deck Builder puts them in **Crests**, outside the main deck, four graded ride cards, and G units. Each crest identity has one copy, and a version can have one Ride Deck Crest. A stride crest is optional, so crest-free stride lists remain supported. Crest cards may share a name with their corresponding unit.
+
+The Hand Lab crest tray separates available and active crests. **Activate** places a saved crest from reserve, and **Remove** returns it; these actions support Undo and tab recovery. Every test shows an Energy Generator reference unless the version includes its own saved Energy Generator, in which case its artwork and text are used. Activation and energy charging remain manual; the [official Energy Generator text](https://en.cf-vanguard.com/cardlist/cardsearch/?keyword=Energy+Generator&view=text) places it when you ride. A virtual reference is not a drawn card and cannot change deck counts. Crests cannot enter unit circles or ordinary card piles.
+
+Crest artwork imports use a consistent **7:5 landscape** frame. Portrait scans rotate counterclockwise; landscape scans retain their orientation. Transparent padding preserves the entire card without stretching or cropping. This applies to Crest and Ride Deck Crest only. Existing stored artwork can be previewed with **Normalize crest** in the card editor; Save attaches the result. Saving an existing crest also normalizes its linked artwork in the same transaction. Shared original image assets remain unchanged.
+
+Face-up G cards appear beside the crest tray and remain selectable in their actual G zone. **Face up** pays a selected G-card flip cost without turning already-used cards back down. The **GB** counter counts face-up G units in the G zone plus a G-unit vanguard, following the [official Generation Break wording](https://en.cf-vanguard.com/cardlist/?cardno=G-TD01%2F002EN). This tracker also works without a stride crest.
+
+Select one G unit in G zone and choose **Stride** with a grade 3 or greater vanguard; selecting the current vanguard alongside it also works. Normal stride starts from face down during Ride. The sandbox permits placement during Main and from a face-up copy to correct a missed step or accidental flip. The original vanguard becomes a linked **Heart**, visibly underneath the G unit and excluded from soul counts and soul costs. Stride inherits the heart's saved printed power; entering End returns the G unit face up to the G zone and restores that heart in the same rest/stand orientation. Undo and tab recovery retain this association. Opponent eligibility, stride discard costs, crest power changes, and card-specific abilities remain manual sandbox decisions.
+
+Cards can include optional **Ability text** in the create/edit forms in Card Library and Deck Builder. Save card effects or a description once per card; its text is shared by all decks and appears in the Hand Lab inspector. Click a card's name in Card Library to open its inspector. Copied text is cleaned when leaving the field and saving: extra whitespace, escaped/doubled quotes, common HTML entities, and line-break markup become readable plain text. Existing text gets the same formatting when displayed. Line breaks are preserved, and clearing the field removes the saved text.
 
 Open **Hand Lab** from the sidebar or a selected version in Deck Builder. Choose first or second and a grade 0 starter, then deal five and resolve one mulligan. A ride-deck starter is selected by default; main-deck starters are removed before shuffling. Incomplete lists can be used as long as five main-deck cards remain. Printing choices and every physical copy are retained.
 
-The solo playmat includes the vanguard, five rear-guard circles, guardian circle, deck, ride deck, soul, damage, drop, order, crest, bind, G zone, tokens, reserve, and reveal area. Drag cards from your hand, an occupied circle, a pile, or the zone inspector onto a highlighted destination. Drop onto the hand to return cards; dropping onto the deck puts them on the bottom. The deck pile always drags its top card. Select multiple cards before dragging to move a group into a pile; unit circles accept one card. Release outside a valid destination or press Escape to cancel. The field and page scroll near their edges while dragging. Mouse, pen, and touch use the same pointer interaction; scroll from the spaces around cards on touch screens. Clicking a zone only inspects it; the **Move** menu remains available for keyboard use and precise deck-top placement. Riding moves the old vanguard into soul; calling over a rear-guard sends the old unit to drop. Click an occupied unit circle to inspect and select its unit for rest/stand and bonus controls. The inspector also supports deck searches and returning cards to the top or bottom. **Undo** restores up to 80 previous table states, including deck order and checks.
+The solo playmat includes the vanguard, five rear-guard circles, guardian circle, deck, ride deck, soul, damage, drop, order, crest, bind, G zone, tokens, reserve, and reveal area. Drag cards from your hand, an occupied circle, a pile, or the zone inspector onto a highlighted destination. Drop onto the hand to return cards; dropping onto the deck puts them on the bottom. The deck pile always drags its top card. Select multiple cards before dragging to move a group into a pile; unit circles accept one card. Release outside a valid destination or press Escape to cancel. The field and page scroll near their edges while dragging. Mouse, pen, and touch use the same pointer interaction; scroll from the spaces around cards on touch screens. Clicking a pile label or an empty circle browses that zone; the **Move** menu remains available for keyboard use and precise deck-top placement. Riding moves the old vanguard into soul; calling over a rear-guard sends the old unit to drop. Click a visible card to toggle selection. Multiple cards can stay selected for group actions; details follow only the most recently selected remaining card. Long ability text scrolls separately from the zone list. Double-click a unit to rest or stand it. The inspector also supports deck searches and returning cards to the top or bottom. **Undo** restores up to 80 previous table states, including deck order and checks.
 
-Advance through Stand, Draw, Ride, Main, Battle, and End. Entering Draw draws one card for either starting order. Going first skips the first turn's Battle phase; going second begins on the theoretical opponent's turn. **Start my turn** stands your units. Ending your turn clears temporary power and critical bonuses. Drive and damage checks reveal one card and wait for you to resolve its effects, then send it to hand or damage. Draws, discards, soul charges, reveals, shuffling, rest/stand, damage flips, energy (0–10), and power/critical adjustments are also available manually.
+Advance through Stand, Draw, Ride, Main, Battle, and End. Entering Draw draws one card for either starting order. Going first skips the first turn's Battle phase; going second begins on the theoretical opponent's turn. **Start my turn** stands your units. Ending your turn clears temporary power and critical bonuses. Drive and damage checks reveal one card and wait for you to resolve its effects, then send it to hand or damage. Draws, discards, soul charges, reveals, shuffling, rest/stand, damage flips, energy (0–10), and power/critical adjustments are also available manually. Selected field units have a direct +10k shortcut for trigger power; checks still wait for explicit resolution.
 
 This is a sandbox, not a rules engine or an opponent AI. Ride costs, ability timing, grade restrictions, triggers, heals, persona ride, energy generation, crest abilities, token creation beyond the saved reserve, and win/loss conditions are not automated. Use **Flip** on damage cards for Counter-Blast/Counter-Charge, move soul cards to drop for Soul-Blast, and use the available zones for other effects. Card text and base stats come from the saved library; missing power displays as a dash. On narrow screens, the playmat and hand scroll within their own containers.
 
 The mulligan follows the [official Vanguard setup sequence](https://en.cf-vanguard.com/howto/v-series/): returned cards go to the bottom, replacements are drawn, then the remaining deck is shuffled. Keeping the hand does not shuffle.
 
 Deck selection is remembered locally. Playtest sessions are temporary and do not alter saved lists or match statistics.
+
+Selected-card actions prioritize the current zone: units expose Attack/Rest/Stand and power, damage exposes Counter-Blast/Counter-Charge, and soul exposes Soul-Blast. **More** retains unusual manual sandbox adjustments. Laptop and mobile layouts offer a selected-card dock above the playmat that opens ability details without scrolling to the bottom. Ctrl/Cmd+Z undoes the last table action, and Escape clears selection; text fields, dialogs, and active drags retain their own keyboard behaviour.
 
 ## Technology stack
 
