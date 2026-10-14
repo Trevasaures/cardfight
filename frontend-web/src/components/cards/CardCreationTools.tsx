@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { CardImageImportAssistant } from "../deck-builder/CardImageImportAssistant";
+import { CardImageImportAssistant } from "./CardImageImportAssistant";
 import { ManualCardForm } from "../deck-builder/ManualCardForm";
 import { CardSetManager } from "./CardSetManager";
 import type { ManualCardFormState } from "../deck-builder/manualCardFormState";

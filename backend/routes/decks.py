@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 from sqlalchemy import or_
 
 from backend.database import db
+from backend.errors import ConflictError, ValidationError, json_object
 from backend.models import Deck, Match
 from backend.services.serializers import serialize_deck
 
@@ -29,9 +30,18 @@ def _normalize_nation(value):
 
     if nation not in NATION_OPTIONS:
         valid = ", ".join([item for item in NATION_OPTIONS.keys() if item])
-        raise ValueError(f"nation must be one of: {valid}")
+        raise ValidationError(f"nation must be one of: {valid}")
 
     return nation, NATION_OPTIONS[nation]
+
+
+def _text_field(data, field_name):
+    value = data.get(field_name)
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ValidationError(f"{field_name} must be text.")
+    return value.strip()
 
 
 @bp_decks.get("")
@@ -72,32 +82,29 @@ def deck_options():
 
 @bp_decks.get("/<int:deck_id>")
 def get_deck(deck_id: int):
-    deck = Deck.query.get_or_404(deck_id)
+    deck = db.get_or_404(Deck, deck_id)
     return jsonify(serialize_deck(deck))
 
 
 @bp_decks.post("")
 def create_deck():
-    data = request.get_json(force=True, silent=True) or {}
+    data = json_object(force=True)
 
-    name = (data.get("name") or "").strip()
-    deck_type = (data.get("type") or "").strip()
+    name = _text_field(data, "name")
+    deck_type = _text_field(data, "type")
     active = bool(data.get("active", True))
 
-    try:
-        nation, nation_icon = _normalize_nation(data.get("nation"))
-    except ValueError as e:
-        return jsonify(error=str(e)), 400
+    nation, nation_icon = _normalize_nation(data.get("nation"))
 
     if not name:
-        return jsonify(error="name is required."), 400
+        raise ValidationError("name is required.")
 
     if deck_type not in VALID_DECK_TYPES:
-        return jsonify(error="type must be Standard or Stride."), 400
+        raise ValidationError("type must be Standard or Stride.")
 
     existing = Deck.query.filter(Deck.name == name).first()
     if existing:
-        return jsonify(error="Deck with that name already exists."), 409
+        raise ConflictError("Deck with that name already exists.")
 
     deck = Deck(
         name=name,
@@ -115,14 +122,14 @@ def create_deck():
 
 @bp_decks.patch("/<int:deck_id>")
 def update_deck(deck_id: int):
-    data = request.get_json(force=True, silent=True) or {}
-    deck = Deck.query.get_or_404(deck_id)
+    data = json_object(force=True)
+    deck = db.get_or_404(Deck, deck_id)
 
     if "name" in data:
-        name = (data.get("name") or "").strip()
+        name = _text_field(data, "name")
 
         if not name:
-            return jsonify(error="name cannot be empty."), 400
+            raise ValidationError("name cannot be empty.")
 
         duplicate = Deck.query.filter(
             Deck.id != deck_id,
@@ -130,23 +137,20 @@ def update_deck(deck_id: int):
         ).first()
 
         if duplicate:
-            return jsonify(error="Deck with that name already exists."), 409
+            raise ConflictError("Deck with that name already exists.")
 
         deck.name = name
 
     if "type" in data:
-        deck_type = (data.get("type") or "").strip()
+        deck_type = _text_field(data, "type")
 
         if deck_type not in VALID_DECK_TYPES:
-            return jsonify(error="type must be Standard or Stride."), 400
+            raise ValidationError("type must be Standard or Stride.")
 
         deck.type = deck_type
 
     if "nation" in data:
-        try:
-            nation, nation_icon = _normalize_nation(data.get("nation"))
-        except ValueError as e:
-            return jsonify(error=str(e)), 400
+        nation, nation_icon = _normalize_nation(data.get("nation"))
 
         deck.nation = nation
         deck.nation_icon = nation_icon
@@ -161,7 +165,7 @@ def update_deck(deck_id: int):
 
 @bp_decks.delete("/<int:deck_id>")
 def delete_deck(deck_id: int):
-    deck = Deck.query.get_or_404(deck_id)
+    deck = db.get_or_404(Deck, deck_id)
 
     ref_count = (
         db.session.query(Match.id)
@@ -175,12 +179,10 @@ def delete_deck(deck_id: int):
     )
 
     if ref_count > 0:
-        return jsonify(
-            error=(
-                f"Cannot delete '{deck.name}': {ref_count} matches reference this deck. "
-                "Set it inactive instead."
-            )
-        ), 409
+        raise ConflictError(
+            f"Cannot delete '{deck.name}': {ref_count} matches reference this deck. "
+            "Set it inactive instead."
+        )
 
     db.session.delete(deck)
     db.session.commit()

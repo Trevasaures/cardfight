@@ -13,7 +13,9 @@ from __future__ import annotations
 from sqlalchemy import or_, case, func
 
 from backend.database import db
+from backend.errors import NotFoundError
 from backend.models import Deck, DeckVersion, Match
+from backend.services.deck_records import calculate_deck_records
 from backend.services.serializers import serialize_deck, serialize_deck_version_summary
 
 
@@ -128,61 +130,19 @@ def stats_table() -> list[dict]:
     decks = Deck.query.order_by(Deck.name).all()
     matches = Match.query.all()
 
-    stats_by_id = {
-        deck.id: {
-            "deck": deck,
-            "wins": 0,
-            "losses": 0,
-            "undecided": 0,
-            "logged_games": 0,
-        }
-        for deck in decks
-    }
-
-    for match in matches:
-        if match.deck1_id not in stats_by_id or match.deck2_id not in stats_by_id:
-            continue
-
-        stats_by_id[match.deck1_id]["logged_games"] += 1
-        stats_by_id[match.deck2_id]["logged_games"] += 1
-
-        if match.winner_id is None:
-            stats_by_id[match.deck1_id]["undecided"] += 1
-            stats_by_id[match.deck2_id]["undecided"] += 1
-            continue
-
-        if match.winner_id == match.deck1_id:
-            stats_by_id[match.deck1_id]["wins"] += 1
-            stats_by_id[match.deck2_id]["losses"] += 1
-        elif match.winner_id == match.deck2_id:
-            stats_by_id[match.deck2_id]["wins"] += 1
-            stats_by_id[match.deck1_id]["losses"] += 1
-
     rows = []
 
-    for values in stats_by_id.values():
-        deck = values["deck"]
-        wins = values["wins"]
-        losses = values["losses"]
-        undecided = values["undecided"]
-        logged_games = values["logged_games"]
-        decided_games = wins + losses
-        win_pct = (wins / decided_games) if decided_games else 0.0
-
+    for record in calculate_deck_records(decks, matches):
+        deck = record["deck"]
         rows.append(
             {
+                **record,
                 "deck_id": deck.id,
                 "id": deck.id,
                 "name": deck.name,
                 "type": deck.type,
                 "active": bool(deck.active),
-                "wins": wins,
-                "losses": losses,
-                "undecided": undecided,
-                "games": decided_games,
-                "decided_games": decided_games,
-                "logged_games": logged_games,
-                "win_pct": round(win_pct, 3),
+                "games": record["decided_games"],
                 "deck": serialize_deck(deck),
             }
         )
@@ -202,7 +162,7 @@ def stats_table() -> list[dict]:
 def performance_spotlight(deck_id: int) -> dict:
     deck = db.session.get(Deck, deck_id)
     if not deck:
-        raise LookupError("Deck not found")
+        raise NotFoundError("Deck not found")
 
     matches = (
         Match.query.filter(
@@ -641,7 +601,9 @@ def versus_for(deck_id: int):
     recent_payload = []
 
     for match in recent_matches:
-        opponent_id_value = match.deck2_id if match.deck1_id == deck_id else match.deck1_id
+        opponent_id_value = (
+            match.deck2_id if match.deck1_id == deck_id else match.deck1_id
+        )
         opponent = Deck.query.get(opponent_id_value)
 
         if match.winner_id == deck_id:
@@ -655,7 +617,9 @@ def versus_for(deck_id: int):
             {
                 "match_id": match.id,
                 "id": match.id,
-                "date_played": match.date_played.isoformat() if match.date_played else None,
+                "date_played": (
+                    match.date_played.isoformat() if match.date_played else None
+                ),
                 "opponent_id": opponent.id if opponent else opponent_id_value,
                 "opponent_name": opponent.name if opponent else f"#{opponent_id_value}",
                 "opponent_type": opponent.type if opponent else "",
@@ -697,20 +661,6 @@ def matrix():
         if deck_a != deck_b
     }
 
-    logged_games = {
-        (deck_a, deck_b): 0
-        for deck_a in deck_ids
-        for deck_b in deck_ids
-        if deck_a != deck_b
-    }
-
-    undecided = {
-        (deck_a, deck_b): 0
-        for deck_a in deck_ids
-        for deck_b in deck_ids
-        if deck_a != deck_b
-    }
-
     for match in all_matches:
         deck1_id = match.deck1_id
         deck2_id = match.deck2_id
@@ -721,12 +671,7 @@ def matrix():
         if deck1_id not in deck_by_id or deck2_id not in deck_by_id:
             continue
 
-        logged_games[(deck1_id, deck2_id)] += 1
-        logged_games[(deck2_id, deck1_id)] += 1
-
         if match.winner_id is None:
-            undecided[(deck1_id, deck2_id)] += 1
-            undecided[(deck2_id, deck1_id)] += 1
             continue
 
         if match.winner_id == deck1_id:
@@ -754,9 +699,7 @@ def matrix():
             decided_games = matchup_wins + matchup_losses
 
             row[str(col_deck_id)] = (
-                round(matchup_wins / decided_games, 3)
-                if decided_games
-                else None
+                round(matchup_wins / decided_games, 3) if decided_games else None
             )
 
         table.append(row)

@@ -6,10 +6,11 @@ from collections import defaultdict
 from datetime import datetime
 
 from backend.models import AcquisitionPlan, Deck, DeckVersion, Match
+from backend.services.deck_records import calculate_deck_records
 from backend.services.serializers import (
+    deck_version_counts,
     serialize_acquisition_plan,
     serialize_deck,
-    serialize_deck_version,
     serialize_deck_version_summary,
     serialize_match,
 )
@@ -24,29 +25,23 @@ def get_dashboard_summary() -> dict:
     inactive_decks = total_decks - active_decks
     total_matches = len(matches)
     decided_matches = sum(
-        1
-        for match in matches
-        if match.winner_id in {match.deck1_id, match.deck2_id}
+        1 for match in matches if match.winner_id in {match.deck1_id, match.deck2_id}
     )
     undecided_matches = sum(1 for match in matches if match.winner_id is None)
 
-    deck_stats = _calculate_deck_stats_from_matches(decks, matches)
+    deck_stats = [
+        {**record, "deck": serialize_deck(record["deck"])}
+        for record in calculate_deck_records(decks, matches)
+    ]
     active_versions = _active_versions()
     purchase_plans = (
         AcquisitionPlan.query.filter(AcquisitionPlan.archived_at.is_(None))
         .order_by(AcquisitionPlan.updated_at.desc(), AcquisitionPlan.id.desc())
         .all()
     )
-    build_readiness = [
-        _version_brief(version)
-        for version in active_versions[:3]
-    ]
+    build_readiness = [_version_brief(version) for version in active_versions[:3]]
     resume_plan = next(
-        (
-            plan
-            for plan in purchase_plans
-            if plan.status not in {"complete", "paused"}
-        ),
+        (plan for plan in purchase_plans if plan.status not in {"complete", "paused"}),
         None,
     )
     resume_purchase = (
@@ -75,11 +70,7 @@ def get_dashboard_summary() -> dict:
         "recent_matches": [serialize_match(match) for match in matches[:4]],
         "command_center": {
             "resume": {
-                "deck_version": (
-                    _version_brief(active_versions[0])
-                    if active_versions
-                    else None
-                ),
+                "deck_version": (build_readiness[0] if build_readiness else None),
                 "purchase_plan": resume_purchase,
             },
             "testing_focus": testing_focus,
@@ -111,7 +102,7 @@ def _active_versions() -> list[DeckVersion]:
 
 
 def _version_brief(version: DeckVersion) -> dict:
-    payload = serialize_deck_version(version)
+    payload = deck_version_counts(version.id)
     rules = payload["deck_rules"]
     core_count = rules["core_card_count"]
 
@@ -120,7 +111,7 @@ def _version_brief(version: DeckVersion) -> dict:
         "deck_id": version.deck_id,
         "version_name": version.version_name,
         "is_active": version.is_active,
-        "deck": payload["deck"],
+        "deck": serialize_deck(version.deck),
         "card_count": payload["card_count"],
         "unique_card_count": payload["unique_card_count"],
         "main_deck_count": rules["main_deck_count"],
@@ -130,9 +121,7 @@ def _version_brief(version: DeckVersion) -> dict:
         "progress": min(core_count / rules["required_total"], 1.0),
         "is_complete": rules["is_complete"],
         "issues": rules["issues"],
-        "updated_at": (
-            version.updated_at.isoformat() if version.updated_at else None
-        ),
+        "updated_at": (version.updated_at.isoformat() if version.updated_at else None),
     }
 
 
@@ -155,9 +144,7 @@ def _testing_focus(
             version_match_counts[match.deck2_version_id] += 1
 
     untested_versions = [
-        version
-        for version in active_versions
-        if version_match_counts[version.id] == 0
+        version for version in active_versions if version_match_counts[version.id] == 0
     ]
     stats_by_deck = {row["deck"]["id"]: row for row in deck_stats}
 
@@ -176,9 +163,7 @@ def _testing_focus(
         reason = "low-sample"
 
     focus_matches = [
-        match
-        for match in matches
-        if focus_deck.id in {match.deck1_id, match.deck2_id}
+        match for match in matches if focus_deck.id in {match.deck1_id, match.deck2_id}
     ]
     decided_focus_matches = [
         match
@@ -324,7 +309,11 @@ def _attention_items(
         None,
     )
     if incomplete:
-        issue = incomplete["issues"][0] if incomplete["issues"] else "Deck list needs review"
+        issue = (
+            incomplete["issues"][0]
+            if incomplete["issues"]
+            else "Deck list needs review"
+        )
         items.append(
             {
                 "key": f"version-{incomplete['id']}",
@@ -439,58 +428,6 @@ def _activity_feed(
 
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
-
-
-def _calculate_deck_stats_from_matches(decks: list[Deck], matches: list[Match]) -> list[dict]:
-    stats_by_id = {
-        deck.id: {
-            "deck": deck,
-            "wins": 0,
-            "losses": 0,
-            "undecided": 0,
-            "logged_games": 0,
-        }
-        for deck in decks
-    }
-
-    for match in matches:
-        if match.deck1_id not in stats_by_id or match.deck2_id not in stats_by_id:
-            continue
-
-        stats_by_id[match.deck1_id]["logged_games"] += 1
-        stats_by_id[match.deck2_id]["logged_games"] += 1
-
-        if match.winner_id is None:
-            stats_by_id[match.deck1_id]["undecided"] += 1
-            stats_by_id[match.deck2_id]["undecided"] += 1
-            continue
-
-        if match.winner_id == match.deck1_id:
-            stats_by_id[match.deck1_id]["wins"] += 1
-            stats_by_id[match.deck2_id]["losses"] += 1
-        elif match.winner_id == match.deck2_id:
-            stats_by_id[match.deck2_id]["wins"] += 1
-            stats_by_id[match.deck1_id]["losses"] += 1
-
-    rows = []
-    for values in stats_by_id.values():
-        deck = values["deck"]
-        wins = values["wins"]
-        losses = values["losses"]
-        decided_games = wins + losses
-        logged_games = values["logged_games"]
-        rows.append(
-            {
-                "deck": serialize_deck(deck),
-                "wins": wins,
-                "losses": losses,
-                "undecided": values["undecided"],
-                "decided_games": decided_games,
-                "logged_games": logged_games,
-                "win_pct": round((wins / decided_games) if decided_games else 0.0, 3),
-            }
-        )
-    return rows
 
 
 def _best_win_rate(deck_stats: list[dict]) -> dict | None:

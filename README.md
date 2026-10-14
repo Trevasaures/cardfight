@@ -60,11 +60,11 @@ Deck Library, Match History, and Rivalries remember their filters; Match History
 
 Catalog **Crest** and **Ride Deck Crest** cards with the same printing, artwork, and ability-text tools as other cards; no grade is required. Deck Builder puts them in **Crests**, outside the main deck, four graded ride cards, and G units. Each crest identity has one copy, and a version can have one Ride Deck Crest. A stride crest is optional, so crest-free stride lists remain supported. Crest cards may share a name with their corresponding unit.
 
-The Hand Lab crest tray separates available and active crests. **Activate** places a saved crest from reserve, and **Remove** returns it; these actions support Undo and tab recovery. Every test shows an Energy Generator reference unless the version includes its own saved Energy Generator, in which case its artwork and text are used. Activation and energy charging remain manual; the [official Energy Generator text](https://en.cf-vanguard.com/cardlist/cardsearch/?keyword=Energy+Generator&view=text) places it when you ride. A virtual reference is not a drawn card and cannot change deck counts. Crests cannot enter unit circles or ordinary card piles.
+The Hand Lab crest tray separates available and active crests. **Activate** places a saved crest from reserve, and **Remove** returns it; these actions support Undo and tab recovery. Every test shows an Energy Generator reference unless the version includes its own saved Energy Generator, in which case its artwork and text are used. The first supported normal ride activates the generator, going second grants three energy at placement, and later own Ride phases charge three; manual controls remain available. The [official Energy Generator text](https://en.cf-vanguard.com/cardlist/cardsearch/?keyword=Energy+Generator&view=text) places it when you ride. A virtual reference is not a drawn card and cannot change deck counts. Crests cannot enter unit circles or ordinary card piles.
 
 Crest artwork imports use a consistent **7:5 landscape** frame. Portrait scans rotate counterclockwise; landscape scans retain their orientation. Transparent padding preserves the entire card without stretching or cropping. This applies to Crest and Ride Deck Crest only. Existing stored artwork can be previewed with **Normalize crest** in the card editor; Save attaches the result. Saving an existing crest also normalizes its linked artwork in the same transaction. Shared original image assets remain unchanged.
 
-Face-up G cards appear beside the crest tray and remain selectable in their actual G zone. **Face up** pays a selected G-card flip cost without turning already-used cards back down. The **GB** counter counts face-up G units in the G zone plus a G-unit vanguard, following the [official Generation Break wording](https://en.cf-vanguard.com/cardlist/?cardno=G-TD01%2F002EN). This tracker also works without a stride crest.
+Face-up G cards appear in a separate G-zone tray and remain selectable in their actual G zone. **Face up** pays a selected G-card flip cost without turning already-used cards back down. The **GB** counter counts face-up G units in the G zone plus a G-unit vanguard, following the [official Generation Break wording](https://en.cf-vanguard.com/cardlist/?cardno=G-TD01%2F002EN). This tracker also works without a stride crest.
 
 Select one G unit in G zone and choose **Stride** with a grade 3 or greater vanguard; selecting the current vanguard alongside it also works. Normal stride starts from face down during Ride. The sandbox permits placement during Main and from a face-up copy to correct a missed step or accidental flip. The original vanguard becomes a linked **Heart**, visibly underneath the G unit and excluded from soul counts and soul costs. Stride inherits the heart's saved printed power; entering End returns the G unit face up to the G zone and restores that heart in the same rest/stand orientation. Undo and tab recovery retain this association. Opponent eligibility, stride discard costs, crest power changes, and card-specific abilities remain manual sandbox decisions.
 
@@ -76,7 +76,7 @@ The solo playmat includes the vanguard, five rear-guard circles, guardian circle
 
 Advance through Stand, Draw, Ride, Main, Battle, and End. Entering Draw draws one card for either starting order. Going first skips the first turn's Battle phase; going second begins on the theoretical opponent's turn. **Start my turn** stands your units. Ending your turn clears temporary power and critical bonuses. Drive and damage checks reveal one card and wait for you to resolve its effects, then send it to hand or damage. Draws, discards, soul charges, reveals, shuffling, rest/stand, damage flips, energy (0–10), and power/critical adjustments are also available manually. Selected field units have a direct +10k shortcut for trigger power; checks still wait for explicit resolution.
 
-This is a sandbox, not a rules engine or an opponent AI. Ride costs, ability timing, grade restrictions, triggers, heals, persona ride, energy generation, crest abilities, token creation beyond the saved reserve, and win/loss conditions are not automated. Use **Flip** on damage cards for Counter-Blast/Counter-Charge, move soul cards to drop for Soul-Blast, and use the available zones for other effects. Card text and base stats come from the saved library; missing power displays as a dash. On narrow screens, the playmat and hand scroll within their own containers.
+This is a solo sandbox with a small verified rules layer, rather than a full competitive rules engine or opponent AI. Supported Energy Generator, X-ceed, Ritual, and energy-cap helpers are described in the [rules notes](frontend-web/src/features/hand-lab/rules/README.md). Other ride costs, ability timing, grade restrictions, triggers, heals, persona ride, crest abilities, and win/loss conditions remain manual. Use **Flip** on damage cards for Counter-Blast/Counter-Charge, move soul cards to drop for Soul-Blast, and use the available zones for other effects. Card text and base stats come from the saved library; missing power displays as a dash. On narrow screens, the playmat and hand scroll within their own containers.
 
 The mulligan follows the [official Vanguard setup sequence](https://en.cf-vanguard.com/howto/v-series/): returned cards go to the bottom, replacements are drawn, then the remaining deck is shuffled. Keeping the hand does not shuffle.
 
@@ -105,14 +105,14 @@ Selected-card actions prioritize the current zone: units expose Attack/Rest/Stan
 - TanStack Virtual for large card-library lists.
 - Anime.js and Lucide icons.
 
-Vite 8 requires Node.js `^20.19.0` or `>=22.12.0`.
+The complete frontend toolchain supports Node.js `^20.19.0`, `^22.13.0`, or `>=24`; Node 24 LTS is recommended.
 
 ## Prerequisites
 
 Install these tools before starting:
 
 - [Python](https://www.python.org/downloads/) 3.10+
-- [Node.js](https://nodejs.org/) 20.19+ or 22.12+
+- [Node.js](https://nodejs.org/) 24 LTS (the version used in CI)
 - npm, which is included with Node.js
 - Git
 
@@ -179,9 +179,10 @@ Available launcher options:
 .\start.ps1 -ApiOnly        # Flask only
 .\start.ps1 -FrontendOnly   # React frontend only
 .\start.ps1 -ApiOnly -Seed  # Seed, then start Flask only
+.\start.ps1 -DevDebug       # Explicitly enable the development debugger
 ```
 
-Run the script from an activated virtual environment so the child terminals inherit the environment's Python path.
+The launcher uses `.venv` when present, starts hidden background processes, and writes service logs to `instance/*.log`. Debugging is off unless `-DevDebug` is supplied.
 
 ## Setup on macOS or Linux
 
@@ -215,10 +216,10 @@ The application can also be run in two terminals. This is useful outside Windows
 Activate the Python virtual environment, then run:
 
 ```bash
-python -m flask --app backend.app run --debug --port 5000
+python -m flask --app backend.app --no-debug run --host 127.0.0.1 --port 5000
 ```
 
-Confirm the API is available at `http://127.0.0.1:5000/api/health`.
+Confirm the API is available at `http://127.0.0.1:5000/api/health`. For an explicit debugging session, replace `--no-debug` with `--debug`. For a WSGI deployment, see [deployment notes](docs/deployment.md).
 
 ### Terminal 2: React frontend
 
@@ -241,7 +242,15 @@ To add a Python package:
 python -m pip install <package-name>
 ```
 
-Then add a compatible pinned version to `requirements.txt` so another clone can reproduce the environment.
+Declare direct runtime packages in `requirements.in`, or development tools in `requirements-dev.in`. The generated `.txt` files pin direct and transitive package versions without hashes or dependency annotations; do not edit them by hand.
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m piptools compile --no-annotate --strip-extras --no-emit-index-url --no-emit-trusted-host requirements.in
+python -m piptools compile --no-annotate --allow-unsafe --strip-extras --no-emit-index-url --no-emit-trusted-host requirements-dev.in
+```
+
+Compile the runtime lock first because the development input includes it. Add `--upgrade` when deliberately refreshing versions, then run the tests and dependency audits.
 
 To add a frontend package, run the command from `frontend-web/`:
 
@@ -256,7 +265,8 @@ npm updates both `package.json` and `package-lock.json`; commit both files when 
 Copy `.env.example` to `.env`. Flask loads the root `.env` file during startup.
 
 ```dotenv
-FLASK_DEBUG=true
+FLASK_DEBUG=false
+CARDFIGHT_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173
 
 CARD_IMAGE_ANALYZER_PROVIDER=mock
 CARD_IMAGE_ANALYZER_MODEL=
@@ -377,7 +387,7 @@ The backend follows a small route/service/model structure:
 - `backend/models.py` defines the SQLAlchemy entities and relationships.
 - `backend/app.py` configures Flask, CORS, SQLite foreign keys, schema initialization, and blueprint registration.
 
-There is currently no user authentication or production deployment configuration. Keep the development server on a trusted local machine unless those concerns are addressed first.
+The app remains a single-user workspace without authentication. The default API bind is loopback; a WSGI server, explicit frontend-origin configuration, and private hosting are described in [deployment notes](docs/deployment.md). Public or multi-user hosting requires an access-control layer.
 
 The major database entities are:
 
@@ -421,6 +431,7 @@ Run backend tests from the repository root:
 
 ```bash
 python -m pytest -q
+python -m pip_audit -r requirements-dev.txt --no-deps --disable-pip
 ```
 
 Run frontend linting and a production build:

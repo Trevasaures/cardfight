@@ -7,6 +7,7 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { HandTable } from "../features/hand-lab/HandTable";
 import { mainDeckCopies } from "../features/hand-lab/engine";
 import { usePersistentState } from "../hooks/usePersistentState";
+import { writeLocalState } from "../utils/localState";
 import type { Deck, DeckVersion, DeckVersionSummary } from "../types/api";
 import "../features/hand-lab/hand-lab.css";
 
@@ -187,20 +188,10 @@ export function HandLab() {
     setParams({ deck: String(deckId), version: String(id) });
   }
   function prepareBuilder() {
-    try {
-      if (deckId)
-        window.localStorage.setItem(
-          "cardfight.deck-builder.selected-deck",
-          JSON.stringify(String(deckId)),
-        );
-      if (versionId)
-        window.localStorage.setItem(
-          "cardfight.deck-builder.selected-version",
-          JSON.stringify(String(versionId)),
-        );
-    } catch {
-      /* Navigation remains available when local storage is disabled. */
-    }
+    if (deckId)
+      writeLocalState("cardfight.deck-builder.selected-deck", String(deckId));
+    if (versionId)
+      writeLocalState("cardfight.deck-builder.selected-version", String(versionId));
   }
 
   return (

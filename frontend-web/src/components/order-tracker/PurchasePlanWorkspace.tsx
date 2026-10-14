@@ -13,6 +13,7 @@ import type {
   AcquisitionPlan,
   AcquisitionPlanStatus,
 } from "../../types/api";
+import { formatUsdCents } from "../../utils/format";
 
 const STATUS_LABELS: Record<AcquisitionPlanStatus, string> = {
   planning: "Planning",
@@ -28,13 +29,6 @@ const BUILD_LABELS: Record<AcquisitionBuildMode, string> = {
 };
 const fieldClass = "workspace-control w-full";
 const labelClass = "collection-label";
-
-function money(cents: number) {
-  return (cents / 100).toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-  });
-}
 
 type Props = {
   plans: AcquisitionPlan[];
@@ -167,7 +161,7 @@ export function PurchasePlanWorkspace({
           },
           {
             label: "Remaining",
-            value: money(summary.remaining_cost_cents),
+            value: formatUsdCents(summary.remaining_cost_cents),
             color: "text-slate-50",
           },
         ].map((metric) => (
@@ -216,8 +210,8 @@ export function PurchasePlanWorkspace({
           />
         </div>
         <div className="orders-progress-label collection-muted mt-3 mb-0">
-          <span>Purchase estimate {money(summary.estimated_cost_cents)}</span>
-          <span>Incoming {money(summary.ordered_value_cents)}</span>
+          <span>Purchase estimate {formatUsdCents(summary.estimated_cost_cents)}</span>
+          <span>Incoming {formatUsdCents(summary.ordered_value_cents)}</span>
         </div>
         {unpriced > 0 && (
           <p className="mt-2 mb-0 text-xs text-cyan-200">

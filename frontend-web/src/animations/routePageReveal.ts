@@ -1,41 +1,10 @@
-import { animate, stagger } from "animejs";
-
-type AnimationHandle = {
-  cancel?: () => unknown;
-  revert?: () => unknown;
-};
-
-type AnimationParams = Record<string, unknown>;
-
-function prefersReducedMotion() {
-  return (
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
-
-function cleanupAnimation(handle: AnimationHandle) {
-  if (typeof handle.revert === "function") {
-    handle.revert();
-    return;
-  }
-
-  if (typeof handle.cancel === "function") {
-    handle.cancel();
-  }
-}
-
-function runAnimation(
-  targets: Element | NodeListOf<Element> | null,
-  params: AnimationParams,
-  handles: AnimationHandle[],
-) {
-  if (!targets) return;
-  if (targets instanceof NodeList && targets.length === 0) return;
-
-  const handle = animate(targets as never, params as never) as AnimationHandle;
-  handles.push(handle);
-}
+import { stagger } from "animejs";
+import {
+  cleanupAnimation,
+  prefersReducedMotion,
+  runAnimation,
+  type AnimationHandle,
+} from "./motion";
 
 export function animateRoutePage(root: HTMLElement | null) {
   if (!root || prefersReducedMotion()) {

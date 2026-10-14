@@ -4,6 +4,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
+import { readLocalState, writeLocalState } from "../utils/localState";
 
 type InitialState<T> = T | (() => T);
 
@@ -20,23 +21,11 @@ export function usePersistentState<T>(
   const [value, setValue] = useState<T>(() => {
     const fallback = resolveInitialState(initialState);
 
-    if (typeof window === "undefined") return fallback;
-
-    try {
-      const storedValue = window.localStorage.getItem(storageKey);
-      return storedValue === null ? fallback : (JSON.parse(storedValue) as T);
-    } catch {
-      return fallback;
-    }
+    return readLocalState(storageKey, fallback);
   });
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(storageKey, JSON.stringify(value));
-    } catch {
-      // Local persistence is a convenience. The page remains usable if storage
-      // is unavailable, full, or disabled by the browser.
-    }
+    writeLocalState(storageKey, value);
   }, [storageKey, value]);
 
   return [value, setValue];

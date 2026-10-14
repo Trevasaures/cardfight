@@ -1,22 +1,5 @@
 import { animate, createTimeline, stagger } from "animejs";
-
-type AnimationHandle = {
-  cancel?: () => unknown;
-  revert?: () => unknown;
-};
-
-function prefersReducedMotion() {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
-function cleanup(handle: AnimationHandle | null) {
-  if (!handle) return;
-  if (typeof handle.revert === "function") {
-    handle.revert();
-    return;
-  }
-  handle.cancel?.();
-}
+import { cleanupAnimation, prefersReducedMotion } from "./motion";
 
 export function animateCommandCenter(root: HTMLElement | null) {
   if (!root || prefersReducedMotion()) return () => {};
@@ -72,7 +55,7 @@ export function animateCommandCenter(root: HTMLElement | null) {
   }
 
   const glowAnimation = glow
-    ? (animate(glow, {
+    ? animate(glow, {
         x: [-10, 12],
         y: [8, -10],
         scale: [0.98, 1.05],
@@ -80,22 +63,22 @@ export function animateCommandCenter(root: HTMLElement | null) {
         alternate: true,
         loop: true,
         ease: "inOutSine",
-      }) as AnimationHandle)
+      })
     : null;
   const pulseAnimation = pulse
-    ? (animate(pulse, {
+    ? animate(pulse, {
         opacity: [0.35, 0.85],
         scale: [0.85, 1.45],
         duration: 1500,
         alternate: true,
         loop: true,
         ease: "inOutSine",
-      }) as AnimationHandle)
+      })
     : null;
 
   return () => {
-    cleanup(timeline as AnimationHandle);
-    cleanup(glowAnimation);
-    cleanup(pulseAnimation);
+    cleanupAnimation(timeline);
+    cleanupAnimation(glowAnimation);
+    cleanupAnimation(pulseAnimation);
   };
 }

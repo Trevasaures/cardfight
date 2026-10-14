@@ -10,8 +10,13 @@ from itertools import combinations
 from sqlalchemy import or_
 
 from backend.database import db
+from backend.errors import ConflictError, NotFoundError, ValidationError
 from backend.models import Card, CardPrinting, DeckCard
-from backend.services.card_images import checked_image_id, normalize_image_id, touch_images
+from backend.services.card_images import (
+    checked_image_id,
+    normalize_image_id,
+    touch_images,
+)
 from backend.services.card_types import CREST_CARD_TYPES, crest_card_type
 from backend.services.card_set_names import (
     list_set_options,
@@ -75,7 +80,7 @@ PRINTING_FIELDS = {
 }
 
 
-class DuplicateCardPrintingError(ValueError):
+class DuplicateCardPrintingError(ConflictError):
     def __init__(self, card):
         super().__init__(
             f"Card printing already exists for '{card.name}'. Use the existing card instead."
@@ -83,7 +88,7 @@ class DuplicateCardPrintingError(ValueError):
         self.card = card
 
 
-class DuplicateCardNameError(ValueError):
+class DuplicateCardNameError(ConflictError):
     def __init__(self, card):
         super().__init__(
             f"Card '{card.name}' already exists. Add another printing to the existing card instead."
@@ -110,14 +115,14 @@ def _int_or_none(value, field_name):
     try:
         return int(value)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"{field_name} must be a number") from exc
+        raise ValidationError(f"{field_name} must be a number") from exc
 
 
 def _grade_or_none(value):
     grade = _int_or_none(value, "grade")
 
     if grade is not None and grade not in CARD_GRADE_OPTIONS:
-        raise ValueError("grade must be between 0 and 4")
+        raise ValidationError("grade must be between 0 and 4")
 
     return grade
 
@@ -129,7 +134,7 @@ def _grade_for_card_type(value, card_type):
         return None
     grade = _grade_or_none(value)
     if grade is None:
-        raise ValueError("grade is required for cards other than crests")
+        raise ValidationError("grade is required for cards other than crests")
     return grade
 
 
@@ -139,7 +144,7 @@ def _validate_grade_change_for_ride_decks(card, next_grade):
         return
 
     if next_grade not in {0, 1, 2, 3}:
-        raise ValueError(
+        raise ValidationError(
             "A card used in a ride deck must remain grade 0, 1, 2, or 3"
         )
 
@@ -156,7 +161,7 @@ def _validate_grade_change_for_ride_decks(card, next_grade):
         )
 
         if duplicate_grade:
-            raise ValueError(
+            raise ValidationError(
                 f"This change would duplicate grade {next_grade} in a ride deck"
             )
 
@@ -165,7 +170,7 @@ def _required_string(payload, field_name):
     value = _clean_string(payload.get(field_name))
 
     if not value:
-        raise ValueError(f"{field_name} is required")
+        raise ValidationError(f"{field_name} is required")
 
     return value
 
@@ -173,7 +178,7 @@ def _required_string(payload, field_name):
 def _card_type_value(value):
     cleaned = _clean_string(value)
     if not cleaned:
-        raise ValueError("card_type is required")
+        raise ValidationError("card_type is required")
     return crest_card_type(cleaned) or cleaned
 
 
@@ -266,9 +271,7 @@ def get_card_form_options():
         if value is not None
     }
 
-    standard_nations = (
-        CARD_NATION_OPTIONS + dual_nations + [NATIONLESS_CARD_OPTION]
-    )
+    standard_nations = CARD_NATION_OPTIONS + dual_nations + [NATIONLESS_CARD_OPTION]
     extra_nations = sorted(stored_nations.difference(standard_nations))
     extra_card_types = sorted(stored_card_types.difference(CARD_TYPE_OPTIONS))
 
@@ -318,12 +321,17 @@ def find_duplicate_card_printing(
     query = (
         Card.query.join(CardPrinting)
         .filter(db.func.lower(Card.name) == cleaned_name.lower())
-        .filter(db.func.coalesce(db.func.upper(CardPrinting.set_code), "") == cleaned_set_code)
+        .filter(
+            db.func.coalesce(db.func.upper(CardPrinting.set_code), "")
+            == cleaned_set_code
+        )
         .filter(
             db.func.coalesce(db.func.upper(CardPrinting.card_number), "")
             == cleaned_card_number
         )
-        .filter(db.func.coalesce(db.func.upper(CardPrinting.rarity), "") == cleaned_rarity)
+        .filter(
+            db.func.coalesce(db.func.upper(CardPrinting.rarity), "") == cleaned_rarity
+        )
     )
 
     if exclude_printing_id is not None:
@@ -355,7 +363,7 @@ def get_card_or_raise(card_id):
     card = db.session.get(Card, card_id)
 
     if not card:
-        raise LookupError("Card not found")
+        raise NotFoundError("Card not found")
 
     return card
 
@@ -364,7 +372,7 @@ def get_card_printing_or_raise(printing_id):
     printing = db.session.get(CardPrinting, printing_id)
 
     if not printing:
-        raise LookupError("Card printing not found")
+        raise NotFoundError("Card printing not found")
 
     return printing
 
@@ -443,7 +451,7 @@ def list_cards_page(
     }
     sort_order = sort_orders.get(sort)
     if sort_order is None:
-        raise ValueError("Invalid card library sort")
+        raise ValidationError("Invalid card library sort")
 
     total_items = query.count()
     total_pages = max((total_items + safe_page_size - 1) // safe_page_size, 1)
@@ -543,7 +551,7 @@ def search_cards(
 
 def create_card(payload):
     if not isinstance(payload, dict):
-        raise ValueError("Request body must be a JSON object")
+        raise ValidationError("Request body must be a JSON object")
 
     card_data = _card_payload(payload)
     printing_data = _find_printing_payload(payload)
@@ -600,7 +608,7 @@ def create_card(payload):
 
 def update_card(card_id, payload):
     if not isinstance(payload, dict):
-        raise ValueError("Request body must be a JSON object")
+        raise ValidationError("Request body must be a JSON object")
 
     card = get_card_or_raise(card_id)
 
@@ -649,7 +657,7 @@ def update_card(card_id, payload):
             DeckCard.zone != "crest" if next_is_crest else DeckCard.zone == "crest"
         ).first()
         if invalid_entries:
-            raise ValueError(
+            raise ValidationError(
                 "Remove this card from incompatible deck zones before changing its type"
             )
         if next_type == "Ride Deck Crest":
@@ -665,7 +673,7 @@ def update_card(card_id, payload):
                     .first()
                 )
                 if another_ride_crest:
-                    raise ValueError(
+                    raise ValidationError(
                         "A deck can include only one Ride Deck Crest; remove the other crest first"
                     )
 
@@ -688,7 +696,7 @@ def update_card(card_id, payload):
     if "printing" in payload:
         printing_payload = payload["printing"]
         if not isinstance(printing_payload, dict):
-            raise ValueError("Printing must be a JSON object")
+            raise ValidationError("Printing must be a JSON object")
         try:
             primary = (
                 min(printings, key=lambda printing: printing.id) if printings else None
@@ -734,7 +742,7 @@ def update_card(card_id, payload):
 
 def add_card_printing(card_id, payload, *, commit=True, card_name=None, card_type=None):
     if not isinstance(payload, dict):
-        raise ValueError("Request body must be a JSON object")
+        raise ValidationError("Request body must be a JSON object")
 
     card = get_card_or_raise(card_id)
     printing_data = _printing_payload(payload)
@@ -767,7 +775,7 @@ def update_card_printing(
     printing_id, payload, *, commit=True, card_name=None, card_type=None
 ):
     if not isinstance(payload, dict):
-        raise ValueError("Request body must be a JSON object")
+        raise ValidationError("Request body must be a JSON object")
 
     printing = get_card_printing_or_raise(printing_id)
     card = get_card_or_raise(printing.card_id)

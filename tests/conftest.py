@@ -1,6 +1,8 @@
 import os
+from contextlib import contextmanager
 
 import pytest
+from sqlalchemy import event
 
 
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
@@ -30,3 +32,25 @@ def app_context():
 @pytest.fixture()
 def client():
     return app.test_client()
+
+
+@pytest.fixture()
+def select_queries():
+    """Count cold-request SELECTs without including fixture/setup writes."""
+
+    @contextmanager
+    def capture_queries():
+        statements = []
+
+        def capture(_connection, _cursor, statement, parameters, _context, _many):
+            if statement.lstrip().upper().startswith("SELECT"):
+                statements.append((statement, parameters))
+
+        engine = db.engine
+        event.listen(engine, "before_cursor_execute", capture)
+        try:
+            yield statements
+        finally:
+            event.remove(engine, "before_cursor_execute", capture)
+
+    return capture_queries

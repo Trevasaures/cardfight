@@ -28,6 +28,7 @@ import type {
   SpotlightMatchup,
 } from "../../types/api";
 import { formatPercent, formatRecord } from "../../utils/format";
+import { writeLocalState } from "../../utils/localState";
 
 type PerformanceSpotlightProps = {
   spotlight: PerformanceSpotlightResponse;
@@ -329,31 +330,28 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
   usePerformanceSpotlightMotion(rootRef, deck.id, overview.win_pct * 100);
 
   function prepareDeckBuilder() {
-    window.localStorage.setItem(
+    writeLocalState(
       "cardfight.deck-builder.selected-deck",
-      JSON.stringify(String(deck.id)),
+      String(deck.id),
     );
     if (activeVersion) {
-      window.localStorage.setItem(
+      writeLocalState(
         "cardfight.deck-builder.selected-version",
-        JSON.stringify(String(activeVersion.id)),
+        String(activeVersion.id),
       );
     }
   }
 
   function preparePlayLab() {
-    window.localStorage.setItem("cardfight.play-lab.mode", JSON.stringify("custom"));
-    window.localStorage.setItem("cardfight.play-lab.format", JSON.stringify(deck.type));
-    window.localStorage.setItem(
+    writeLocalState("cardfight.play-lab.mode", "custom");
+    writeLocalState("cardfight.play-lab.format", deck.type);
+    writeLocalState(
       "cardfight.play-lab.custom-deck-one",
-      JSON.stringify(deck.id),
+      deck.id,
     );
-    window.localStorage.setItem("cardfight.play-lab.matchup", JSON.stringify(null));
-    window.localStorage.setItem("cardfight.play-lab.winner", JSON.stringify(null));
-    window.localStorage.setItem(
-      "cardfight.play-lab.first-player",
-      JSON.stringify(null),
-    );
+    writeLocalState("cardfight.play-lab.matchup", null);
+    writeLocalState("cardfight.play-lab.winner", null);
+    writeLocalState("cardfight.play-lab.first-player", null);
   }
 
   return (

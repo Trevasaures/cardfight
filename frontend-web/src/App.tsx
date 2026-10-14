@@ -1,17 +1,40 @@
+import { lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "./components/layout/AppShell";
 import { Dashboard } from "./pages/Dashboard";
-import { PlayLab } from "./pages/PlayLab";
-import { DeckLibrary } from "./pages/DeckLibrary";
-import { CardLibrary } from "./pages/CardLibrary";
-import { DeckBuilder } from "./pages/DeckBuilder";
-import { NationQuiz } from "./pages/NationQuiz";
-import { MatchHistory } from "./pages/MatchHistory";
-import { OrderTracker } from "./pages/OrderTracker";
-import { Analytics } from "./pages/Analytics";
-import { Rivalries } from "./pages/Rivalries";
-import { HandLab } from "./pages/HandLab";
+
+// Keep the landing page immediate; download other workspaces only when opened.
+const PlayLab = lazy(() =>
+  import("./pages/PlayLab").then(({ PlayLab }) => ({ default: PlayLab })),
+);
+const DeckLibrary = lazy(() =>
+  import("./pages/DeckLibrary").then(({ DeckLibrary }) => ({ default: DeckLibrary })),
+);
+const CardLibrary = lazy(() =>
+  import("./pages/CardLibrary").then(({ CardLibrary }) => ({ default: CardLibrary })),
+);
+const DeckBuilder = lazy(() =>
+  import("./pages/DeckBuilder").then(({ DeckBuilder }) => ({ default: DeckBuilder })),
+);
+const NationQuiz = lazy(() =>
+  import("./pages/NationQuiz").then(({ NationQuiz }) => ({ default: NationQuiz })),
+);
+const MatchHistory = lazy(() =>
+  import("./pages/MatchHistory").then(({ MatchHistory }) => ({ default: MatchHistory })),
+);
+const OrderTracker = lazy(() =>
+  import("./pages/OrderTracker").then(({ OrderTracker }) => ({ default: OrderTracker })),
+);
+const Analytics = lazy(() =>
+  import("./pages/Analytics").then(({ Analytics }) => ({ default: Analytics })),
+);
+const Rivalries = lazy(() =>
+  import("./pages/Rivalries").then(({ Rivalries }) => ({ default: Rivalries })),
+);
+const HandLab = lazy(() =>
+  import("./pages/HandLab").then(({ HandLab }) => ({ default: HandLab })),
+);
 
 export default function App() {
   return (

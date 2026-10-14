@@ -1,25 +1,5 @@
 import { animate, createTimeline, stagger } from "animejs";
-
-type AnimationHandle = {
-  cancel?: () => unknown;
-  revert?: () => unknown;
-};
-
-function prefersReducedMotion() {
-  return (
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
-
-function cleanup(handle: AnimationHandle | null) {
-  if (!handle) return;
-  if (typeof handle.revert === "function") {
-    handle.revert();
-    return;
-  }
-  handle.cancel?.();
-}
+import { cleanupAnimation, prefersReducedMotion } from "./motion";
 
 export function animatePerformanceSpotlight(
   root: HTMLElement | null,
@@ -134,7 +114,7 @@ export function animatePerformanceSpotlight(
   }
 
   const glowAnimation = glow
-    ? (animate(glow, {
+    ? animate(glow, {
         x: [-8, 10],
         y: [5, -7],
         scale: [0.98, 1.04],
@@ -142,11 +122,11 @@ export function animatePerformanceSpotlight(
         alternate: true,
         loop: true,
         ease: "inOutSine",
-      }) as AnimationHandle)
+      })
     : null;
 
   return () => {
-    cleanup(timeline as AnimationHandle);
-    cleanup(glowAnimation);
+    cleanupAnimation(timeline);
+    cleanupAnimation(glowAnimation);
   };
 }

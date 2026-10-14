@@ -13,6 +13,7 @@ import {
 
 import { CardArtwork } from "../cards/CardArtwork";
 import { cardGradeBadge } from "../../utils/cards";
+import { formatUsdCents } from "../../utils/format";
 import { ModalDialog } from "../layout/ModalDialog";
 import {
   createItemDraft,
@@ -43,13 +44,6 @@ type AcquisitionItemRowProps = {
   onReceive: (itemId: number, quantity: number) => Promise<string | null>;
   onRemove: (item: AcquisitionPlanItem) => Promise<void>;
 };
-
-function dollars(cents: number) {
-  return (cents / 100).toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-  });
-}
 
 const STATUS_LABELS = {
   needed: "Still needed",
@@ -206,7 +200,7 @@ export function AcquisitionItemRow({
         </div>
         <div className="orders-row-stat">
           <strong>
-            {dollars(
+            {formatUsdCents(
               readOnly ? item.unit_price_cents : item.estimated_cost_cents,
             )}
           </strong>
@@ -360,16 +354,16 @@ export function AcquisitionItemRow({
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
               <span
                 className="text-slate-400"
-                title={`${item.purchase_quantity} copies to acquire × ${dollars(item.unit_price_cents)} each`}
+                title={`${item.purchase_quantity} copies to acquire × ${formatUsdCents(item.unit_price_cents)} each`}
               >
                 Purchase{" "}
                 <strong className="font-black tabular-nums text-slate-100">
-                  {dollars(item.estimated_cost_cents)}
+                  {formatUsdCents(item.estimated_cost_cents)}
                 </strong>
               </span>
               {item.purchase_quantity > 0 ? (
                 <span className="text-slate-500 tabular-nums">
-                  {item.purchase_quantity} × {dollars(item.unit_price_cents)}
+                  {item.purchase_quantity} × {formatUsdCents(item.unit_price_cents)}
                 </span>
               ) : null}
               <span className="text-slate-400">
@@ -377,7 +371,7 @@ export function AcquisitionItemRow({
                 <strong
                   className={`tabular-nums ${item.missing_quantity ? "text-rose-200" : "text-slate-300"}`}
                 >
-                  {dollars(item.remaining_cost_cents)}
+                  {formatUsdCents(item.remaining_cost_cents)}
                 </strong>
               </span>
               {item.purchase_quantity > 0 && item.unit_price_cents === 0 ? (

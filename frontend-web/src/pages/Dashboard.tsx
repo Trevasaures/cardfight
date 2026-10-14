@@ -32,7 +32,8 @@ import type {
   DashboardTestingFocus,
   RandomMatchupResponse,
 } from "../types/api";
-import { formatPercent, formatRecord } from "../utils/format";
+import { formatPercent, formatRecord, formatUsdCents } from "../utils/format";
+import { readLocalState, writeLocalState } from "../utils/localState";
 
 type CommandStyle = CSSProperties & {
   "--command-primary": string;
@@ -65,13 +66,6 @@ const PLAN_STATUS: Record<string, string> = {
   paused: "Paused",
 };
 
-function dollars(cents: number) {
-  return (cents / 100).toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-  });
-}
-
 function shortDate(value: string | null) {
   if (!value) return "Not tested yet";
   return new Date(value).toLocaleDateString(undefined, {
@@ -94,39 +88,31 @@ function relativeDate(value: string | null) {
   return shortDate(value);
 }
 
-function persist(key: string, value: unknown) {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Resume links still navigate correctly if storage is unavailable.
-  }
-}
-
 function prepareDeckBuilder(
   version: Pick<DashboardDeckVersionBrief, "deck_id" | "id">,
 ) {
-  persist("cardfight.deck-builder.selected-deck", String(version.deck_id));
-  persist("cardfight.deck-builder.selected-version", String(version.id));
+  writeLocalState("cardfight.deck-builder.selected-deck", String(version.deck_id));
+  writeLocalState("cardfight.deck-builder.selected-version", String(version.id));
 }
 
 function prepareOrderTracker(planId: number) {
-  persist("cardfight.order-tracker.selected-plan", planId);
+  writeLocalState("cardfight.order-tracker.selected-plan", planId);
 }
 
 function prepareTesting(focus: DashboardTestingFocus) {
   const opponent = focus.suggested_opponent;
-  persist("cardfight.play-lab.mode", "custom");
-  persist(
+  writeLocalState("cardfight.play-lab.mode", "custom");
+  writeLocalState(
     "cardfight.play-lab.format",
     opponent && opponent.type !== focus.deck.type ? "Any" : focus.deck.type,
   );
-  persist("cardfight.play-lab.custom-deck-one", focus.deck.id);
-  persist("cardfight.play-lab.custom-deck-two", opponent?.id ?? "");
-  persist("cardfight.play-lab.winner", null);
-  persist("cardfight.play-lab.first-player", focus.deck.id);
+  writeLocalState("cardfight.play-lab.custom-deck-one", focus.deck.id);
+  writeLocalState("cardfight.play-lab.custom-deck-two", opponent?.id ?? "");
+  writeLocalState("cardfight.play-lab.winner", null);
+  writeLocalState("cardfight.play-lab.first-player", focus.deck.id);
 
   if (opponent) {
-    persist("cardfight.play-lab.matchup", {
+    writeLocalState("cardfight.play-lab.matchup", {
       deck1: focus.deck,
       deck2: opponent,
       first_player: focus.deck,
@@ -136,18 +122,13 @@ function prepareTesting(focus: DashboardTestingFocus) {
 }
 
 function readMatchDraft() {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem("cardfight.play-lab.matchup");
-    if (!raw) return null;
-    const matchup = JSON.parse(raw) as RandomMatchupResponse | null;
-    if (!matchup?.deck1 || !matchup.deck2) return null;
-    const notesRaw = window.localStorage.getItem("cardfight.play-lab.notes");
-    const notes = notesRaw ? (JSON.parse(notesRaw) as string) : "";
-    return { matchup, notes };
-  } catch {
-    return null;
-  }
+  const matchup = readLocalState<RandomMatchupResponse | null>(
+    "cardfight.play-lab.matchup",
+    null,
+  );
+  if (!matchup?.deck1 || !matchup.deck2) return null;
+  const notes = readLocalState("cardfight.play-lab.notes", "");
+  return { matchup, notes };
 }
 
 function attentionIcon(kind: DashboardAttentionItem["kind"]) {
@@ -253,7 +234,7 @@ function ResumePurchaseCard({ plan }: { plan: AcquisitionPlan | null }) {
         <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-3 py-1.5 text-xs font-black text-violet-100">{progress}%</span>
       </div>
       <div className="mt-auto h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-gradient-to-r from-violet-400 to-cyan-300" style={{ width: `${progress}%` }} /></div>
-      <div className="flex items-center justify-between text-xs"><span className="font-bold text-slate-300">{dollars(plan.summary.remaining_cost_cents)} remaining</span><ArrowRight className="h-4 w-4 text-slate-600 transition group-hover:translate-x-1 group-hover:text-violet-200" /></div>
+      <div className="flex items-center justify-between text-xs"><span className="font-bold text-slate-300">{formatUsdCents(plan.summary.remaining_cost_cents)} remaining</span><ArrowRight className="h-4 w-4 text-slate-600 transition group-hover:translate-x-1 group-hover:text-violet-200" /></div>
     </Link>
   );
 }

@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     branches:
@@ -21,15 +24,24 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements-dev.txt
 
       - name: Install backend dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+          pip check
 
       - name: Compile backend
         run: |
           python -m compileall backend
+
+      - name: Test backend
+        run: python -m pytest -q
+
+      - name: Audit Python dependencies
+        run: python -m pip_audit -r requirements-dev.txt --no-deps --disable-pip
 
   frontend:
     name: Frontend checks
@@ -53,8 +65,11 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Audit frontend dependencies
+        run: npm audit --audit-level=high
+
       - name: Lint frontend
-        run: npm run lint --if-present
+        run: npm run lint
 
       - name: Build frontend
         run: npm run build

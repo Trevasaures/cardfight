@@ -1,89 +1,58 @@
 <#
-Starts the Cardfight backend and optional frontend.
-
-Usage:
-  .\start.ps1                    # run backend + React frontend
-  .\start.ps1 -ApiOnly           # run only Flask backend
-  .\start.ps1 -FrontendOnly      # run only React frontend
-  .\start.ps1 -Seed              # seed DB before starting
-  .\start.ps1 -ApiOnly -Seed     # seed DB, then run only backend
-  .\start.ps1 -LegacyStreamlit   # run backend + old Streamlit frontend
+Starts the local Flask API and React development server.
+Use -DevDebug explicitly for Flask's debugger/reloader; normal startup disables it.
+Logs go to instance/, and both services stay in hidden background processes.
 #>
-
 param(
   [switch]$Seed,
   [switch]$ApiOnly,
   [switch]$FrontendOnly,
-  [switch]$LegacyStreamlit
+  [switch]$DevDebug
 )
 
 $ErrorActionPreference = "Stop"
-
-Set-Location -Path $PSScriptRoot
-
-$env:FLASK_APP = "backend.app"
-$env:FLASK_ENV = "development"
-$env:VITE_CARDFIGHT_API_URL = "http://127.0.0.1:5000"
-
-if ($Seed) {
-  Write-Host "Seeding database..." -ForegroundColor Cyan
-  python -m backend.seed
+if ($ApiOnly -and $FrontendOnly) {
+  throw "Choose either -ApiOnly or -FrontendOnly."
 }
 
-$backend = $null
-$frontend = $null
+$projectPython = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
+$pythonExecutable = if (Test-Path -LiteralPath $projectPython) {
+  $projectPython
+} else {
+  (Get-Command python -ErrorAction Stop).Source
+}
+$logDirectory = Join-Path $PSScriptRoot "instance"
+New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
+
+if ($Seed) {
+  Push-Location -LiteralPath $PSScriptRoot
+  try {
+    & $pythonExecutable -m backend.seed
+    if ($LASTEXITCODE -ne 0) { throw "Database seed failed." }
+  } finally {
+    Pop-Location
+  }
+}
 
 if (-not $FrontendOnly) {
-  Write-Host "Starting Flask backend on http://127.0.0.1:5000 ..." -ForegroundColor Green
-
-  $backend = Start-Process powershell -PassThru -ArgumentList @(
-    "-NoExit",
-    "-Command",
-    "Set-Location `"$PSScriptRoot`";",
-    "`$env:FLASK_APP = 'backend.app';",
-    "`$env:FLASK_ENV = 'development';",
-    "python -m flask run"
-  )
-
-  Start-Sleep -Seconds 2
+  $debugArgument = if ($DevDebug) { "--debug" } else { "--no-debug" }
+  $backendProcess = Start-Process -FilePath $pythonExecutable -PassThru `
+    -WorkingDirectory $PSScriptRoot -WindowStyle Hidden `
+    -ArgumentList @("-m", "flask", "--app", "backend.app", $debugArgument,
+      "run", "--host", "127.0.0.1", "--port", "5000") `
+    -RedirectStandardOutput (Join-Path $logDirectory "api.stdout.log") `
+    -RedirectStandardError (Join-Path $logDirectory "api.stderr.log")
+  Write-Host "API: http://127.0.0.1:5000 (PID $($backendProcess.Id))"
 }
 
 if (-not $ApiOnly) {
-  if ($LegacyStreamlit) {
-    Write-Host "Starting legacy Streamlit frontend on http://localhost:8501 ..." -ForegroundColor Yellow
-
-    $frontend = Start-Process powershell -PassThru -ArgumentList @(
-      "-NoExit",
-      "-Command",
-      "Set-Location `"$PSScriptRoot`";",
-      "python -m streamlit run frontend/gui.py"
-    )
-  }
-  else {
-    Write-Host "Starting React frontend on http://localhost:5173 ..." -ForegroundColor Green
-
-    $frontend = Start-Process powershell -PassThru -ArgumentList @(
-      "-NoExit",
-      "-Command",
-      "Set-Location `"$PSScriptRoot\frontend-web`";",
-      "`$env:VITE_CARDFIGHT_API_URL = 'http://127.0.0.1:5000';",
-      "npm run dev"
-    )
-  }
+  $env:VITE_CARDFIGHT_API_URL = "http://127.0.0.1:5000"
+  $frontendProcess = Start-Process -FilePath "cmd.exe" -PassThru `
+    -WorkingDirectory (Join-Path $PSScriptRoot "frontend-web") -WindowStyle Hidden `
+    -ArgumentList @("/c", "npm.cmd run dev") `
+    -RedirectStandardOutput (Join-Path $logDirectory "frontend.stdout.log") `
+    -RedirectStandardError (Join-Path $logDirectory "frontend.stderr.log")
+  Write-Host "Frontend: http://localhost:5173 (PID $($frontendProcess.Id))"
 }
 
-Write-Host ""
-Write-Host "Launched!" -ForegroundColor Yellow
-
-if ($backend) {
-  Write-Host "Backend:  PID $($backend.Id)  -> http://127.0.0.1:5000"
-}
-
-if ($frontend) {
-  if ($LegacyStreamlit) {
-    Write-Host "Frontend: PID $($frontend.Id) -> http://localhost:8501"
-  }
-  else {
-    Write-Host "Frontend: PID $($frontend.Id) -> http://localhost:5173"
-  }
-}
+Write-Host "Service logs: $logDirectory"

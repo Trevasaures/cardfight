@@ -8,6 +8,7 @@ from urllib.parse import quote, urljoin, urlsplit
 
 import urllib3
 
+from backend.errors import ValidationError
 from backend.services.image_processing import MAX_IMAGE_BYTES, validate_image_size
 
 
@@ -26,7 +27,7 @@ def _validate_url_text(url):
         or len(url) > 2048
         or re.search(r"[\x00-\x20\x7f\\]", url)
     ):
-        raise ValueError("Enter a public HTTP or HTTPS image URL.")
+        raise ValidationError("Enter a public HTTP or HTTPS image URL.")
 
 
 def _public_destination(url):
@@ -51,7 +52,9 @@ def _public_destination(url):
         if not ips or any(not ip.is_global or ip.is_multicast for ip in ips):
             raise ValueError
     except (ValueError, UnicodeError, OSError) as exc:
-        raise ValueError("Use a public image URL, or upload the image file.") from exc
+        raise ValidationError(
+            "Use a public image URL, or upload the image file."
+        ) from exc
     return parts, hostname, port, str(ips[0])
 
 
@@ -63,7 +66,7 @@ def _request_target(parts):
     # Only one leading slash: no absolute URL, network-path authority, backslash,
     # whitespace, or request-line controls can reach the HTTP client's URL slot.
     if not re.fullmatch(r"/(?!/)[A-Za-z0-9/%.~_!$&'()*+,;=:@?\-]*", target):
-        raise ValueError("Use a direct image URL, or upload the image file.")
+        raise ValidationError("Use a direct image URL, or upload the image file.")
     return target
 
 
@@ -84,7 +87,9 @@ def download_image(url: str) -> bytes:
         response = None
         try:
             if monotonic() >= deadline:
-                raise ValueError("Image download timed out. Upload the file instead.")
+                raise ValidationError(
+                    "Image download timed out. Upload the file instead."
+                )
             response = pool.request(
                 "GET",
                 target,
@@ -102,35 +107,48 @@ def download_image(url: str) -> bytes:
             if response.status in {301, 302, 303, 307, 308}:
                 location = response.headers.get("Location")
                 if not location:
-                    raise ValueError("Image URL redirected without a destination.")
+                    raise ValidationError("Image URL redirected without a destination.")
                 _validate_url_text(location)
                 url = urljoin(url, location)
                 continue
             if response.status != 200:
-                raise ValueError(
+                raise ValidationError(
                     "Could not download this image. Upload the file instead."
                 )
             length = response.headers.get("Content-Length")
-            if length and int(length) > MAX_IMAGE_BYTES:
-                raise ValueError("Image file is too large. Maximum size is 8 MB.")
+            if length:
+                try:
+                    expected_size = int(length)
+                except (TypeError, ValueError) as exc:
+                    raise ValidationError(
+                        "Could not download this image. Upload the file instead."
+                    ) from exc
+                if expected_size > MAX_IMAGE_BYTES:
+                    raise ValidationError(
+                        "Image file is too large. Maximum size is 8 MB."
+                    )
             chunks = bytearray()
             for chunk in response.stream(16 * 1024, decode_content=True):
                 chunks.extend(chunk)
                 if len(chunks) > MAX_IMAGE_BYTES:
-                    raise ValueError("Image file is too large. Maximum size is 8 MB.")
+                    raise ValidationError(
+                        "Image file is too large. Maximum size is 8 MB."
+                    )
                 if monotonic() >= deadline:
-                    raise ValueError(
+                    raise ValidationError(
                         "Image download timed out. Upload the file instead."
                     )
             data = bytes(chunks)
             validate_image_size(data)
             return data
         except (urllib3.exceptions.HTTPError, OSError) as exc:
-            raise ValueError(
+            raise ValidationError(
                 "Could not download this image. Upload the file instead."
             ) from exc
         finally:
             if response is not None:
                 response.close()
             pool.close()
-    raise ValueError("Image URL redirected too many times. Upload the file instead.")
+    raise ValidationError(
+        "Image URL redirected too many times. Upload the file instead."
+    )
