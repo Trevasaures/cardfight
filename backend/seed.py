@@ -1,14 +1,14 @@
 """
 Seeds the database with decks from deck.py (Enum DeckType).
-Run:  python backend/seed.py
+Run: python -m backend.seed
 """
-from backend.app import create_app
+
+from backend.app import app
 from backend.database import db
 from backend.models import Deck
 from deck import decks as source_decks  # current list
-# DeckType enum lives in deck.py; we just need .value strings
 
-app = create_app()
+# DeckType enum lives in deck.py; we just need .value strings
 
 with app.app_context():
     added = 0

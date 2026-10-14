@@ -11,6 +11,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import aliased
 
 from backend.database import db
+from backend.errors import NotFoundError, ValidationError
 from backend.models import Deck, DeckVersion, Match
 from backend.services.serializers import serialize_match
 
@@ -32,7 +33,9 @@ def create_match(payload: dict) -> dict:
     notes = (payload.get("notes") or "").strip()
 
     _validate_optional_participant(winner_id, deck1_id, deck2_id, "winner_id")
-    _validate_optional_participant(first_player_id, deck1_id, deck2_id, "first_player_id")
+    _validate_optional_participant(
+        first_player_id, deck1_id, deck2_id, "first_player_id"
+    )
 
     deck1_version_id = _match_version_id(payload, "deck1_version_id", deck1_id)
     deck2_version_id = _match_version_id(payload, "deck2_version_id", deck2_id)
@@ -69,9 +72,11 @@ def _match_version_id(payload: dict, field_name: str, deck_id: int) -> int | Non
 
         version = db.session.get(DeckVersion, version_id)
         if not version:
-            raise ValueError(f"{field_name} does not reference an existing deck version.")
+            raise ValidationError(
+                f"{field_name} does not reference an existing deck version."
+            )
         if version.deck_id != deck_id:
-            raise ValueError(f"{field_name} must belong to its selected deck.")
+            raise ValidationError(f"{field_name} must belong to its selected deck.")
         return version.id
 
     active_version = (
@@ -171,12 +176,7 @@ def list_matches(
         if page > total_pages:
             page = total_pages
 
-        rows = (
-            query
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-            .all()
-        )
+        rows = query.offset((page - 1) * page_size).limit(page_size).all()
 
         return {
             "items": [serialize_match(match) for match in rows],
@@ -204,11 +204,19 @@ def get_match(match_id: int) -> dict:
 def update_match(match_id: int, payload: dict) -> dict:
     match = db.get_or_404(Match, match_id)
 
-    new_deck1_id = _optional_int(payload.get("deck1_id"), "deck1_id") if "deck1_id" in payload else match.deck1_id
-    new_deck2_id = _optional_int(payload.get("deck2_id"), "deck2_id") if "deck2_id" in payload else match.deck2_id
+    new_deck1_id = (
+        _optional_int(payload.get("deck1_id"), "deck1_id")
+        if "deck1_id" in payload
+        else match.deck1_id
+    )
+    new_deck2_id = (
+        _optional_int(payload.get("deck2_id"), "deck2_id")
+        if "deck2_id" in payload
+        else match.deck2_id
+    )
 
     if new_deck1_id is None or new_deck2_id is None:
-        raise ValueError("deck1_id and deck2_id cannot be null.")
+        raise ValidationError("deck1_id and deck2_id cannot be null.")
 
     _validate_participants(new_deck1_id, new_deck2_id)
 
@@ -230,8 +238,12 @@ def update_match(match_id: int, payload: dict) -> dict:
         else match.format
     )
 
-    _validate_optional_participant(new_winner_id, new_deck1_id, new_deck2_id, "winner_id")
-    _validate_optional_participant(new_first_player_id, new_deck1_id, new_deck2_id, "first_player_id")
+    _validate_optional_participant(
+        new_winner_id, new_deck1_id, new_deck2_id, "winner_id"
+    )
+    _validate_optional_participant(
+        new_first_player_id, new_deck1_id, new_deck2_id, "first_player_id"
+    )
 
     # Revert the old winner from the old participants, then apply the new winner
     # against the new participants. This handles edits to participants and winner.
@@ -269,12 +281,12 @@ def delete_match(match_id: int):
 
 def _required_int(value, field_name: str) -> int:
     if value is None or value == "":
-        raise ValueError(f"{field_name} is required.")
+        raise ValidationError(f"{field_name} is required.")
 
     try:
         return int(value)
-    except Exception as exc:
-        raise ValueError(f"{field_name} must be an integer.") from exc
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValidationError(f"{field_name} must be an integer.") from exc
 
 
 def _optional_int(value, field_name: str) -> int | None:
@@ -283,8 +295,8 @@ def _optional_int(value, field_name: str) -> int | None:
 
     try:
         return int(value)
-    except Exception as exc:
-        raise ValueError(f"{field_name} must be an integer or null.") from exc
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValidationError(f"{field_name} must be an integer or null.") from exc
 
 
 def _normalize_format(value) -> str | None:
@@ -294,7 +306,7 @@ def _normalize_format(value) -> str | None:
     normalized = str(value).strip()
 
     if normalized not in VALID_MATCH_FORMATS:
-        raise ValueError("format must be Standard, Stride, Any, or null.")
+        raise ValidationError("format must be Standard, Stride, Any, or null.")
 
     return normalized
 
@@ -309,8 +321,10 @@ def _parse_date(value) -> datetime | None:
 def _parse_date_required(value, field_name: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(str(value))
-    except Exception as exc:
-        raise ValueError(f"{field_name} must be ISO-like, e.g. 2026-06-09 or 2026-06-09T19:30:00.") from exc
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValidationError(
+            f"{field_name} must be ISO-like, e.g. 2026-06-09 or 2026-06-09T19:30:00."
+        ) from exc
 
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=CT)
@@ -320,21 +334,23 @@ def _parse_date_required(value, field_name: str) -> datetime:
 
 def _validate_participants(deck1_id: int, deck2_id: int):
     if deck1_id == deck2_id:
-        raise ValueError("deck1_id and deck2_id must be different.")
+        raise ValidationError("deck1_id and deck2_id must be different.")
 
     deck1_exists = db.session.get(Deck, deck1_id) is not None
     deck2_exists = db.session.get(Deck, deck2_id) is not None
 
     if not deck1_exists or not deck2_exists:
-        raise LookupError("One or both deck IDs do not exist.")
+        raise NotFoundError("One or both deck IDs do not exist.")
 
 
-def _validate_optional_participant(value: int | None, deck1_id: int, deck2_id: int, field_name: str):
+def _validate_optional_participant(
+    value: int | None, deck1_id: int, deck2_id: int, field_name: str
+):
     if value is None:
         return
 
     if value not in (deck1_id, deck2_id):
-        raise ValueError(f"{field_name} must be either deck1_id or deck2_id.")
+        raise ValidationError(f"{field_name} must be either deck1_id or deck2_id.")
 
 
 def _apply_winner_counter(deck1_id: int, deck2_id: int, winner_id: int | None):

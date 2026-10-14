@@ -1,47 +1,10 @@
-import { animate, stagger } from "animejs";
-
-type AnimationHandle = {
-  cancel?: () => unknown;
-  revert?: () => unknown;
-};
-
-type AnimationTarget = Element | NodeListOf<Element> | null;
-type AnimationParams = Record<string, unknown>;
-
-function prefersReducedMotion() {
-  return (
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
-
-function hasTargets(targets: AnimationTarget) {
-  if (!targets) return false;
-  if (targets instanceof NodeList) return targets.length > 0;
-  return true;
-}
-
-function runAnimation(
-  targets: AnimationTarget,
-  params: AnimationParams,
-  handles: AnimationHandle[],
-) {
-  if (!hasTargets(targets)) return;
-
-  const handle = animate(targets as never, params as never) as AnimationHandle;
-  handles.push(handle);
-}
-
-function cleanupAnimation(handle: AnimationHandle) {
-  if (typeof handle.revert === "function") {
-    handle.revert();
-    return;
-  }
-
-  if (typeof handle.cancel === "function") {
-    handle.cancel();
-  }
-}
+import { stagger } from "animejs";
+import {
+  cleanupAnimation,
+  prefersReducedMotion,
+  runAnimation,
+  type AnimationHandle,
+} from "./motion";
 
 export function animateDeckBuilderMotion(root: HTMLElement | null) {
   if (!root || prefersReducedMotion()) {

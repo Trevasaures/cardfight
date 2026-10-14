@@ -3,6 +3,7 @@
 from collections import defaultdict
 
 from backend.database import db
+from backend.errors import NotFoundError, ValidationError
 from backend.models import (
     AcquisitionPlan,
     AcquisitionPlanItem,
@@ -35,15 +36,15 @@ def _int_value(value, field_name, default=None):
         return default
 
     if isinstance(value, bool):
-        raise ValueError(f"{field_name} must be a whole number")
+        raise ValidationError(f"{field_name} must be a whole number")
 
     try:
         parsed = int(value)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"{field_name} must be a whole number") from exc
+        raise ValidationError(f"{field_name} must be a whole number") from exc
 
     if isinstance(value, float) and not value.is_integer():
-        raise ValueError(f"{field_name} must be a whole number")
+        raise ValidationError(f"{field_name} must be a whole number")
 
     return parsed
 
@@ -53,7 +54,7 @@ def _choice(value, field_name, allowed, default=None):
 
     if cleaned not in allowed:
         choices = ", ".join(sorted(allowed))
-        raise ValueError(f"{field_name} must be one of: {choices}")
+        raise ValidationError(f"{field_name} must be one of: {choices}")
 
     return cleaned
 
@@ -62,7 +63,7 @@ def _get_deck_or_raise(deck_id):
     deck = db.session.get(Deck, deck_id)
 
     if not deck:
-        raise LookupError("Deck not found")
+        raise NotFoundError("Deck not found")
 
     return deck
 
@@ -71,7 +72,7 @@ def _get_version_or_raise(version_id):
     version = db.session.get(DeckVersion, version_id)
 
     if not version:
-        raise LookupError("Deck version not found")
+        raise NotFoundError("Deck version not found")
 
     return version
 
@@ -80,7 +81,7 @@ def _get_card_or_raise(card_id):
     card = db.session.get(Card, card_id)
 
     if not card:
-        raise LookupError("Card not found")
+        raise NotFoundError("Card not found")
 
     return card
 
@@ -93,10 +94,10 @@ def _get_printing_or_raise(printing_id, card_id):
     printing = db.session.get(CardPrinting, printing_id)
 
     if not printing:
-        raise LookupError("Card printing not found")
+        raise NotFoundError("Card printing not found")
 
     if printing.card_id != card_id:
-        raise ValueError("Card printing does not belong to the selected card")
+        raise ValidationError("Card printing does not belong to the selected card")
 
     return printing
 
@@ -105,7 +106,7 @@ def get_acquisition_plan_or_raise(plan_id):
     plan = db.session.get(AcquisitionPlan, plan_id)
 
     if not plan:
-        raise LookupError("Acquisition plan not found")
+        raise NotFoundError("Acquisition plan not found")
 
     return plan
 
@@ -114,14 +115,14 @@ def get_acquisition_item_or_raise(item_id):
     item = db.session.get(AcquisitionPlanItem, item_id)
 
     if not item:
-        raise LookupError("Acquisition plan item not found")
+        raise NotFoundError("Acquisition plan item not found")
 
     return item
 
 
 def _require_active_plan(plan):
     if plan.archived_at is not None:
-        raise ValueError("Restore this purchase plan before editing it")
+        raise ValidationError("Restore this purchase plan before editing it")
 
 
 def archive_acquisition_plan(plan_id):
@@ -138,7 +139,7 @@ def archive_acquisition_plan(plan_id):
         for item, target in zip(items, targets)
     )
     if not complete:
-        raise ValueError("Receive all planned cards before archiving this plan")
+        raise ValidationError("Receive all planned cards before archiving this plan")
 
     plan.status = "complete"
     plan.archived_at = now_central()
@@ -182,11 +183,11 @@ def _copy_version_items(plan, source_version):
 
 def create_acquisition_plan(payload):
     if not isinstance(payload, dict):
-        raise ValueError("Request body must be a JSON object")
+        raise ValidationError("Request body must be a JSON object")
 
     name = _clean_string(payload.get("name"))
     if not name:
-        raise ValueError("name is required")
+        raise ValidationError("name is required")
 
     plan_type = _choice(
         payload.get("plan_type"),
@@ -228,7 +229,9 @@ def create_acquisition_plan(payload):
 
     if plan_type == "existing_deck":
         if target_version_id is None:
-            raise ValueError("deck_version_id is required for an existing deck plan")
+            raise ValidationError(
+                "deck_version_id is required for an existing deck plan"
+            )
 
         target_version = _get_version_or_raise(target_version_id)
         target_deck = target_version.deck
@@ -238,13 +241,13 @@ def create_acquisition_plan(payload):
 
     if list_source == "deck_version":
         if source_version_id is None:
-            raise ValueError(
+            raise ValidationError(
                 "source_deck_version_id is required when copying a deck version"
             )
 
         source_version = _get_version_or_raise(source_version_id)
     elif source_version_id is not None:
-        raise ValueError(
+        raise ValidationError(
             "source_deck_version_id can only be used with a deck_version list source"
         )
 
@@ -253,10 +256,10 @@ def create_acquisition_plan(payload):
         requested_deck = _get_deck_or_raise(requested_deck_id)
 
         if plan_type != "existing_deck":
-            raise ValueError("deck_id can only be used for an existing deck plan")
+            raise ValidationError("deck_id can only be used for an existing deck plan")
 
         if target_deck and requested_deck.id != target_deck.id:
-            raise ValueError("deck_id does not match the selected deck version")
+            raise ValidationError("deck_id does not match the selected deck version")
 
         target_deck = requested_deck
 
@@ -269,7 +272,7 @@ def create_acquisition_plan(payload):
         nation = nation or context_deck.nation
 
     if deck_type and deck_type not in ALLOWED_DECK_TYPES:
-        raise ValueError("deck_type must be Standard or Stride")
+        raise ValidationError("deck_type must be Standard or Stride")
 
     plan = AcquisitionPlan(
         name=name,
@@ -297,7 +300,7 @@ def create_acquisition_plan(payload):
 
 def update_acquisition_plan(plan_id, payload):
     if not isinstance(payload, dict):
-        raise ValueError("Request body must be a JSON object")
+        raise ValidationError("Request body must be a JSON object")
 
     plan = get_acquisition_plan_or_raise(plan_id)
     _require_active_plan(plan)
@@ -305,7 +308,7 @@ def update_acquisition_plan(plan_id, payload):
     if "name" in payload:
         name = _clean_string(payload.get("name"))
         if not name:
-            raise ValueError("name cannot be empty")
+            raise ValidationError("name cannot be empty")
         plan.name = name
 
     if "status" in payload:
@@ -325,7 +328,7 @@ def update_acquisition_plan(plan_id, payload):
     if "deck_type" in payload:
         deck_type = _clean_string(payload.get("deck_type"))
         if deck_type and deck_type not in ALLOWED_DECK_TYPES:
-            raise ValueError("deck_type must be Standard or Stride")
+            raise ValidationError("deck_type must be Standard or Stride")
         plan.deck_type = deck_type
 
     if "nation" in payload:
@@ -346,14 +349,14 @@ def delete_acquisition_plan(plan_id):
 
 def add_acquisition_item(plan_id, payload):
     if not isinstance(payload, dict):
-        raise ValueError("Request body must be a JSON object")
+        raise ValidationError("Request body must be a JSON object")
 
     plan = get_acquisition_plan_or_raise(plan_id)
     _require_active_plan(plan)
     card_id = _int_value(payload.get("card_id"), "card_id")
 
     if card_id is None:
-        raise ValueError("card_id is required")
+        raise ValidationError("card_id is required")
 
     card = _get_card_or_raise(card_id)
     printing = _get_printing_or_raise(payload.get("printing_id"), card.id)
@@ -390,7 +393,7 @@ def add_acquisition_item(plan_id, payload):
     )
 
     if required_quantity <= 0:
-        raise ValueError("required_quantity must be greater than 0")
+        raise ValidationError("required_quantity must be greater than 0")
 
     for field_name, value in (
         ("source_quantity", source_quantity),
@@ -400,7 +403,7 @@ def add_acquisition_item(plan_id, payload):
         ("unit_price_cents", unit_price_cents),
     ):
         if value < 0:
-            raise ValueError(f"{field_name} cannot be negative")
+            raise ValidationError(f"{field_name} cannot be negative")
 
     existing = AcquisitionPlanItem.query.filter_by(
         plan_id=plan.id,
@@ -443,7 +446,7 @@ def add_acquisition_item(plan_id, payload):
 
 def update_acquisition_item(item_id, payload):
     if not isinstance(payload, dict):
-        raise ValueError("Request body must be a JSON object")
+        raise ValidationError("Request body must be a JSON object")
 
     item = get_acquisition_item_or_raise(item_id)
     _require_active_plan(item.plan)
@@ -464,10 +467,10 @@ def update_acquisition_item(item_id, payload):
         value = _int_value(payload.get(field_name), field_name)
 
         if value is None or (must_be_positive and value <= 0):
-            raise ValueError(f"{field_name} must be greater than 0")
+            raise ValidationError(f"{field_name} must be greater than 0")
 
         if value < 0:
-            raise ValueError(f"{field_name} cannot be negative")
+            raise ValidationError(f"{field_name} cannot be negative")
 
         setattr(item, field_name, value)
 
@@ -477,16 +480,16 @@ def update_acquisition_item(item_id, payload):
             "target_quantity",
         )
         if target_quantity is None or target_quantity < 0:
-            raise ValueError("target_quantity cannot be negative")
+            raise ValidationError("target_quantity cannot be negative")
 
         item.required_quantity = max(item.source_quantity, target_quantity, 1)
         item.removed_quantity = max(item.source_quantity - target_quantity, 0)
 
     if item.removed_quantity > item.source_quantity:
-        raise ValueError("removed_quantity cannot exceed the source deck quantity")
+        raise ValidationError("removed_quantity cannot exceed the source deck quantity")
 
     if item.removed_quantity > item.required_quantity:
-        raise ValueError("removed_quantity cannot exceed the tracked quantity")
+        raise ValidationError("removed_quantity cannot exceed the tracked quantity")
 
     if "printing_id" in payload:
         printing = _get_printing_or_raise(payload.get("printing_id"), item.card_id)
@@ -501,7 +504,7 @@ def update_acquisition_item(item_id, payload):
 
 def receive_acquisition_item(item_id, payload):
     if not isinstance(payload, dict):
-        raise ValueError("Request body must be a JSON object")
+        raise ValidationError("Request body must be a JSON object")
 
     item = get_acquisition_item_or_raise(item_id)
     _require_active_plan(item.plan)
@@ -512,10 +515,10 @@ def receive_acquisition_item(item_id, payload):
     )
 
     if quantity <= 0:
-        raise ValueError("quantity must be greater than 0")
+        raise ValidationError("quantity must be greater than 0")
 
     if quantity > item.ordered_quantity:
-        raise ValueError("quantity cannot exceed the number currently ordered")
+        raise ValidationError("quantity cannot exceed the number currently ordered")
 
     item.ordered_quantity -= quantity
     item.owned_quantity += quantity
@@ -526,26 +529,28 @@ def receive_acquisition_item(item_id, payload):
 def batch_acquisition_items(plan_id, payload):
     """Update a selection in one transaction, validating it before any mutation."""
     if not isinstance(payload, dict):
-        raise ValueError("Request body must be a JSON object")
+        raise ValidationError("Request body must be a JSON object")
 
     plan = get_acquisition_plan_or_raise(plan_id)
     _require_active_plan(plan)
     action = _choice(payload.get("action"), "action", {"mark_incoming", "receive"})
     requested_ids = payload.get("item_ids")
     if not isinstance(requested_ids, list) or not requested_ids:
-        raise ValueError("Select at least one card line")
+        raise ValidationError("Select at least one card line")
     item_ids = [_int_value(value, "item_ids") for value in requested_ids]
     if any(value is None or value <= 0 for value in item_ids):
-        raise ValueError("item_ids must contain positive whole numbers")
+        raise ValidationError("item_ids must contain positive whole numbers")
     if len(set(item_ids)) != len(item_ids):
-        raise ValueError("Select each card line only once")
+        raise ValidationError("Select each card line only once")
 
     items = AcquisitionPlanItem.query.filter(
         AcquisitionPlanItem.plan_id == plan.id,
         AcquisitionPlanItem.id.in_(item_ids),
     ).all()
     if len(items) != len(item_ids):
-        raise ValueError("Every selected card line must belong to this purchase plan")
+        raise ValidationError(
+            "Every selected card line must belong to this purchase plan"
+        )
 
     # Compute from saved quantities rather than client counts. This also keeps
     # an already-ready line harmless when a mixed selection is updated.
@@ -564,7 +569,7 @@ def batch_acquisition_items(plan_id, payload):
         for item in items
     ]
     if not any(quantities):
-        raise ValueError(
+        raise ValidationError(
             "No incoming cards to receive"
             if action == "receive"
             else "Selected cards are already accounted for"

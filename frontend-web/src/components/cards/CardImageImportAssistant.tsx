@@ -54,13 +54,9 @@ export function CardImageImportAssistant({
 
     setSelectedFile(file);
 
-    setPreviewUrl((current) => {
-      if (current) {
-        URL.revokeObjectURL(current);
-      }
-
-      return URL.createObjectURL(file);
-    });
+    // Create once in the event handler; state updaters may run twice in StrictMode.
+    // The effect releases the previous preview and the last one on unmount.
+    setPreviewUrl(URL.createObjectURL(file));
   }
 
   function handleAnalyze() {
@@ -77,9 +73,7 @@ export function CardImageImportAssistant({
       <summary className="flex cursor-pointer list-none items-start justify-between gap-3 select-none [&::-webkit-details-marker]:hidden">
         <div>
           <h4 className="font-black text-slate-100">Import image</h4>
-
         </div>
-
       </summary>
 
       <div

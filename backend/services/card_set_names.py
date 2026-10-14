@@ -1,3 +1,6 @@
+from backend.errors import ConflictError, NotFoundError, ValidationError
+
+
 SET_CODE_NAMES = {
     # Add/update these over time.
     # Standard sets
@@ -14,7 +17,6 @@ SET_CODE_NAMES = {
     "D-BT11": "Clash of the Heroes",
     "D-BT12": "Evenfall Onslaught",
     "D-BT13": "Flight of Chakrabarthi",
-
     # Standard sets (DZ)
     "DZ-BT01": "Fated Clash",
     "DZ-BT02": "Illusionless Strife",
@@ -36,11 +38,11 @@ SET_CODE_NAMES = {
 }
 
 
-class DuplicateCardSetError(ValueError):
+class DuplicateCardSetError(ConflictError):
     """Raised when a set code would collide with existing metadata."""
 
 
-class CardSetInUseError(ValueError):
+class CardSetInUseError(ConflictError):
     """Raised when deletion would orphan printing metadata."""
 
     def __init__(self, set_code: str, usage_count: int):
@@ -129,10 +131,7 @@ def list_set_options() -> list[dict[str, str]]:
 
     options.update(SET_CODE_NAMES)
 
-    return [
-        {"code": code, "name": name}
-        for code, name in sorted(options.items())
-    ]
+    return [{"code": code, "name": name} for code, name in sorted(options.items())]
 
 
 def list_custom_sets() -> list[dict]:
@@ -169,13 +168,13 @@ def _validate_set_fields(set_code, set_name) -> tuple[str, str]:
     cleaned_name = _clean_set_name(set_name)
 
     if not normalized_code:
-        raise ValueError("code is required")
+        raise ValidationError("code is required")
     if not cleaned_name:
-        raise ValueError("name is required")
+        raise ValidationError("name is required")
     if len(normalized_code) > 80:
-        raise ValueError("code must be 80 characters or fewer")
+        raise ValidationError("code must be 80 characters or fewer")
     if len(cleaned_name) > 160:
-        raise ValueError("name must be 160 characters or fewer")
+        raise ValidationError("name must be 160 characters or fewer")
 
     return normalized_code, cleaned_name
 
@@ -186,7 +185,7 @@ def save_custom_set(payload: dict) -> tuple[dict[str, str], bool]:
     from backend.models import CardSet
 
     if not isinstance(payload, dict):
-        raise ValueError("Request body must be a JSON object")
+        raise ValidationError("Request body must be a JSON object")
 
     set_code, set_name = _validate_set_fields(
         payload.get("code"),
@@ -233,12 +232,12 @@ def update_custom_set(current_code: str, payload: dict) -> dict:
     if not custom_set:
         historical_name = lookup_set_name(normalized_current_code)
         if not historical_name or normalized_current_code in SET_CODE_NAMES:
-            raise LookupError("Custom card set not found")
+            raise NotFoundError("Custom card set not found")
         current_name = historical_name
     else:
         current_name = custom_set.name
     if not isinstance(payload, dict):
-        raise ValueError("Request body must be a JSON object")
+        raise ValidationError("Request body must be a JSON object")
 
     next_code, next_name = _validate_set_fields(
         payload.get("code", normalized_current_code),
@@ -309,7 +308,7 @@ def delete_custom_set(set_code: str):
         ).count()
         if usage_count:
             raise CardSetInUseError(normalized_code, usage_count)
-        raise LookupError("Custom card set not found")
+        raise NotFoundError("Custom card set not found")
 
     usage_count = CardPrinting.query.filter(
         db.func.upper(CardPrinting.set_code) == custom_set.code,
@@ -329,11 +328,7 @@ def remember_custom_set(set_code: str | None, set_name: str | None):
     normalized_code = normalize_set_code(set_code)
     cleaned_name = _clean_set_name(set_name)
 
-    if (
-        not normalized_code
-        or not cleaned_name
-        or normalized_code in SET_CODE_NAMES
-    ):
+    if not normalized_code or not cleaned_name or normalized_code in SET_CODE_NAMES:
         return
 
     if CardSet.query.filter_by(code=normalized_code).first() is None:

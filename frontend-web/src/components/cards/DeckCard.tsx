@@ -6,15 +6,14 @@ import { StatusBadge } from "../badges/StatusBadge";
 import type { Deck } from "../../types/api";
 import { formatPercent, formatRecord } from "../../utils/format";
 import { nationColor } from "../../utils/nations";
+import { removeLocalState, writeLocalState } from "../../utils/localState";
 
 type DeckCardProps = { deck: Deck; onEdit?: (deck: Deck) => void };
 
 export function DeckCard({ deck, onEdit }: DeckCardProps) {
   function prepareBuilder() {
-    try {
-      window.localStorage.setItem("cardfight.deck-builder.selected-deck", JSON.stringify(String(deck.id)));
-      window.localStorage.removeItem("cardfight.deck-builder.selected-version");
-    } catch { /* Navigation remains available without browser storage. */ }
+    writeLocalState("cardfight.deck-builder.selected-deck", String(deck.id));
+    removeLocalState("cardfight.deck-builder.selected-version");
   }
   return (
     <article data-anime="motion-card" className="deck-showcase" style={{ "--nation-color": nationColor(deck.nation) } as CSSProperties}>

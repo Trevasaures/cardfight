@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import {
   ArrowUpRight,
   BarChart3,
@@ -21,9 +21,9 @@ import {
   Swords,
   X,
 } from "lucide-react";
-import { useRoutePageReveal } from "../../animations/useRoutePageReveal";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { useRouteScrollRestoration } from "../../hooks/useRouteScrollRestoration";
+import { RouteContent } from "./RouteContent";
 import "./app-sidebar.css";
 
 const navGroups = [
@@ -70,7 +70,6 @@ export function AppShell() {
   const sidebarCollapsed = storedSidebarCollapsed === true;
   const [query, setQuery] = useState("");
   const current = destinations.find((item) => item.to === location.pathname);
-  useRoutePageReveal(pageRef, location.pathname);
   useRouteScrollRestoration(location.pathname, pageRef);
 
   useEffect(() => {
@@ -219,7 +218,7 @@ export function AppShell() {
           key={location.pathname}
           className="app-main"
         >
-          <Outlet />
+          <RouteContent rootRef={pageRef} />
         </main>
       </div>
       <dialog

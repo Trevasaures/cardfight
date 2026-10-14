@@ -1,12 +1,14 @@
 """
 Shared API serializers.
 
-This module contains functions to serialize various database models into dictionaries suitable for JSON responses in the API. 
+This module contains functions to serialize various database models into dictionaries suitable for JSON responses in the API.
 Each function takes a model instance as input and returns a dictionary representation of that instance, including related data where appropriate.
 """
 
+from sqlalchemy.orm import joinedload
+
 from backend.database import db
-from backend.models import AcquisitionPlanItem, CardPrinting, Deck, DeckCard
+from backend.models import AcquisitionPlanItem, Card, CardPrinting, Deck, DeckCard
 from backend.services.card_images import image_urls
 
 
@@ -64,9 +66,7 @@ def _deck_rule_summary(cards, totals_by_zone):
         "ride_grades": ride_grades,
         "ride_nations": ride_nations,
         "is_complete": (
-            main_count == 50
-            and ride_count == 4
-            and set(ride_grades) == {0, 1, 2, 3}
+            main_count == 50 and ride_count == 4 and set(ride_grades) == {0, 1, 2, 3}
         ),
         "issues": issues,
     }
@@ -169,9 +169,14 @@ def serialize_card_printing(printing):
         "card_number": printing.card_number,
         "rarity": printing.rarity,
         "image_id": printing.image_id,
-        **(image_urls(printing.image_id) if printing.image_id else {
-            "image_url": printing.image_url, "thumbnail_url": printing.image_url,
-        }),
+        **(
+            image_urls(printing.image_id)
+            if printing.image_id
+            else {
+                "image_url": printing.image_url,
+                "thumbnail_url": printing.image_url,
+            }
+        ),
         "product_url": printing.product_url,
         "source": printing.source,
         "external_id": printing.external_id,
@@ -181,20 +186,27 @@ def serialize_card_printing(printing):
 
 
 def serialize_cards(cards):
-    """Serialize a bounded page with one printing query, not one per card."""
+    """Load printings in batches, retaining their primary-first ID ordering."""
     if not cards:
         return []
 
     printings_by_card = {card.id: [] for card in cards}
-    printings = CardPrinting.query.filter(
-        CardPrinting.card_id.in_(printings_by_card)
-    ).order_by(CardPrinting.id.asc()).all()
-    for printing in printings:
-        printings_by_card[printing.card_id].append(printing)
+    card_ids = list(printings_by_card)
+    # Catalog pages are small; purchase lists can be much larger. Keep each
+    # IN clause below older SQLite parameter limits without dropping any cards.
+    for start in range(0, len(card_ids), 500):
+        printings = (
+            CardPrinting.query.filter(
+                CardPrinting.card_id.in_(card_ids[start : start + 500])
+            )
+            .order_by(CardPrinting.id.asc())
+            .all()
+        )
+        for printing in printings:
+            printings_by_card[printing.card_id].append(printing)
 
     return [
-        serialize_card(card, printing_rows=printings_by_card[card.id])
-        for card in cards
+        serialize_card(card, printing_rows=printings_by_card[card.id]) for card in cards
     ]
 
 
@@ -207,10 +219,7 @@ def serialize_card(card, include_printings=True, *, printing_rows=None):
     if include_printings:
         if printing_rows is None:
             printing_rows = card.printings.order_by(CardPrinting.id.asc()).all()
-        printings = [
-            serialize_card_printing(printing)
-            for printing in printing_rows
-        ]
+        printings = [serialize_card_printing(printing) for printing in printing_rows]
 
     primary_printing = printings[0] if printings else None
 
@@ -237,7 +246,13 @@ def serialize_card(card, include_printings=True, *, printing_rows=None):
     }
 
 
-def serialize_deck_card(entry):
+def _serialized_cards_by_id(entries):
+    """Share one complete card payload across rows for the same identity."""
+    cards = {entry.card_id: entry.card for entry in entries if entry.card is not None}
+    return {card["id"]: card for card in serialize_cards(list(cards.values()))}
+
+
+def serialize_deck_card(entry, *, cards_by_id=None):
     if not entry:
         return None
 
@@ -249,7 +264,11 @@ def serialize_deck_card(entry):
         "quantity": entry.quantity,
         "zone": entry.zone,
         "sort_order": entry.sort_order,
-        "card": serialize_card(entry.card, include_printings=True),
+        "card": (
+            cards_by_id.get(entry.card_id)
+            if cards_by_id is not None
+            else serialize_card(entry.card)
+        ),
         "printing": serialize_card_printing(entry.printing),
         "created_at": entry.created_at.isoformat() if entry.created_at else None,
         "updated_at": entry.updated_at.isoformat() if entry.updated_at else None,
@@ -263,15 +282,32 @@ def serialize_deck_version(version, include_cards=True):
     cards = []
 
     if include_cards:
-        cards = [
-            serialize_deck_card(entry)
-            for entry in version.cards.order_by(
+        entries = (
+            version.cards.options(
+                joinedload(DeckCard.card),
+                joinedload(DeckCard.printing),
+            )
+            .order_by(
                 DeckCard.zone.asc(),
                 DeckCard.sort_order.asc(),
                 DeckCard.id.asc(),
-            ).all()
+            )
+            .all()
+        )
+        cards_by_id = _serialized_cards_by_id(entries)
+        cards = [
+            serialize_deck_card(entry, cards_by_id=cards_by_id) for entry in entries
         ]
 
+    return {
+        **serialize_deck_version_summary(version),
+        "deck": serialize_deck(version.deck),
+        "cards": cards,
+        **_deck_card_summary(cards),
+    }
+
+
+def _deck_card_summary(cards):
     totals_by_zone = {}
 
     for entry in cards:
@@ -279,20 +315,36 @@ def serialize_deck_version(version, include_cards=True):
         totals_by_zone[zone] = totals_by_zone.get(zone, 0) + entry["quantity"]
 
     return {
-        "id": version.id,
-        "deck_id": version.deck_id,
-        "version_name": version.version_name,
-        "notes": version.notes,
-        "is_active": version.is_active,
-        "deck": serialize_deck(version.deck),
-        "cards": cards,
         "card_count": sum(entry["quantity"] for entry in cards),
         "unique_card_count": len(cards),
         "totals_by_zone": totals_by_zone,
         "deck_rules": _deck_rule_summary(cards, totals_by_zone),
-        "created_at": version.created_at.isoformat() if version.created_at else None,
-        "updated_at": version.updated_at.isoformat() if version.updated_at else None,
     }
+
+
+def deck_version_counts(version_id):
+    """Calculate readiness without loading artwork, printings, or ability text."""
+    rows = (
+        db.session.query(
+            DeckCard.zone, DeckCard.quantity, Card.id, Card.grade, Card.nation
+        )
+        .outerjoin(Card, DeckCard.card_id == Card.id)
+        .filter(DeckCard.deck_version_id == version_id)
+        .order_by(DeckCard.zone.asc(), DeckCard.sort_order.asc(), DeckCard.id.asc())
+        .all()
+    )
+    return _deck_card_summary(
+        [
+            {
+                "zone": zone,
+                "quantity": quantity,
+                "card": (
+                    {"grade": grade, "nation": nation} if card_id is not None else None
+                ),
+            }
+            for zone, quantity, card_id, grade, nation in rows
+        ]
+    )
 
 
 def _acquisition_item_quantities(item):
@@ -327,7 +379,7 @@ def _acquisition_item_quantities(item):
     }
 
 
-def serialize_acquisition_item(item):
+def serialize_acquisition_item(item, *, cards_by_id=None):
     if not item:
         return None
 
@@ -356,7 +408,11 @@ def serialize_acquisition_item(item):
         "unit_price_cents": item.unit_price_cents,
         "status": item_status,
         "notes": item.notes,
-        "card": serialize_card(item.card),
+        "card": (
+            cards_by_id.get(item.card_id)
+            if cards_by_id is not None
+            else serialize_card(item.card)
+        ),
         "printing": serialize_card_printing(item.printing),
         "created_at": item.created_at.isoformat() if item.created_at else None,
         "updated_at": item.updated_at.isoformat() if item.updated_at else None,
@@ -370,9 +426,12 @@ def serialize_acquisition_plan(plan, include_items=True):
     items = plan.items.order_by(
         AcquisitionPlanItem.card_id.asc(), AcquisitionPlanItem.id.asc()
     ).all()
-    item_rows = (
-        [serialize_acquisition_item(item) for item in items] if include_items else []
-    )
+    item_rows = []
+    if include_items:
+        cards_by_id = _serialized_cards_by_id(items)
+        item_rows = [
+            serialize_acquisition_item(item, cards_by_id=cards_by_id) for item in items
+        ]
     # List and detail responses share the same quantity math. Plan lists skip
     # full card serialization, but retain identical inventory/progress totals.
     quantity_rows = (

@@ -1,46 +1,34 @@
-import os
+import re
 
 from flask import Flask, jsonify
 from flask_cors import CORS
-from sqlalchemy import event
-from sqlalchemy.engine import Engine
+from dotenv import load_dotenv
 
+from backend.config import PROJECT_ROOT, default_config
 from backend.database import db
+from backend.errors import register_api_errors
 from backend.routes import all_blueprints
 from backend.schema import ensure_schema_upgrades
 
-from pathlib import Path
-from dotenv import load_dotenv
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(PROJECT_ROOT / ".env")
 
 
-def create_app():
+def create_app(config=None):
+    """Build an isolated app; explicit overrides are useful for tests/WSGI setup."""
     app = Flask(__name__, instance_relative_config=True)
-
-    base_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-    default_db_path = os.path.join(base_dir, "instance", "cardfight.db")
-    os.makedirs(os.path.dirname(default_db_path), exist_ok=True)
-
-    app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
-        "DATABASE_URL",
-        f"sqlite:///{default_db_path}",
-    )
-    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-    app.config["JSON_SORT_KEYS"] = False
+    app.config.update(default_config())
+    if config is not None:
+        app.config.update(config)
+    app.json.sort_keys = False
+    (PROJECT_ROOT / "instance").mkdir(exist_ok=True)
 
     db.init_app(app)
-    CORS(app)
-
-    @event.listens_for(Engine, "connect")
-    def set_sqlite_pragma(dbapi_connection, connection_record):
-        try:
-            cursor = dbapi_connection.cursor()
-            cursor.execute("PRAGMA foreign_keys=ON")
-            cursor.close()
-        except Exception:
-            pass
+    # Flask-CORS accepts regexes; compile escaped full matches so configuration
+    # remains a list of literal origins, including IPv6 addresses.
+    origins = [
+        re.compile(rf"\A{re.escape(origin)}\Z") for origin in app.config["CORS_ORIGINS"]
+    ]
+    CORS(app, resources={r"/api/*": {"origins": origins}})
 
     with app.app_context():
         db.create_all()
@@ -51,21 +39,14 @@ def create_app():
     def health():
         return jsonify(status="ok", service="cardfight-api")
 
-    @app.errorhandler(400)
-    def bad_request(error):
-        description = getattr(error, "description", None)
-        return jsonify(error=description or "bad request"), 400
-
-    @app.errorhandler(404)
-    def not_found(error):
-        return jsonify(error="not found"), 404
-
-    @app.errorhandler(500)
-    def server_error(error):
-        return jsonify(error="internal server error"), 500
+    @app.after_request
+    def response_headers(response):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        return response
 
     for blueprint in all_blueprints:
         app.register_blueprint(blueprint)
+    register_api_errors(app)
 
     return app
 
@@ -73,4 +54,5 @@ def create_app():
 app = create_app()
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    # Use `flask --app backend.app run --debug` for an explicit development session.
+    app.run(host="127.0.0.1", port=5000, debug=False)

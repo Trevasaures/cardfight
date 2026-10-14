@@ -9,6 +9,7 @@ from PIL import Image, UnidentifiedImageError
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
+from backend.errors import ValidationError
 from backend.services.card_set_names import lookup_set_name
 from backend.services.image_processing import encode_image, read_image_upload
 
@@ -403,14 +404,14 @@ def _analyze_with_openai(image_bytes: bytes, mimetype: str):
     try:
         from openai import OpenAI
     except ImportError as exc:
-        raise ValueError(
+        raise ValidationError(
             "OpenAI SDK is not installed. Run: pip install openai"
         ) from exc
 
     api_key = os.getenv("OPENAI_API_KEY")
 
     if not api_key:
-        raise ValueError("OPENAI_API_KEY is not set.")
+        raise ValidationError("OPENAI_API_KEY is not set.")
 
     model = os.getenv("CARD_IMAGE_ANALYZER_MODEL", "gpt-5.5-2026-04-23")
     client = OpenAI(api_key=api_key, timeout=60.0)
@@ -467,4 +468,4 @@ def analyze_card_image(image_file: FileStorage | None):
     if provider == "openai":
         return _analyze_with_openai(image_bytes, content_type)
 
-    raise ValueError(f"Unsupported card image analyzer provider: {provider}")
+    raise ValidationError("Unsupported card image analyzer provider.")

@@ -1,3 +1,13 @@
+const usdFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+});
+
+/** Purchase and dashboard APIs represent prices as integer cents. */
+export function formatUsdCents(cents: number) {
+  return usdFormatter.format(cents / 100);
+}
+
 export function formatPercent(value: number | null | undefined) {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return "0.0%";

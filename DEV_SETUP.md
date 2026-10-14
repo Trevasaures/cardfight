@@ -1,33 +1,13 @@
-# Developer Setup & Usage Guide 🛠️
+# Developer setup
 
-This document explains how to set up and run the **Cardfight!! Deck Battle Simulator** locally.
+The current frontend is React; the former Streamlit frontend is no longer part of this repository. The CLI in `main.py` remains supported.
 
----
+1. Follow the platform-specific setup in [README](README.md#quick-start-on-windows).
+2. Install development tools with `python -m pip install -r requirements-dev.txt`.
+3. Start the API and React with `./start.ps1`, or use the [manual commands](README.md#manual-startup). Enable Flask debugging explicitly only when needed.
+4. Run `python -m pytest -q` at the repository root, then `npm test`, `npm run lint`, and `npm run build` from `frontend-web`.
+5. Run `python -m pip_audit -r requirements-dev.txt --no-deps --disable-pip` and `npm audit` after dependency changes. The development lock includes the runtime packages too.
 
-## 1. Clone the repo first from the README.md file
+Runtime packages are declared in `requirements.in`; test, formatting, and audit tools are declared in `requirements-dev.in`. Both generated `.txt` lockfiles pin package versions without hashes or dependency annotations. See the [dependency workflow](README.md#working-with-dependencies) before updating them.
 
-- Instructions on how and where to clone in your local machine are included there.
-
-## 2. Install Dependencies
-
-- Run `pip install -r requirements.txt`
-
-## 3. Run the backend
-
-- Windows PowerShell
-  - $env:FLASK_APP = "backend.app"
-  - $env:FLASK_ENV = "development"
-  - python -m flask run
-
-# 4. Seed the database
-
-- Run `python -m backend.seed`
-
-# 5. Run the frontend
-
-- In a second terminal, run `python -m streamlit run frontend/gui.py`
-
-# 6. Make a new instance for the database (optional if needed to re-seed)
-
-- Run `python -m flask --app backend.app run`
-- Run `python -m backend.seed`
+See [deployment notes](docs/deployment.md) for the WSGI server, configuration, and private-hosting boundary. Tests use an isolated in-memory database; never point test commands at your saved database.

@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify
 
+from backend.errors import NotFoundError, error_response
 from backend.services.stats import (
     performance_spotlight,
     stats_table as svc_stats_table,
@@ -20,8 +21,8 @@ def stats_table_route():
 def performance_spotlight_route(deck_id: int):
     try:
         return jsonify(performance_spotlight(deck_id))
-    except LookupError:
-        return jsonify(error="Resource not found"), 404
+    except NotFoundError:
+        return error_response("Resource not found", 404)
 
 
 @bp_stats.get("/versus/<int:deck_id>")

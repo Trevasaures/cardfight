@@ -1,5 +1,7 @@
 from flask import Blueprint, jsonify, request
 
+from backend.errors import json_object
+
 from backend.services.matches import (
     create_match as svc_create_match,
     list_matches as svc_list_matches,
@@ -24,21 +26,18 @@ def list_matches_route():
     page = request.args.get("page", type=int)
     page_size = request.args.get("page_size", type=int)
 
-    try:
-        rows = svc_list_matches(
-            deck_id=deck_id,
-            fmt=fmt,
-            result=result,
-            since=since,
-            until=until,
-            q=q,
-            limit=limit,
-            page=page,
-            page_size=page_size,
-        )
-        return jsonify(rows)
-    except ValueError as e:
-        return jsonify(error=str(e)), 400
+    rows = svc_list_matches(
+        deck_id=deck_id,
+        fmt=fmt,
+        result=result,
+        since=since,
+        until=until,
+        q=q,
+        limit=limit,
+        page=page,
+        page_size=page_size,
+    )
+    return jsonify(rows)
 
 
 @bp_matches.get("/<int:match_id>")
@@ -48,28 +47,18 @@ def get_match_route(match_id: int):
 
 @bp_matches.post("")
 def create_match_route():
-    data = request.get_json(force=True, silent=True) or {}
+    data = json_object(force=True)
 
-    try:
-        row = svc_create_match(data)
-        return jsonify(row), 201
-    except LookupError as e:
-        return jsonify(error=str(e)), 404
-    except ValueError as e:
-        return jsonify(error=str(e)), 400
+    row = svc_create_match(data)
+    return jsonify(row), 201
 
 
 @bp_matches.patch("/<int:match_id>")
 def update_match_route(match_id: int):
-    data = request.get_json(force=True, silent=True) or {}
+    data = json_object(force=True)
 
-    try:
-        row = svc_update_match(match_id, data)
-        return jsonify(row)
-    except LookupError as e:
-        return jsonify(error=str(e)), 404
-    except ValueError as e:
-        return jsonify(error=str(e)), 400
+    row = svc_update_match(match_id, data)
+    return jsonify(row)
 
 
 @bp_matches.delete("/<int:match_id>")

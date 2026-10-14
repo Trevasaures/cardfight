@@ -7,6 +7,7 @@ from io import BytesIO
 from PIL import Image
 
 from backend.database import db
+from backend.errors import ValidationError
 from backend.models import CardImage, CardPrinting, now_central
 from backend.services.card_types import crest_card_type
 from backend.services.image_processing import decode_image, encode_image
@@ -135,7 +136,7 @@ def prepare_image(data, card_type=None, *, commit=True):
 def prepare_existing_image(image_id, card_type=None, *, commit=True):
     """Create an unattached derived asset; linked originals remain immutable."""
     if image_id is None:
-        raise ValueError("Choose a saved artwork image")
+        raise ValidationError("Choose a saved artwork image")
     checked_image_id(image_id)
     image = db.session.get(CardImage, image_id)
     image.last_used_at = now_central()
@@ -170,7 +171,7 @@ def checked_image_id(value):
         not isinstance(value, str)
         or not db.session.query(CardImage.id).filter_by(id=value).first()
     ):
-        raise ValueError(
+        raise ValidationError(
             "Artwork preview expired. Import the image again before saving."
         )
     return value

@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python-patches:
+        update-types: ["patch", "minor"]
+  - package-ecosystem: npm
+    directory: /frontend-web
+    schedule:
+      interval: weekly
+    groups:
+      frontend-patches:
+        update-types: ["patch", "minor"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

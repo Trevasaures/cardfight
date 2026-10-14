@@ -1,11 +1,12 @@
 """
 Shared API services for deck building.
 
-Functions in this module handle the creation, updating, and deletion of decks, deck versions, and deck cards. 
+Functions in this module handle the creation, updating, and deletion of decks, deck versions, and deck cards.
 They also provide validation and normalization of input data to ensure consistency and integrity in the database.
 """
 
 from backend.database import db
+from backend.errors import NotFoundError, ValidationError
 from backend.models import Card, CardPrinting, Deck, DeckCard, DeckVersion
 from backend.services.card_types import CREST_CARD_TYPES
 
@@ -32,7 +33,7 @@ def _int_value(value, field_name, default=None):
     try:
         return int(value)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"{field_name} must be a number") from exc
+        raise ValidationError(f"{field_name} must be a number") from exc
 
 
 def _bool_value(value, default=False):
@@ -58,7 +59,7 @@ def _get_deck_or_raise(deck_id):
     deck = db.session.get(Deck, deck_id)
 
     if not deck:
-        raise LookupError("Deck not found")
+        raise NotFoundError("Deck not found")
 
     return deck
 
@@ -67,7 +68,7 @@ def get_deck_version_or_raise(version_id):
     version = db.session.get(DeckVersion, version_id)
 
     if not version:
-        raise LookupError("Deck version not found")
+        raise NotFoundError("Deck version not found")
 
     return version
 
@@ -76,7 +77,7 @@ def get_deck_card_or_raise(deck_card_id):
     entry = db.session.get(DeckCard, deck_card_id)
 
     if not entry:
-        raise LookupError("Deck card entry not found")
+        raise NotFoundError("Deck card entry not found")
 
     return entry
 
@@ -85,7 +86,7 @@ def _get_card_or_raise(card_id):
     card = db.session.get(Card, card_id)
 
     if not card:
-        raise LookupError("Card not found")
+        raise NotFoundError("Card not found")
 
     return card
 
@@ -97,10 +98,10 @@ def _get_printing_or_raise(printing_id, card_id):
     printing = db.session.get(CardPrinting, printing_id)
 
     if not printing:
-        raise LookupError("Card printing not found")
+        raise NotFoundError("Card printing not found")
 
     if printing.card_id != card_id:
-        raise ValueError("Card printing does not belong to the selected card")
+        raise ValidationError("Card printing does not belong to the selected card")
 
     return printing
 
@@ -109,13 +110,17 @@ def _normalize_zone(value):
     zone = (_clean_string(value) or "main").lower()
 
     if zone not in ALLOWED_ZONES:
-        raise ValueError(f"zone must be one of: {', '.join(sorted(ALLOWED_ZONES))}")
+        raise ValidationError(
+            f"zone must be one of: {', '.join(sorted(ALLOWED_ZONES))}"
+        )
 
     return zone
 
 
 def _zone_total(version_id, zone, exclude_entry_id=None):
-    query = db.session.query(db.func.coalesce(db.func.sum(DeckCard.quantity), 0)).filter(
+    query = db.session.query(
+        db.func.coalesce(db.func.sum(DeckCard.quantity), 0)
+    ).filter(
         DeckCard.deck_version_id == version_id,
         DeckCard.zone == zone,
     )
@@ -135,11 +140,11 @@ def _validate_deck_card_rules(
 ):
     if card.card_type in CREST_CARD_TYPES:
         if zone != "crest":
-            raise ValueError(
+            raise ValidationError(
                 "Crests belong in the crest zone, outside the main, ride, and G decks"
             )
         if quantity != 1:
-            raise ValueError("A crest must have a quantity of exactly 1")
+            raise ValidationError("A crest must have a quantity of exactly 1")
         existing_crests = DeckCard.query.join(Card).filter(
             DeckCard.deck_version_id == version.id,
             DeckCard.zone == "crest",
@@ -147,51 +152,48 @@ def _validate_deck_card_rules(
         if exclude_entry_id is not None:
             existing_crests = existing_crests.filter(DeckCard.id != exclude_entry_id)
         if existing_crests.filter(DeckCard.card_id == card.id).first():
-            raise ValueError("This crest is already included in the deck")
+            raise ValidationError("This crest is already included in the deck")
         if (
             card.card_type == "Ride Deck Crest"
             and existing_crests.filter(Card.card_type == "Ride Deck Crest").first()
         ):
-            raise ValueError("A deck can include only one Ride Deck Crest")
+            raise ValidationError("A deck can include only one Ride Deck Crest")
         return
     if zone == "crest":
-        raise ValueError("Only crests can be placed in the crest zone")
+        raise ValidationError("Only crests can be placed in the crest zone")
     if card.grade is None or card.grade < 0 or card.grade > MAX_CARD_GRADE:
-        raise ValueError("Deck cards must have a grade between 0 and 4")
+        raise ValidationError("Deck cards must have a grade between 0 and 4")
 
     projected_zone_total = (
         _zone_total(version.id, zone, exclude_entry_id=exclude_entry_id) + quantity
     )
 
     if zone == "main" and projected_zone_total > MAIN_DECK_LIMIT:
-        raise ValueError("Main deck cannot contain more than 50 cards")
+        raise ValidationError("Main deck cannot contain more than 50 cards")
 
     if zone != "ride":
         return
 
     if quantity != 1:
-        raise ValueError("Ride deck cards must have a quantity of exactly 1")
+        raise ValidationError("Ride deck cards must have a quantity of exactly 1")
 
     if card.grade not in RIDE_DECK_GRADES:
-        raise ValueError("Ride deck cards must be grade 0, 1, 2, or 3")
+        raise ValidationError("Ride deck cards must be grade 0, 1, 2, or 3")
 
-    same_grade_query = (
-        DeckCard.query.join(Card)
-        .filter(
-            DeckCard.deck_version_id == version.id,
-            DeckCard.zone == "ride",
-            Card.grade == card.grade,
-        )
+    same_grade_query = DeckCard.query.join(Card).filter(
+        DeckCard.deck_version_id == version.id,
+        DeckCard.zone == "ride",
+        Card.grade == card.grade,
     )
 
     if exclude_entry_id is not None:
         same_grade_query = same_grade_query.filter(DeckCard.id != exclude_entry_id)
 
     if same_grade_query.first():
-        raise ValueError(f"Ride deck already contains a grade {card.grade} card")
+        raise ValidationError(f"Ride deck already contains a grade {card.grade} card")
 
     if projected_zone_total > RIDE_DECK_LIMIT:
-        raise ValueError("Ride deck cannot contain more than 4 cards")
+        raise ValidationError("Ride deck cannot contain more than 4 cards")
 
 
 def _deactivate_other_versions(deck_id, except_version_id=None):
@@ -218,20 +220,24 @@ def list_deck_versions(deck_id):
 
 def create_deck_version(deck_id, payload):
     if not isinstance(payload, dict):
-        raise ValueError("Request body must be a JSON object")
+        raise ValidationError("Request body must be a JSON object")
 
     deck = _get_deck_or_raise(deck_id)
 
     source_version = None
-    source_version_id = _int_value(payload.get("source_version_id"), "source_version_id")
+    source_version_id = _int_value(
+        payload.get("source_version_id"), "source_version_id"
+    )
     if source_version_id is not None:
         source_version = get_deck_version_or_raise(source_version_id)
 
         if source_version.deck_id != deck.id:
-            raise ValueError("source_version_id must belong to the selected deck")
+            raise ValidationError("source_version_id must belong to the selected deck")
 
     version_count = deck.versions.count()
-    version_name = _clean_string(payload.get("version_name")) or f"Version {version_count + 1}"
+    version_name = (
+        _clean_string(payload.get("version_name")) or f"Version {version_count + 1}"
+    )
     is_active = _bool_value(payload.get("is_active"), default=True)
 
     if is_active:
@@ -267,18 +273,22 @@ def create_deck_version(deck_id, payload):
 
 def update_deck_version(version_id, payload):
     if not isinstance(payload, dict):
-        raise ValueError("Request body must be a JSON object")
+        raise ValidationError("Request body must be a JSON object")
 
     version = get_deck_version_or_raise(version_id)
 
     if "version_name" in payload:
-        version.version_name = _clean_string(payload.get("version_name")) or version.version_name
+        version.version_name = (
+            _clean_string(payload.get("version_name")) or version.version_name
+        )
 
     if "notes" in payload:
         version.notes = _clean_string(payload.get("notes")) or ""
 
     if "is_active" in payload:
-        version.is_active = _bool_value(payload.get("is_active"), default=version.is_active)
+        version.is_active = _bool_value(
+            payload.get("is_active"), default=version.is_active
+        )
 
         if version.is_active:
             _deactivate_other_versions(version.deck_id, except_version_id=version.id)
@@ -292,7 +302,7 @@ def delete_deck_version(version_id):
     version = get_deck_version_or_raise(version_id)
 
     if version.is_active:
-        raise ValueError(
+        raise ValidationError(
             "Active deck versions cannot be deleted. Activate another version first."
         )
 
@@ -302,19 +312,19 @@ def delete_deck_version(version_id):
 
 def add_card_to_deck_version(version_id, payload):
     if not isinstance(payload, dict):
-        raise ValueError("Request body must be a JSON object")
+        raise ValidationError("Request body must be a JSON object")
 
     version = get_deck_version_or_raise(version_id)
 
     card_id = _int_value(payload.get("card_id"), "card_id")
     if card_id is None:
-        raise ValueError("card_id is required")
+        raise ValidationError("card_id is required")
 
     card = _get_card_or_raise(card_id)
 
     quantity = _int_value(payload.get("quantity"), "quantity", default=1)
     if quantity <= 0:
-        raise ValueError("quantity must be greater than 0")
+        raise ValidationError("quantity must be greater than 0")
 
     printing_id = _int_value(payload.get("printing_id"), "printing_id")
     printing = _get_printing_or_raise(printing_id, card.id)
@@ -365,7 +375,7 @@ def add_card_to_deck_version(version_id, payload):
 
 def update_deck_card(deck_card_id, payload):
     if not isinstance(payload, dict):
-        raise ValueError("Request body must be a JSON object")
+        raise ValidationError("Request body must be a JSON object")
 
     entry = get_deck_card_or_raise(deck_card_id)
 
@@ -374,7 +384,7 @@ def update_deck_card(deck_card_id, payload):
         quantity = _int_value(payload.get("quantity"), "quantity")
 
         if quantity is None or quantity <= 0:
-            raise ValueError("quantity must be greater than 0")
+            raise ValidationError("quantity must be greater than 0")
 
     zone = entry.zone
     if "zone" in payload:
