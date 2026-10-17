@@ -2,6 +2,7 @@
   width: min(640px, calc(100vw - 32px));
   max-width: none;
   max-height: calc(100dvh - 32px);
+  margin: auto;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 18px;

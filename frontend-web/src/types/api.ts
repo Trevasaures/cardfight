@@ -56,6 +56,10 @@ export type CreateMatchPayload = {
   notes?: string;
 };
 
+export type UpdateMatchPayload = Partial<CreateMatchPayload> & {
+  date_played?: string;
+};
+
 export type RandomMatchupResponse = {
   deck1: Deck;
   deck2: Deck;

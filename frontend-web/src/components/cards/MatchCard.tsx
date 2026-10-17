@@ -1,4 +1,4 @@
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 
 import { FormatBadge } from "../badges/FormatBadge";
 import { ResultBadge } from "../badges/ResultBadge";
@@ -8,9 +8,10 @@ import { formatDateTime } from "../../utils/format";
 type MatchCardProps = {
   match: Match;
   onDelete?: (matchId: number) => void;
+  onEdit?: (match: Match) => void;
 };
 
-export function MatchCard({ match, onDelete }: MatchCardProps) {
+export function MatchCard({ match, onDelete, onEdit }: MatchCardProps) {
   const resultLabel = match.is_undecided
     ? "No winner recorded"
     : `${match.winner_name ?? "Unknown"} won`;
@@ -34,6 +35,18 @@ export function MatchCard({ match, onDelete }: MatchCardProps) {
         <div className="flex flex-wrap items-center gap-1.5">
           <FormatBadge type={match.format} />
           <ResultBadge match={match} />
+
+          {onEdit && (
+            <button
+              type="button"
+              onClick={() => onEdit(match)}
+              className="rounded-lg border border-transparent p-2 text-slate-400 transition hover:border-cyan-300/20 hover:bg-cyan-300/10 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-cyan-300/60"
+              title="Edit match"
+              aria-label={`Edit ${match.deck1_name} versus ${match.deck2_name} match`}
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+          )}
 
           {onDelete ? (
             <button

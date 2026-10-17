@@ -6,6 +6,7 @@ import { deleteMatch, getMatchesPage } from "../api/matches";
 import { MatchCard } from "../components/cards/MatchCard";
 import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
+import { MatchEditDialog } from "../components/matches/MatchEditDialog";
 import { usePersistentState } from "../hooks/usePersistentState";
 import type { Match, MatchFormat } from "../types/api";
 
@@ -82,7 +83,9 @@ export function MatchHistory() {
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editingMatch, setEditingMatch] = useState<Match | null>(null);
   const latestRequest = useRef(0);
+  const loadedView = useRef<string | null>(null);
   const toast = useToast();
 
   useEffect(() => {
@@ -98,11 +101,12 @@ export function MatchHistory() {
       query: string,
       matchFormat: MatchFormat | "All",
       matchResult: ResultFilter,
+      background = false,
     ) => {
       const requestId = latestRequest.current + 1;
       latestRequest.current = requestId;
       setError(null);
-      setLoading(true);
+      if (!background) setLoading(true);
 
       try {
         const response = await getMatchesPage(page, size, {
@@ -111,6 +115,9 @@ export function MatchHistory() {
           result: matchResult,
         });
         if (requestId !== latestRequest.current) return;
+        loadedView.current = JSON.stringify([
+          response.pagination.page, size, query, matchFormat, matchResult,
+        ]);
         setMatches(response.items ?? []);
         setPagination(response.pagination);
         setRememberedPage({
@@ -128,6 +135,17 @@ export function MatchHistory() {
   );
 
   useEffect(() => {
+    // The API may clamp a page after an edit removes its last matching row.
+    // That response already contains the new page; avoid loading it again.
+    const requestedView = JSON.stringify([
+      selectedPage, pageSize, search, format, result,
+    ]);
+    if (loadedView.current === requestedView) {
+      setLoading(false);
+      return () => {
+        latestRequest.current += 1;
+      };
+    }
     const timeout = window.setTimeout(() => {
       void loadMatches(selectedPage, pageSize, search, format, result);
     }, 300);
@@ -171,6 +189,17 @@ export function MatchHistory() {
     if (page < 1 || page > pagination.total_pages) return;
     setLoading(true);
     setRememberedPage({ page, filters: filterKey });
+  }
+
+  function handleMatchSaved(saved: Match) {
+    setEditingMatch(null);
+    setMatches((current) =>
+      current.map((match) => match.id === saved.id ? saved : match),
+    );
+    toast.success("Match updated and deck records recalculated.");
+    // Keep the cards mounted during the refresh so saving does not collapse the
+    // page or move its scroll position. The API clamps pages after filter changes.
+    void loadMatches(pagination.page, pageSize, search, format, result, true);
   }
 
   const hasFilters = Boolean(
@@ -299,7 +328,12 @@ export function MatchHistory() {
           aria-label="Match results"
         >
           {matches.map((match) => (
-            <MatchCard key={match.id} match={match} onDelete={handleDelete} />
+            <MatchCard
+              key={match.id}
+              match={match}
+              onDelete={handleDelete}
+              onEdit={setEditingMatch}
+            />
           ))}
         </section>
       ) : (
@@ -357,6 +391,13 @@ export function MatchHistory() {
           <ChevronRight className="h-4 w-4" />
         </button>
       </nav>
+      {editingMatch && (
+        <MatchEditDialog
+          match={editingMatch}
+          onClose={() => setEditingMatch(null)}
+          onSaved={handleMatchSaved}
+        />
+      )}
     </>
   );
 }
