@@ -1,20 +1,30 @@
 version: 2
+# Routine upgrades are manual; security fixes remain available when enabled in GitHub.
 updates:
   - package-ecosystem: pip
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0
     groups:
-      python-patches:
-        update-types: ["patch", "minor"]
+      python-security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: npm
     directory: /frontend-web
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0
     groups:
-      frontend-patches:
-        update-types: ["patch", "minor"]
+      frontend-security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    open-pull-requests-limit: 0
+    groups:
+      actions-security:
+        applies-to: security-updates
+        patterns: ["*"]

@@ -11,7 +11,7 @@ The project is designed primarily as a personal testing lab. Everything runs loc
 - Maintains Standard and Stride deck records, nations, formats, and win/loss statistics.
 - Generates random matchups and chooses a first player in the Play Lab.
 - Playtests saved versions on a solo Vanguard field with opening hands, mulligans, turns, and manual card effects.
-- Records match results, notes, participating deck versions, and matchup history.
+- Records match results, notes, participating deck versions, and matchup history; saved matches can be corrected from Match History.
 - Provides dashboard summaries, analytics, head-to-head statistics, and rivalry views.
 - Maintains a shared card catalog with individual card printings.
   - Card Library loads 24 cards per page by default, with 48- and 96-card options.

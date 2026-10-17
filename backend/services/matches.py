@@ -15,7 +15,6 @@ from backend.errors import NotFoundError, ValidationError
 from backend.models import Deck, DeckVersion, Match
 from backend.services.serializers import serialize_match
 
-
 CT = ZoneInfo("America/Chicago")
 VALID_MATCH_FORMATS = {None, "Standard", "Stride", "Any"}
 
@@ -30,7 +29,7 @@ def create_match(payload: dict) -> dict:
     first_player_id = _optional_int(payload.get("first_player_id"), "first_player_id")
     match_format = _normalize_format(payload.get("format"))
     date_played = _parse_date(payload.get("date_played"))
-    notes = (payload.get("notes") or "").strip()
+    notes = _normalize_notes(payload.get("notes"))
 
     _validate_optional_participant(winner_id, deck1_id, deck2_id, "winner_id")
     _validate_optional_participant(
@@ -245,25 +244,47 @@ def update_match(match_id: int, payload: dict) -> dict:
         new_first_player_id, new_deck1_id, new_deck2_id, "first_player_id"
     )
 
-    # Revert the old winner from the old participants, then apply the new winner
-    # against the new participants. This handles edits to participants and winner.
-    _revert_winner_counter(match.deck1_id, match.deck2_id, match.winner_id)
+    # An omitted version preserves the historical build unless its deck changed.
+    # In that case, use the replacement deck's current build, just as creation does.
+    new_deck1_version_id = (
+        _match_version_id(payload, "deck1_version_id", new_deck1_id)
+        if "deck1_version_id" in payload or new_deck1_id != match.deck1_id
+        else match.deck1_version_id
+    )
+    new_deck2_version_id = (
+        _match_version_id(payload, "deck2_version_id", new_deck2_id)
+        if "deck2_version_id" in payload or new_deck2_id != match.deck2_id
+        else match.deck2_version_id
+    )
+    new_notes = (
+        _normalize_notes(payload.get("notes")) if "notes" in payload else match.notes
+    )
+    new_date = (
+        _parse_date(payload.get("date_played")) if "date_played" in payload else None
+    )
+
+    # Validate the entire edit before changing either the match or deck counters.
+    # Notes, versions and turn order do not affect a deck's win/loss record.
+    previous_decks = {match.deck1_id, match.deck2_id}
+    updated_decks = {new_deck1_id, new_deck2_id}
+    result_changed = previous_decks != updated_decks or match.winner_id != new_winner_id
+    if result_changed:
+        _revert_winner_counter(match.deck1_id, match.deck2_id, match.winner_id)
 
     match.deck1_id = new_deck1_id
     match.deck2_id = new_deck2_id
+    match.deck1_version_id = new_deck1_version_id
+    match.deck2_version_id = new_deck2_version_id
     match.winner_id = new_winner_id
     match.first_player_id = new_first_player_id
     match.format = new_format
+    match.notes = new_notes
 
-    if "notes" in payload:
-        match.notes = (payload.get("notes") or "").strip()
+    if new_date is not None:
+        match.date_played = new_date
 
-    if "date_played" in payload:
-        parsed_date = _parse_date(payload.get("date_played"))
-        if parsed_date is not None:
-            match.date_played = parsed_date
-
-    _apply_winner_counter(match.deck1_id, match.deck2_id, match.winner_id)
+    if result_changed:
+        _apply_winner_counter(match.deck1_id, match.deck2_id, match.winner_id)
 
     db.session.commit()
 
@@ -311,6 +332,14 @@ def _normalize_format(value) -> str | None:
     return normalized
 
 
+def _normalize_notes(value) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ValidationError("notes must be text or null.")
+    return value.strip()
+
+
 def _parse_date(value) -> datetime | None:
     if value is None or value == "":
         return None
@@ -329,7 +358,9 @@ def _parse_date_required(value, field_name: str) -> datetime:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=CT)
 
-    return parsed
+    # Match timestamps are stored as Central wall time in SQLite's naive DateTime
+    # column. Convert offsets before SQLite discards timezone information.
+    return parsed.astimezone(CT)
 
 
 def _validate_participants(deck1_id: int, deck2_id: int):

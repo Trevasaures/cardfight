@@ -95,8 +95,7 @@ def test_invalid_match_edit_preserves_winner_and_deck_counters(client):
         },
     ).get_json()
 
-    # Date validation happens after reverting the old counters and editing the
-    # match object. The boundary must discard all of those partial changes.
+    # A rejected correction must preserve both the recorded result and counters.
     response = client.patch(
         f'/api/matches/{match["id"]}',
         json={"winner_id": second["id"], "date_played": "invalid date"},

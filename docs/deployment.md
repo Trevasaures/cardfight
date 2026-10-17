@@ -55,10 +55,14 @@ remain in server logs. The local launcher writes logs under `instance/`.
 ## Checks before release
 
 Install `requirements-dev.txt` for tests and audit tools. CI runs the complete
-backend suite, frontend tests, lint, build, and dependency audits. Dependabot
-tracks Python, npm, and GitHub Actions updates. A clean local audit reports known
-dependency advisories; GitHub's CodeQL results are verified separately after the
-branch is pushed.
+backend suite, frontend tests, lint, build, and dependency audits. Routine dependency
+upgrades are manual: Dependabot version-update PRs are disabled for Python, npm,
+and GitHub Actions. Security-update PRs, when enabled in GitHub's repository
+settings, are grouped per ecosystem. This configuration takes effect on the
+default branch; existing bot PRs and branches can be closed or removed separately.
+See [GitHub's security-update configuration](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/configure-security-updates).
+A clean local audit reports known dependency advisories; GitHub's CodeQL results
+are verified separately after the branch is pushed.
 
 References: [Flask deployment guidance](https://flask.palletsprojects.com/en/stable/deploying/),
 [Waitress setup](https://flask.palletsprojects.com/en/stable/deploying/waitress/),

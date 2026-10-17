@@ -4,6 +4,7 @@ import type {
   Match,
   MatchFormat,
   PaginatedMatchesResponse,
+  UpdateMatchPayload,
 } from "../types/api";
 
 export type MatchHistoryFilters = {
@@ -77,5 +78,12 @@ export function createMatch(payload: CreateMatchPayload) {
 export function deleteMatch(matchId: number) {
   return apiRequest<void>(`/api/matches/${matchId}`, {
     method: "DELETE",
+  });
+}
+
+export function updateMatch(matchId: number, payload: UpdateMatchPayload) {
+  return apiRequest<Match>(`/api/matches/${matchId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
   });
 }
