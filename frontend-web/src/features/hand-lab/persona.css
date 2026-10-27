@@ -1,0 +1,72 @@
+.pt-persona-art {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  gap: 8px;
+  overflow: hidden;
+  border: 1px solid #b69bda70;
+  border-radius: 5px;
+  background:
+    radial-gradient(ellipse at 50% 42%, #af91df24, transparent 65%),
+    linear-gradient(145deg, #252036, #11111b 65%);
+  color: #dec7fc;
+}
+.pt-persona-art-label,
+.pt-persona-art small {
+  font-size: 6px;
+  letter-spacing: 1px;
+}
+.pt-persona-art strong {
+  font-size: 9px;
+  letter-spacing: 1.5px;
+}
+.pt-card.is-persona-ticket .pt-card-art {
+  background: transparent;
+}
+.pt-card .pt-persona-art {
+  height: auto;
+  aspect-ratio: 0.7;
+  gap: 6px;
+}
+.pt-card.is-compact .pt-persona-art {
+  gap: 3px;
+}
+.pt-card.is-compact .pt-persona-art-label,
+.pt-card.is-compact .pt-persona-art small {
+  display: none;
+}
+.pt-card.is-compact .pt-persona-art svg {
+  width: 22px;
+  height: 22px;
+}
+.pt-card.is-compact .pt-persona-art strong {
+  font-size: 5px;
+  letter-spacing: 0.5px;
+}
+.pt-hand .pt-card.is-persona-ticket {
+  animation: persona-arrival 650ms ease-out;
+}
+.pt-detail-overview > .pt-persona-art {
+  aspect-ratio: 0.7;
+  height: auto;
+}
+.pt-inspector-dock > .pt-persona-art {
+  width: 18px;
+  height: 26px;
+  flex: 0 0 18px;
+  gap: 0;
+}
+.pt-inspector-dock > .pt-persona-art > :not(svg) {
+  display: none;
+}
+@keyframes persona-arrival {
+  from { box-shadow: 0 0 22px #b088ee88; transform: translateY(5px); }
+  to { box-shadow: 0 0 0 transparent; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pt-hand .pt-card.is-persona-ticket { animation: none; }
+}

@@ -13,6 +13,7 @@ without writing practice state back to the API.
 - `PlaytestZone.tsx`: circles and piles, including the top card and unit stats.
 - `SoulStack.tsx` / `vanguard-stack.css`: ordered artwork layers beneath the vanguard.
 - `BattleStatus.tsx` / `battle-status.css`: phase and compact resource shortcuts.
+- `TurnOrderChoice.tsx` / `turnOrder.ts`: remembered setup preference and one coin toss per new deal.
 - `EnergyGenerator.tsx` / `energy-generator.css`: combined Generator, energy, and change feedback.
 - `CardInspector.tsx` / `card-inspector.css`: selected artwork, current stats, and ability text.
 - `cardDisplay.ts`: shared formatting for power totals and missing catalog stats.
@@ -28,6 +29,8 @@ without writing practice state back to the API.
 - `useTableShortcuts.ts`: table-only Undo/clear shortcuts that respect inputs and dialogs.
 - `PowerControls.tsx` / `power-controls.css`: front-row shortcut and custom effect calculator.
 - `powerEffects.ts`: current field targets, manual/G-zone multipliers, and effect application.
+- `persona.css`: generated-ticket artwork and arrival feedback.
+- `PersonaTicketArtwork.tsx`: generated-ticket presentation, without a catalog dependency.
 - `CardDragPreview.tsx`: the floating drag preview and destination hint.
 - `useCardDrag.ts`: pointer capture, hit testing, edge scrolling, and cancellation.
 - `playtest.ts`: pure table operations, zones, checks, turns, and manual effects.
@@ -44,6 +47,29 @@ record and may belong to several physical copies.
 Table operations return a new snapshot, or the same reference for a no-op.
 `HandTable.apply` records changed snapshots for undo. Keep array updates immutable
 so undo can restore the exact deck order and pending checks.
+
+Starting order is resolved once before `startTable` and saved in `session.first`.
+The per-deck First/Second/Random preference is separate from the active game:
+changing it in New game setup, then cancelling, never changes the current order.
+Undo and recovery restore the saved boolean and never invoke the coin toss.
+
+Persona Shield copies use generated `ticket:personaShield:<serial>` keys and a
+synthetic display entry. They stay separate from physical inventory and never
+enter the draw pool. Schema 3 validates both kinds independently and migrates
+older sessions and Undo frames without replaying acquisition or costs, discarding
+obsolete acquisition prompts and order counters. The toolbar's manual add action works with any deck;
+source ability timing and costs remain manual. Persona state only tracks the next
+generated serial. The normal selection toolbar removes tickets, including groups,
+as one Undo action. Unit power uses the existing manual controls; no defense panel,
+target selector, crest setting, or separate battle state is created.
+
+Recovery removes retired acquisition, quota, and crest fields from every saved
+frame. A valid legacy defensive bonus is merged once into that unit's regular
+manual power so an existing game does not lose its visible total. Subsequent
+restores do not add it again; normal power adjustments and turn cleanup apply.
+
+New Ride Deck copies start face down, while the starter enters Vanguard face up.
+Older saves preserve their recorded orientations.
 
 Attack rests one standing front-row unit during your battle phase. It does not
 reveal a card, leaving room to resolve on-attack effects. Drive check also rests

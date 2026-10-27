@@ -70,7 +70,7 @@ Select one G unit in G zone and choose **Stride** with a grade 3 or greater vang
 
 Cards can include optional **Ability text** in the create/edit forms in Card Library and Deck Builder. Save card effects or a description once per card; its text is shared by all decks and appears in the Hand Lab inspector. Click a card's name in Card Library to open its inspector. Copied text is cleaned when leaving the field and saving: extra whitespace, escaped/doubled quotes, common HTML entities, and line-break markup become readable plain text. Existing text gets the same formatting when displayed. Line breaks are preserved, and clearing the field removes the saved text.
 
-Open **Hand Lab** from the sidebar or a selected version in Deck Builder. Choose first or second and a grade 0 starter, then deal five and resolve one mulligan. A ride-deck starter is selected by default; main-deck starters are removed before shuffling. Incomplete lists can be used as long as five main-deck cards remain. Printing choices and every physical copy are retained.
+Open **Hand Lab** from the sidebar or a selected version in Deck Builder. Choose **Go first**, **Go second**, or **Random** and a grade 0 starter, then deal five and resolve one mulligan. Random flips a coin once when dealing; the resulting starting order stays visible during mulligan and is retained by Undo and recovery. The setup preference is remembered per deck and affects only a new game. A ride-deck starter is selected by default; main-deck starters are removed before shuffling. Incomplete lists can be used as long as five main-deck cards remain. Printing choices and every physical copy are retained.
 
 The solo playmat includes the vanguard, five rear-guard circles, guardian circle, deck, ride deck, soul, damage, drop, order, crest, bind, G zone, tokens, reserve, and reveal area. Drag cards from your hand, an occupied circle, a pile, or the zone inspector onto a highlighted destination. Drop onto the hand to return cards; dropping onto the deck puts them on the bottom. The deck pile always drags its top card. Select multiple cards before dragging to move a group into a pile; unit circles accept one card. Release outside a valid destination or press Escape to cancel. The field and page scroll near their edges while dragging. Mouse, pen, and touch use the same pointer interaction; scroll from the spaces around cards on touch screens. Clicking a pile label or an empty circle browses that zone; the **Move** menu remains available for keyboard use and precise deck-top placement. Riding moves the old vanguard into soul; calling over a rear-guard sends the old unit to drop. Click a visible card to toggle selection. Multiple cards can stay selected for group actions; details follow only the most recently selected remaining card. Long ability text scrolls separately from the zone list. Double-click a unit to rest or stand it. The inspector also supports deck searches and returning cards to the top or bottom. **Undo** restores up to 80 previous table states, including deck order and checks.
 
@@ -82,13 +82,27 @@ The mulligan follows the [official Vanguard setup sequence](https://en.cf-vangua
 
 Deck selection is remembered locally. Playtest sessions are temporary and do not alter saved lists or match statistics.
 
+With X-ceed active, opponent-turn damage queues a mandatory AutoMOD choice from
+Drop. Use the prompt or move one Drop card into AutoMOD; both apply the same
+power effect once. Gauges persist between turns, while X-ceed power expires at
+turn end. At four gauges, the +5k also applies after a trigger check. Trigger
+effects and their targets remain manual. See the [printed X-ceed rule](https://en.cf-vanguard.com/cardlist/?cardno=DZ-BT04%2FT02EN).
+
+Use **Persona Shield** beside the draw and shuffle controls to add a ticket to
+hand after resolving its source ability and costs manually. This works with any
+deck or support card, without a card-specific trigger list. Generated tickets
+do not change deck size or draws. Select a ticket and use **Remove ticket** in the
+normal card toolbar when it leaves hand. Apply and clear power with the existing
+unit controls; effects, crest conditions, and order limits stay manual. Tickets
+and manual adjustments support Undo and session recovery.
+
 Selected-card actions prioritize the current zone: units expose Attack/Rest/Stand and power, damage exposes Counter-Blast/Counter-Charge, and soul exposes Soul-Blast. **More** retains unusual manual sandbox adjustments. Laptop and mobile layouts offer a selected-card dock above the playmat that opens ability details without scrolling to the bottom. Ctrl/Cmd+Z undoes the last table action, and Escape clears selection; text fields, dialogs, and active drags retain their own keyboard behaviour.
 
 ## Technology stack
 
 ### Backend
 
-- Python 3.10 or newer; Python 3.12 is recommended.
+- Python 3.11 or newer; Python 3.12 is recommended.
 - Flask and Flask-CORS.
 - Flask-SQLAlchemy and SQLAlchemy.
 - SQLite by default.
@@ -111,7 +125,7 @@ The complete frontend toolchain supports Node.js `^20.19.0`, `^22.13.0`, or `>=2
 
 Install these tools before starting:
 
-- [Python](https://www.python.org/downloads/) 3.10+
+- [Python](https://www.python.org/downloads/) 3.11+
 - [Node.js](https://nodejs.org/) 24 LTS (the version used in CI)
 - npm, which is included with Node.js
 - Git

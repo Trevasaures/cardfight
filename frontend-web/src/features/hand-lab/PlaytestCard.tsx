@@ -5,6 +5,7 @@ import type { DeckCardEntry } from "../../types/api";
 import type { TableCard } from "./playtest";
 import { isCrestEntry } from "./crests";
 import { isSelectionClick } from "./selection";
+import { PersonaTicketArtwork } from "./PersonaTicketArtwork";
 
 type Props = {
   card: TableCard;
@@ -38,13 +39,14 @@ export function PlaytestCard({
 }: Props) {
   if (!entry?.card) return null;
   const crest = Boolean(card.crest || isCrestEntry(entry));
+  const ticket = card.ticket === "personaShield";
   return (
     <button
       type="button"
       key={card.key}
-      className={`pt-card ${crest ? "is-crest" : ""} ${selected ? "is-selected" : ""} ${compact ? "is-compact" : ""} ${draggable ? "pt-draggable" : ""} ${dragging ? "is-drag-source" : ""}`}
+      className={`pt-card ${crest ? "is-crest" : ""} ${ticket ? "is-persona-ticket" : ""} ${selected ? "is-selected" : ""} ${compact ? "is-compact" : ""} ${draggable && !ticket ? "pt-draggable" : ""} ${dragging ? "is-drag-source" : ""}`}
       onPointerDown={(event) => {
-        if (draggable) onDragStart(event, card);
+        if (draggable && !ticket) onDragStart(event, card);
       }}
       aria-label={`${selected ? "Deselect" : "Select"} ${entry.card.name}, card ${index + 1}`}
       aria-pressed={selected}
@@ -58,8 +60,12 @@ export function PlaytestCard({
       onDoubleClick={() => onRest?.(card)}
     >
       <span className="pt-card-art">
-        <CardArtwork card={entry.card} printing={entry.printing} />
-        {!crest && (
+        {ticket ? (
+          <PersonaTicketArtwork />
+        ) : (
+          <CardArtwork card={entry.card} printing={entry.printing} />
+        )}
+        {!crest && !ticket && (
           <span className="hand-grade">
             G{effectiveGrade ?? entry.card.grade ?? "?"}
           </span>
@@ -73,7 +79,9 @@ export function PlaytestCard({
       <span className="pt-card-info">
         <span>{entry.card.name}</span>
         <small>
-          {card.faceDown
+          {ticket
+            ? "Ticket"
+            : card.faceDown
             ? "Face down"
             : card.rested
               ? "Rest"

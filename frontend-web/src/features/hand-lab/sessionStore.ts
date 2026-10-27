@@ -1,4 +1,5 @@
 import { migrateRuleState, validRules } from "./rules/storage.ts";
+import { emptyPersona, type PersonaState } from "./rules/personaTypes.ts";
 import type { DeckVersion } from "../../types/api.ts";
 import {
   ATTACK_CIRCLES,
@@ -11,7 +12,7 @@ import {
 
 export const MAX_UNDO_STATES = 80;
 export const PLAYTEST_STORAGE_KEY = "cardfight.hand-lab.session";
-const SAVE_SCHEMA = 2;
+const SAVE_SCHEMA = 3;
 
 export type PlaytestHistory = {
   past: TableSession[];
@@ -54,6 +55,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Generated tickets are deliberately separate from the physical deck inventory.
+ * Their serial remains monotonic even after a ticket is consumed, so restoring a
+ * snapshot can never reuse the identity of another ticket in that game. */
+function personaTicketSerial(card: Record<string, unknown>): number | null {
+  if (typeof card.key !== "string") return null;
+  const match = /^ticket:personaShield:([1-9]\d*)$/.exec(card.key);
+  const serial = match ? Number(match[1]) : NaN;
+  return Number.isSafeInteger(serial) && serial > 0 ? serial : null;
+}
+
+function validPersona(
+  value: unknown,
+  ticketSerials: readonly number[],
+): value is PersonaState | undefined {
+  // A generated card requires the counter that establishes its stable identity.
+  if (value === undefined) return ticketSerials.length === 0;
+  return isRecord(value) &&
+    Number.isSafeInteger(value.nextTicket) &&
+    Number(value.nextTicket) >= 1 &&
+    ticketSerials.every((serial) => serial < Number(value.nextTicket));
+}
+
 function validSession(
   value: unknown,
   inventory: Map<string, TableCard>,
@@ -77,6 +100,8 @@ function validSession(
     return false;
 
   const seen = new Set<string>();
+  const physicalKeys = new Set<string>();
+  const ticketSerials: number[] = [];
   for (const zone of Object.keys(ZONES) as (keyof typeof ZONES)[]) {
     const cards = value.zones[zone];
     if (!Array.isArray(cards) || (CIRCLES.includes(zone) && cards.length > 1)) {
@@ -84,14 +109,9 @@ function validSession(
     }
     for (const card of cards) {
       if (!isRecord(card) || typeof card.key !== "string") return false;
-      const original = inventory.get(card.key);
       if (
-        !original ||
         seen.has(card.key) ||
-        card.entryId !== original.entryId ||
-        card.cardId !== original.cardId ||
-        (card.crest !== undefined && card.crest !== original.crest) ||
-        (card.gUnit !== undefined && card.gUnit !== original.gUnit) ||
+        card.battlePower !== undefined ||
         typeof card.rested !== "boolean" ||
         typeof card.faceDown !== "boolean" ||
         !Number.isSafeInteger(card.power) ||
@@ -99,11 +119,42 @@ function validSession(
       )
         return false;
       seen.add(card.key);
+      if (card.ticket === "personaShield") {
+        const serial = personaTicketSerial(card);
+        if (
+          serial === null ||
+          zone !== "hand" ||
+          inventory.has(card.key) ||
+          card.entryId !== -1 ||
+          card.cardId !== -1 ||
+          card.crest !== undefined ||
+          card.gUnit !== undefined ||
+          card.rested ||
+          card.faceDown ||
+          card.power !== 0 ||
+          card.critical !== 0
+        )
+          return false;
+        ticketSerials.push(serial);
+      } else {
+        const original = inventory.get(card.key);
+        if (
+          !original ||
+          card.ticket !== undefined ||
+          card.entryId !== original.entryId ||
+          card.cardId !== original.cardId ||
+          (card.crest !== undefined && card.crest !== original.crest) ||
+          (card.gUnit !== undefined && card.gUnit !== original.gUnit)
+        )
+          return false;
+        physicalKeys.add(card.key);
+      }
     }
   }
-  if (seen.size !== inventory.size) return false;
+  if (physicalKeys.size !== inventory.size) return false;
 
   const zones = value.zones as TableSession["zones"];
+  if (!validPersona(value.persona, ticketSerials)) return false;
   if (value.stride !== undefined && value.stride !== null) {
     const stride = value.stride;
     if (
@@ -135,6 +186,86 @@ function validSession(
       return false;
   }
   return true;
+}
+
+/** Preserve the last visible legacy shield bonus as an ordinary manual power
+ * adjustment. Validation runs before conversion so malformed defense data cannot
+ * forge a bonus. Removing the defense field makes subsequent recovery idempotent. */
+function migrateLegacyDefense(
+  session: Record<string, unknown>,
+  persona: Record<string, unknown>,
+  inventory: ReadonlyMap<string, TableCard>,
+): unknown {
+  const defense = persona.defense;
+  if (defense === undefined || defense === null) return session.zones;
+  const zones = session.zones;
+  if (
+    !isRecord(defense) || !isRecord(zones) || !Array.isArray(zones.hand) ||
+    session.active !== "opponent" || session.phase === "mulligan" ||
+    typeof persona.nextTicket !== "number" || !Number.isSafeInteger(persona.nextTicket) ||
+    persona.nextTicket < 1 || typeof defense.targetKey !== "string"
+  ) return null;
+  const original = inventory.get(defense.targetKey);
+  const zone = CIRCLES.find((circle) =>
+    Array.isArray(zones[circle]) && zones[circle].some((card: unknown) =>
+      isRecord(card) && card.key === defense.targetKey,
+    ),
+  );
+  const bonus = defense.bonus;
+  const remainingTickets = zones.hand.filter((card: unknown) =>
+    isRecord(card) && card.ticket === "personaShield",
+  ).length;
+  const consumedTickets = persona.nextTicket - 1 - remainingTickets;
+  if (
+    !original || original.crest || original.ticket || !zone ||
+    typeof bonus !== "number" || !Number.isSafeInteger(bonus) || bonus < 0 ||
+    bonus % 5_000 !== 0 || (bonus > 0 && bonus < 10_000) ||
+    Math.ceil(bonus / 15_000) > consumedTickets
+  ) return null;
+  const cards = zones[zone] as unknown[];
+  const target = cards.find((card) => isRecord(card) && card.key === defense.targetKey);
+  if (
+    !isRecord(target) || target.faceDown !== false || target.crest || target.ticket ||
+    typeof target.power !== "number" || !Number.isSafeInteger(target.power) ||
+    !Number.isSafeInteger(target.power + bonus)
+  ) return null;
+  const power = target.power + bonus;
+  return {
+    ...zones,
+    [zone]: cards.map((card) => card === target ? { ...target, power } : card),
+  };
+}
+
+/** Retire acquisition, crest, defense, and quota state in every saved frame.
+ * Existing tickets and manual power remain; only pre-ticket schemas may omit
+ * Persona state entirely. Invalid legacy bonuses invalidate that saved frame. */
+function migratePersonaState(
+  state: unknown,
+  copies: readonly TableCard[],
+  allowMissing = false,
+): unknown {
+  if (!isRecord(state) || !isRecord(state.history)) return state;
+  const inventory = new Map(copies.map((card) => [card.key, card]));
+  function upgrade(session: unknown): unknown {
+    if (!isRecord(session)) return session;
+    if (session.persona === undefined && allowMissing) {
+      return { ...session, persona: emptyPersona() };
+    }
+    if (!isRecord(session.persona)) return session;
+    const zones = migrateLegacyDefense(session, session.persona, inventory);
+    if (zones === null) return null;
+    return { ...session, zones, persona: { nextTicket: session.persona.nextTicket } };
+  }
+  return {
+    ...state,
+    history: {
+      ...state.history,
+      present: upgrade(state.history.present),
+      past: Array.isArray(state.history.past)
+        ? state.history.past.map(upgrade)
+        : state.history.past,
+    },
+  };
 }
 
 function validState(
@@ -241,8 +372,15 @@ export function createPlaytestStore(
     if (isRecord(cached) && cached.schema === 1) {
       cached = {
         ...cached,
-        schema: SAVE_SCHEMA,
+        schema: 2,
         state: migrateRuleState(cached.state),
+      };
+    }
+    if (isRecord(cached) && cached.schema === 2) {
+      cached = {
+        ...cached,
+        schema: SAVE_SCHEMA,
+        state: migratePersonaState(cached.state, copies, true),
       };
     }
     if (
@@ -267,7 +405,8 @@ export function createPlaytestStore(
       discard();
       return { ...empty, notice: "Deck list changed. Start a new playtest." };
     }
-    if (!validState(cached.state, copies)) {
+    const state = migratePersonaState(cached.state, copies);
+    if (!validState(state, copies)) {
       discard();
       return {
         ...empty,
@@ -275,7 +414,7 @@ export function createPlaytestStore(
       };
     }
     return {
-      state: withCardIdentity(cached.state, copies),
+      state: withCardIdentity(state, copies),
       backedUp,
       notice: "",
     };

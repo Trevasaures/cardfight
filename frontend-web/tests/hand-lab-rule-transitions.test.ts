@@ -252,7 +252,11 @@ test("original Inno uses the physical X-ceed token without inventing or mutating
   assert.equal(hasRuleToken(context(after, list), "xceed"), true);
   assert.deepEqual(inventory(after), inventory(before));
   assert.equal(before.zones.token[0].key, "7:0");
-  assert.equal(after.zones.ride.find((card) => card.key === "4:0")?.faceDown, false);
+  assert.equal(
+    after.zones.ride.find((card) => card.key === "4:0")?.faceDown,
+    before.zones.ride.find((card) => card.key === "4:0")?.faceDown,
+    "revealing a hidden ride card returns it to its previous orientation",
+  );
 });
 
 test("Inno acquisition requires the exact original, grade-zero ride and eligible ride-deck reveal", () => {

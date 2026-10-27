@@ -11,12 +11,13 @@ export function formatPower(
   basePower: number | null | undefined,
   compact = false,
 ): string {
-  const value = (basePower ?? 0) + card.power;
+  const bonus = card.power;
+  const value = (basePower ?? 0) + bonus;
   const display =
     compact && Math.abs(value) >= 1_000_000
       ? compactPowerFormatter.format(value)
       : value.toLocaleString();
   if (basePower != null) return display;
-  if (!card.power) return "—";
-  return `${card.power > 0 ? "+" : ""}${display}`;
+  if (!bonus) return "—";
+  return `${bonus > 0 ? "+" : ""}${display}`;
 }

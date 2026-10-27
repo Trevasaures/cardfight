@@ -1,4 +1,5 @@
 import { emptyRules, type RuleState } from "./rules/types.ts";
+import { emptyPersona, type PersonaState } from "./rules/personaTypes.ts";
 import type { DeckCardEntry } from "../../types/api.ts";
 import { CREST_DESTINATIONS, isCrestEntry } from "./crests.ts";
 import {
@@ -57,6 +58,7 @@ export const CIRCLES: Zone[] = [
 export type TableCard = CardCopy & {
   crest?: true;
   gUnit?: true;
+  ticket?: "personaShield";
   rested: boolean;
   faceDown: boolean;
   power: number;
@@ -91,6 +93,7 @@ export type TableSession = {
   phase: Phase;
   energy: number;
   rules: RuleState;
+  persona?: PersonaState;
   stride?: { gUnitKey: string; heartKey: string } | null;
   attackerKey: string | null;
   check: { key: string; kind: "drive" | "damage" } | null;
@@ -148,8 +151,10 @@ export function startTable(
         : entry.zone === "other"
           ? "reserve"
           : entry.zone;
-    // Unused G units start face down; face-up counts can then drive manual bonuses.
-    zones[zone].push(zone === "g" ? { ...copy, faceDown: true } : copy);
+    // Ride cards are hidden until ridden/revealed; unused G units also start down.
+    zones[zone].push(
+      zone === "g" || zone === "ride" ? { ...copy, faceDown: true } : copy,
+    );
   }
   if (starterKey) {
     // Set the starter aside before dealing so it cannot also appear in the hand.
@@ -161,7 +166,7 @@ export function startTable(
     if (!source || !starter || entryMap.get(starter.entryId)?.card?.grade !== 0)
       throw new Error("Choose a grade 0 starter from the main or ride deck.");
     zones[source] = zones[source].filter((card) => card.key !== starterKey);
-    zones.vanguard = [starter];
+    zones.vanguard = [fresh(starter)];
   }
   const opening = dealHand(zones.deck, random);
   zones.hand = opening.hand.map(fresh);
@@ -174,6 +179,7 @@ export function startTable(
     phase: "mulligan",
     energy: 0,
     rules: emptyRules(),
+    persona: emptyPersona(),
     stride: null,
     attackerKey: null,
     check: null,
@@ -236,6 +242,9 @@ export function canDropCards(
   const heartKey = strideHeartKey(session);
   if (
     cards.some((card) => !card) ||
+    cards.some((found) =>
+      found?.card.ticket && !canMoveTicket(session, to),
+    ) ||
     cards.some((found) => found?.card.key === heartKey) ||
     cards.some(
       (found) => found?.card.crest && !CREST_DESTINATIONS.includes(to),
@@ -245,6 +254,13 @@ export function canDropCards(
   )
     return false;
   return cards.some((card) => card!.zone !== to || to === "deck");
+}
+
+/** Tickets can leave hand for an opponent's effect, but are erased rather than
+ * becoming physical deck, soul or drop cards. Playing one uses its rules action. */
+function canMoveTicket(session: TableSession, to: Zone): boolean {
+  return session.active === "opponent" &&
+    !CIRCLES.includes(to) && to !== "guardian" && to !== "order";
 }
 
 export function moveCards(
@@ -261,6 +277,7 @@ export function moveCards(
   if (
     requested.some(
       (found) =>
+        (found?.card.ticket && !canMoveTicket(session, to)) ||
         (heartKey !== undefined && found?.card.key === heartKey) ||
         (found?.card.gUnit && to === "crest") ||
         (found?.card.crest && !CREST_DESTINATIONS.includes(to)),
@@ -312,7 +329,7 @@ export function moveCards(
   }
   const incomingG = to === "vanguard" && selected[0]?.gUnit;
   const previousVanguard = session.zones.vanguard[0];
-  const cards = selected.map((card) => {
+  const cards = selected.filter((card) => !card.ticket).map((card) => {
     const from = findCard(session, card.key)!.zone;
     // Rear-guard movement keeps rest/bonuses. Entering another zone resets that state.
     return CIRCLES.includes(from) &&
@@ -328,6 +345,9 @@ export function moveCards(
     to === "soul" || position === "top"
       ? [...cards, ...zones[to]]
       : [...zones[to], ...cards];
+  const movement = cards.length
+    ? `${cards.length} → ${ZONES[to]}${to === "deck" ? ` (${position})` : ""}.`
+    : "";
   return record(
     {
       ...session,
@@ -345,7 +365,8 @@ export function moveCards(
       check:
         session.check && moved.has(session.check.key) ? null : session.check,
     },
-    `${cards.length} → ${ZONES[to]}${to === "deck" ? ` (${position})` : ""}.`,
+    [movement, selected.some((card) => card.ticket) ? "Persona Shield removed." : ""]
+      .filter(Boolean).join(" "),
   );
 }
 
@@ -383,7 +404,7 @@ export function changePower(
   });
   if (
     !targets.length ||
-    targets.some((card) => card.crest) ||
+    targets.some((card) => card.crest || card.ticket) ||
     targets.some((card) => card.key === strideHeartKey(session)) ||
     targets.some((card) => !Number.isSafeInteger(card.power + amount))
   )
@@ -433,6 +454,7 @@ export function changeCards(
   }
   if (
     session.phase === "mulligan" ||
+    keys.some((key) => findCard(session, key)?.card.ticket) ||
     keys.includes(strideHeartKey(session) ?? "") ||
     (change !== "flip" &&
       keys.some((key) => findCard(session, key)?.card.crest)) ||
@@ -481,9 +503,11 @@ export function canAttack(session: TableSession, key: string): boolean {
     session.active === "you" &&
     session.phase === "battle" &&
     !session.check &&
+    !session.rules.pending.length &&
     found &&
     ATTACK_CIRCLES.includes(found.zone) &&
     !found.card.crest &&
+    !found.card.ticket &&
     !found.card.rested &&
     !found.card.faceDown,
   );
