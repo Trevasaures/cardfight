@@ -102,7 +102,7 @@ Selected-card actions prioritize the current zone: units expose Attack/Rest/Stan
 
 ### Backend
 
-- Python 3.10 or newer; Python 3.12 is recommended.
+- Python 3.11 or newer; Python 3.12 is recommended.
 - Flask and Flask-CORS.
 - Flask-SQLAlchemy and SQLAlchemy.
 - SQLite by default.
@@ -125,7 +125,7 @@ The complete frontend toolchain supports Node.js `^20.19.0`, `^22.13.0`, or `>=2
 
 Install these tools before starting:
 
-- [Python](https://www.python.org/downloads/) 3.10+
+- [Python](https://www.python.org/downloads/) 3.11+
 - [Node.js](https://nodejs.org/) 24 LTS (the version used in CI)
 - npm, which is included with Node.js
 - Git
