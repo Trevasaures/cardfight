@@ -10,6 +10,9 @@ import {
   applyRules, effectiveGrade, energyLimit, hasRuleToken, resolveXceed,
   ritualCount, setRuleToken,
 } from "../src/features/hand-lab/rules/index.ts";
+import {
+  canResolveXceed, xceedPowerBonus,
+} from "../src/features/hand-lab/rules/impauldio.ts";
 
 function entry(id: number, name: string, grade: number, quantity = 1, zone = "main", set = "") {
   return {
@@ -153,4 +156,102 @@ test("empty-drop resolution still evaluates X-ceed power without inventing a gau
   assert.equal(session.zones.vanguard[0].power, 5000);
   assert.equal(session.zones.gauge.length, 0);
   assert.equal(session.rules.pending.length, 0);
+});
+
+test("normal damage checks stack X-ceed power once per resolved gauge choice", () => {
+  const before = xceedGame();
+  const firstHit = damage(before, "1:8");
+  assert.equal(canResolveXceed(context(firstHit), "1:0"), true);
+  assert.equal(xceedPowerBonus(context(firstHit), true), 5000);
+  const first = resolveXceed(context(firstHit), "1:0");
+  const secondHit = damage(first, "1:9");
+  const second = resolveXceed(context(secondHit), "1:1");
+  assert.equal(second.zones.vanguard[0].power, 10000);
+  assert.equal(second.zones.gauge.length, 2);
+  assert.equal(second.rules.pending.length, 0);
+  assert.equal(resolveXceed(context(second), "1:2"), second, "a resolved event cannot be replayed");
+  assert.equal(xceedPowerBonus(context(second), true), 0);
+  assert.equal(first.zones.vanguard[0].power, 5000, "prior undo snapshot stays intact");
+  assert.equal(first.zones.gauge.length, 1);
+  assert.deepEqual(inventory(second), inventory(before));
+  assert.match(second.log.at(-1)!, /Vanguard \+5,000 until end of turn/);
+});
+
+test("X-ceed power preview uses the post-choice gauge count for trigger damage", () => {
+  let session = xceedGame();
+  session = moveCards(session, ["1:0", "1:1"], "gauge");
+  const third = damage(session, "2:0");
+  assert.equal(xceedPowerBonus(context(third), true), 0);
+  session = resolveXceed(context(third), "1:2");
+  assert.equal(session.zones.vanguard[0].power, 0);
+  assert.match(session.log.at(-1)!, /no X-ceed power/);
+
+  const fourth = damage(session, "2:1");
+  assert.equal(xceedPowerBonus(context(fourth), false), 0, "empty drop would leave only three gauges");
+  assert.equal(xceedPowerBonus(context(fourth), true), 5000);
+  session = resolveXceed(context(fourth), "1:3");
+  assert.equal(session.zones.vanguard[0].power, 5000);
+  assert.equal(session.zones.gauge.length, 4);
+});
+
+test("X-ceed rejects forbidden drop copies without consuming its pending choice", () => {
+  const pending = damage(xceedGame(), "1:8");
+  const dropCard = pending.zones.drop[0];
+  for (const forbidden of [
+    { ...dropCard, crest: true as const },
+    { ...dropCard, ticket: "personaShield" as const },
+  ]) {
+    const blocked: TableSession = {
+      ...pending,
+      zones: { ...pending.zones, drop: [forbidden] },
+    };
+    assert.equal(canResolveXceed(context(blocked), forbidden.key), false);
+    assert.equal(resolveXceed(context(blocked), forbidden.key), blocked);
+    assert.equal(blocked.rules.pending.length, 1);
+    assert.equal(blocked.zones.gauge.length, 0);
+    assert.equal(canResolveXceed(context(blocked), null), true, "no eligible physical drop copy remains");
+    const resolved = resolveXceed(context(blocked), null);
+    assert.equal(resolved.rules.pending.length, 0);
+    assert.equal(resolved.zones.vanguard[0].power, 5000);
+    assert.deepEqual(resolved.zones.drop, blocked.zones.drop);
+  }
+  assert.equal(canResolveXceed(context(pending), null), false, "valid drop copies require a choice");
+  assert.equal(canResolveXceed(context(pending), "missing"), false);
+  const crestEntries = new Map(entries);
+  crestEntries.set(dropCard.entryId, { ...entries.get(dropCard.entryId)!, zone: "crest" });
+  const legacyCrest = {
+    session: { ...pending, zones: { ...pending.zones, drop: [dropCard] } },
+    entries: crestEntries,
+  };
+  assert.equal(canResolveXceed(legacyCrest, dropCard.key), false, "legacy copies may lack their crest flag");
+  assert.equal(resolveXceed(legacyCrest, dropCard.key), legacyCrest.session);
+  assert.equal(canResolveXceed(legacyCrest, null), true);
+  const inMulligan = { ...pending, phase: "mulligan" as const };
+  assert.equal(canResolveXceed(context(inMulligan), dropCard.key), false);
+});
+
+test("X-ceed gauges stay face up through both turn boundaries without passive power", () => {
+  let session = moveCards(xceedGame(), ["1:0", "1:1", "1:2"], "gauge");
+  session = changeCards(session, ["1:3"], "flip");
+  session = resolveXceed(context(damage(session, "2:0")), "1:3");
+  assert.equal(session.zones.gauge.length, 4);
+  assert.equal(session.zones.gauge.at(-1)!.faceDown, false);
+  assert.equal(session.zones.vanguard[0].power, 5000);
+
+  session = nextPhase(session);
+  assert.equal(session.active, "you");
+  assert.equal(session.zones.vanguard[0].power, 0);
+  while (session.active === "you") session = nextPhase(session);
+  assert.equal(session.zones.vanguard[0].power, 0);
+  assert.equal(session.zones.gauge.length, 4);
+  assert.ok(session.zones.gauge.every((card) => !card.faceDown));
+  assert.equal(xceedPowerBonus(context(session), false), 0, "four gauges alone do not grant power");
+
+  session = moveCards(session, session.zones.drop.map((card) => card.key), "bind");
+  const emptyDrop = damage(session, "2:1");
+  assert.equal(canResolveXceed(context(emptyDrop), null), true);
+  assert.equal(xceedPowerBonus(context(emptyDrop), false), 5000);
+  session = resolveXceed(context(emptyDrop), null);
+  assert.equal(session.zones.vanguard[0].power, 5000, "four gauges grant power on trigger damage even with an empty drop");
+  assert.equal(session.zones.gauge.length, 4);
 });

@@ -6,9 +6,12 @@ import { energyLimit } from "./wirbel.ts";
 
 export { energyLimit } from "./wirbel.ts";
 export { effectiveGrade, ritualCount, hasRitualDeck } from "./luard.ts";
-export { resolveXceed } from "./impauldio.ts";
+export { canResolveXceed, resolveXceed, xceedPowerBonus } from "./impauldio.ts";
 export { hasRuleToken } from "./types.ts";
 export { setRuleToken } from "./tokens.ts";
+export * from "./persona.ts";
+export { emptyPersona } from "./personaTypes.ts";
+export type { PersonaState } from "./personaTypes.ts";
 
 /** The table calls this once per completed action, before saving its undo snapshot.
  * Pure derivations live in the deck modules; only reactions are recorded here.

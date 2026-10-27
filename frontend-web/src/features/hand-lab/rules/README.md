@@ -32,7 +32,11 @@ remain manual.
   moves one selected drop copy to AutoMOD, then evaluates +5k with the new count.
   At three or fewer gauges a non-trigger damage check is needed; at four or more
   the bonus applies regardless of the check. It is a turn bonus, never a passive
-  bonus per gauge. Normal trigger effects remain manual to preserve target choice.
+  bonus per gauge. Gauges persist across both turns; only temporary power clears
+  at the turn boundary. A pending choice shows the resulting power before adding
+  a card. Dropping or moving exactly one Drop card into AutoMOD resolves that same
+  choice atomically, so it cannot request a second card for the same damage.
+  Normal trigger effects remain manual to preserve target choice.
 - `index.ts`: one post-action entry point. It observes transitions and reconciles
   derived limits before the table records one undo snapshot.
 - `visibility.ts`: deck-specific presentation and X-ceed event eligibility.
@@ -46,6 +50,29 @@ remain manual.
 Generator activation in one tile. Its animation changes only presentation,
 respects reduced motion, and cleans up on navigation or subsequent corrections.
 `../CrestZone.tsx` adds optional physical crests without duplicating the generator.
+
+## Persona Shield tickets
+
+`persona.ts` handles manual ticket generation and removal;
+`personaTypes.ts` stores only the next generated serial.
+The toolbar's **Persona Shield** button calls `addPersonaShieldTicket`, adding one
+unique generated copy to hand per click after mulligan. It works for any source
+card, on either turn, without drawing from the deck or paying costs automatically.
+Resolve the source ability's timing, costs, and acquisition limits manually.
+There are no card-name mappings or pending acquisition prompts. Recovery drops
+obsolete acquisition fields in every saved frame while preserving existing tickets.
+
+Select tickets and use **Remove ticket** in the normal action toolbar when used
+or removed by an effect. Removal never applies power or asks for an attacked unit
+or crest condition. Those effects, their duration, and order limits remain manual
+through the existing unit controls. Own-turn costs and generic unit edits still
+reject tickets. Undo restores the prior generated copies and manual adjustments.
+Recovery drops retired defense settings in every saved frame, merging a valid old
+battle bonus into normal unit power once to preserve the visible total.
+
+Verified text and rulings:
+
+- [Persona Shield and its Q&A](https://en.cf-vanguard.com/cardlist/?cardno=DZ-BT07%2FT04EN)
 
 ## Adding a rule
 

@@ -32,6 +32,7 @@ const effect: PowerEffect = {
   count: 1,
 };
 
+
 function field() {
   const opening = startTable(entries, true, "2:0", seededRandom(2));
   let session = finishMulligan(opening, []);

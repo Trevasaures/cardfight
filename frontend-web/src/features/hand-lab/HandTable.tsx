@@ -6,12 +6,14 @@ import {
   Eye,
   Layers3,
   RotateCcw,
+  ShieldPlus,
   Shuffle,
   Swords,
   Undo2,
 } from "lucide-react";
 import { CardArtwork } from "../../components/cards/CardArtwork";
 import { ModalDialog } from "../../components/layout/ModalDialog";
+import { usePersistentState } from "../../hooks/usePersistentState";
 import type { DeckVersion } from "../../types/api";
 import { nationColor } from "../../utils/nations";
 import type { CardCopy } from "./engine";
@@ -42,6 +44,13 @@ import {
 } from "./playtest";
 import { useCardDrag } from "./useCardDrag";
 import { usePlaytestSession } from "./usePlaytestSession";
+import { TurnOrderChoice } from "./TurnOrderChoice";
+import {
+  normalizeTurnOrder,
+  resolveTurnOrder,
+  startingOrderLabel,
+  type TurnOrder,
+} from "./turnOrder";
 import { useCompactInspector } from "./useCompactInspector";
 import { useTableShortcuts } from "./useTableShortcuts";
 import { MAX_UNDO_STATES } from "./sessionStore";
@@ -68,11 +77,23 @@ import { applyPowerEffect } from "./powerEffects";
 import { CardInspector } from "./CardInspector";
 import { SelectedCardActions } from "./SelectedCardActions";
 import { RuleControls } from "./rules/RuleControls";
-import { applyRules, effectiveGrade, energyLimit } from "./rules";
+import {
+  applyRules,
+  canResolveXceed,
+  effectiveGrade,
+  energyLimit,
+  resolveXceed,
+} from "./rules";
 import { supportsImpauldio } from "./rules/visibility";
 import { CardDragPreview } from "./CardDragPreview";
 import { focusSelection, resolveSelection, toggleSelection } from "./selection";
 import { selectedStrideTarget } from "./strideSelection";
+import { PersonaTicketArtwork } from "./PersonaTicketArtwork";
+import {
+  addPersonaShieldTicket,
+  PERSONA_TICKET_ENTRY,
+  removePersonaTicket,
+} from "./rules/persona";
 import "./playtest.css";
 import "./tabletop.css";
 
@@ -115,8 +136,13 @@ export function HandTable({ version, copies }: Props) {
   }, [version]);
   const { history, savedStarterKey, backedUp, notice, saveHistory } =
     usePlaytestSession(version, inventory.cards);
-  const [first, setFirst] = useState(history.present?.first ?? true);
+  const [turnOrderPreference, setTurnOrderPreference] = usePersistentState<TurnOrder>(
+    `cardfight.hand-lab.turn-order.${version.deck_id}`,
+    "random",
+  );
+  const turnOrder = normalizeTurnOrder(turnOrderPreference);
   const entries = new Map(version.cards.map((entry) => [entry.id, entry]));
+  entries.set(PERSONA_TICKET_ENTRY.id, PERSONA_TICKET_ENTRY);
   const starters = inventory.cards
     .filter((copy) => {
       const entry = entries.get(copy.entryId);
@@ -164,6 +190,7 @@ export function HandTable({ version, copies }: Props) {
   const selection = resolveSelection(session, selected);
   const focused = selection.at(-1);
   const focusedEntry = focused && entries.get(focused.card.entryId);
+
   const selectedAttacker =
     selection.length === 1 && focused && ATTACK_CIRCLES.includes(focused.zone)
       ? focused.card
@@ -214,6 +241,10 @@ export function HandTable({ version, copies }: Props) {
     });
   }
 
+  function resolvesXceed(to: Zone) {
+    return to === "gauge" && session?.rules.pending[0]?.rule === "xceed";
+  }
+
   function apply(next: TableSession, clear = true) {
     if (!session || next === session) return;
     next = applyRules(session, next, entries);
@@ -229,14 +260,21 @@ export function HandTable({ version, copies }: Props) {
 
   function newGame() {
     try {
-      const next = startTable(version.cards, first, starter || null);
+      const dealt = startTable(
+        version.cards, resolveTurnOrder(turnOrder), starter || null,
+      );
+      const order = startingOrderLabel(dealt.first);
+      const next = {
+        ...dealt,
+        log: [...dealt.log, `${turnOrder === "random" ? "Coin toss · " : ""}${order}.`],
+      };
       saveHistory({ past: [], present: next }, starter || null);
       setSelected([]);
       setSetup(false);
       setError("");
       setInspected("ride");
       setQuery("");
-      setAnnouncement("Five cards dealt. Select cards for your mulligan.");
+      setAnnouncement(`${order}. Five cards dealt. Select cards for your mulligan.`);
     } catch (error) {
       setError(
         error instanceof Error ? error.message : "Could not start this game.",
@@ -265,7 +303,12 @@ export function HandTable({ version, copies }: Props) {
   function restUnit(card: TableCard) {
     if (!session || !playing || setup || drag) return;
     const found = findCard(session, card.key);
-    if (!found || found.card.crest || !CIRCLES.includes(found.zone)) return;
+    if (
+      !found ||
+      found.card.crest ||
+      found.card.ticket ||
+      !CIRCLES.includes(found.zone)
+    ) return;
     // Double-click targets only this copy, even when several cards were selected.
     apply(changeCards(session, [card.key], "rest"), false);
     setSelected((keys) => focusSelection(keys, card.key));
@@ -276,6 +319,15 @@ export function HandTable({ version, copies }: Props) {
 
   function move(to: Zone, position: "top" | "bottom" = "bottom") {
     if (!session) return;
+    if (resolvesXceed(to) && ruleContext) {
+      if (selected.length !== 1 || !canResolveXceed(ruleContext, selected[0])) {
+        setAnnouncement("Choose one card from drop for X-ceed.");
+        return;
+      }
+      apply(resolveXceed(ruleContext, selected[0]));
+      openZone("gauge");
+      return;
+    }
     if (to === "vanguard" && strideCandidate && ruleContext) {
       const next = stride(ruleContext, strideCandidate.key);
       if (next === session) return;
@@ -300,6 +352,20 @@ export function HandTable({ version, copies }: Props) {
     apply(attackCard(session, selectedAttacker.key), false);
   }
 
+  function removeSelectedTickets() {
+    if (
+      !session || !selection.length ||
+      selection.some(({ card, zone }) => !card.ticket || zone !== "hand")
+    ) {
+      return;
+    }
+    // Remove a selected group in one undoable action, without touching units
+    // or applying any power. Ticket effects remain manual sandbox actions.
+    apply(selection.reduce(
+      (next, { card }) => removePersonaTicket(next, card.key), session,
+    ));
+  }
+
   function openZone(zone: Zone) {
     setInspected(zone);
     setQuery("");
@@ -315,12 +381,20 @@ export function HandTable({ version, copies }: Props) {
           ? selectedStrideTarget(ruleContext, keys)
           : undefined;
       const gZoneAction = ruleContext && usesGZoneAction(keys, zone);
-      const next =
-        strideTarget && ruleContext
-          ? stride(ruleContext, strideTarget.key)
-          : gZoneAction && ruleContext
-            ? dropInGZone(ruleContext, keys)
-            : moveCards(session, keys, zone);
+      const xceedAction = ruleContext && resolvesXceed(zone);
+      // A pending damage ability and its gauge move are one action. Generic
+      // movement would leave the prompt unresolved and ask for a second card.
+      let next: TableSession;
+      if (xceedAction && ruleContext) {
+        if (keys.length !== 1) return;
+        next = resolveXceed(ruleContext, keys[0]);
+      } else if (strideTarget && ruleContext) {
+        next = stride(ruleContext, strideTarget.key);
+      } else if (gZoneAction && ruleContext) {
+        next = dropInGZone(ruleContext, keys);
+      } else {
+        next = moveCards(session, keys, zone);
+      }
       if (next === session) return;
       // Leave the G browser ready for the next cost, without retaining a selection
       // that could accidentally group the new vanguard with a cost card.
@@ -332,6 +406,8 @@ export function HandTable({ version, copies }: Props) {
           ? "Strided G unit. Vanguard retained as heart."
           : gZoneAction
             ? (next.log.at(-1) ?? "G zone updated.")
+            : xceedAction
+              ? (next.log.at(-1) ?? "X-ceed resolved.")
             : `${keys.length === 1 ? "Card" : `${keys.length} cards`} moved to ${ZONES[zone]}${zone === "deck" ? " bottom" : ""}.`,
       );
     },
@@ -342,6 +418,9 @@ export function HandTable({ version, copies }: Props) {
   const dragEntry = dragCard && entries.get(dragCard.entryId);
   function getDragActionHint(): string | undefined {
     if (!drag?.target) return undefined;
+    if (resolvesXceed(drag.target)) {
+      return drag.valid ? "Resolve X-ceed · AutoMOD +1" : "Choose one card from drop";
+    }
     if (usesGZoneAction(drag.keys, drag.target)) {
       if (!drag.valid) return "Choose a cost card or the stride";
       return session?.zones.vanguard.some((card) => drag.keys.includes(card.key))
@@ -376,6 +455,9 @@ export function HandTable({ version, copies }: Props) {
 
   function canDropOnZone(keys: string[], zone: Zone) {
     if (!session || setup) return false;
+    if (resolvesXceed(zone) && ruleContext) {
+      return keys.length === 1 && canResolveXceed(ruleContext, keys[0]);
+    }
     if (zone === "vanguard" && ruleContext) {
       const target = selectedStrideTarget(ruleContext, keys);
       if (target) return canStride(ruleContext, target.key);
@@ -438,13 +520,14 @@ export function HandTable({ version, copies }: Props) {
         }
         compact={compact}
         selected={selected.includes(card.key)}
-        draggable={playing && !setup}
+        draggable={playing && !setup && !card.ticket}
         dragging={Boolean(drag?.keys.includes(card.key))}
         disabled={!playing && inspected !== "hand" && compact}
         onSelect={selectCard}
         onRest={
           compact &&
           !card.crest &&
+          !card.ticket &&
           CIRCLES.includes(inspected) &&
           playing &&
           !setup
@@ -546,13 +629,9 @@ export function HandTable({ version, copies }: Props) {
       <div className="hand-table-header">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className={session ? "sr-only" : "section-title"}>Playtest</h2>
-          <span className="hand-phase">
+          <span className="hand-phase" aria-label="Game starting order">
             {session
-              ? session.phase === "mulligan"
-                ? "Mulligan"
-                : session.first
-                  ? "Going first"
-                  : "Going second"
+              ? `${startingOrderLabel(session.first)}${session.phase === "mulligan" ? " · Mulligan" : ""}`
               : "Solo"}
           </span>
         </div>
@@ -587,22 +666,7 @@ export function HandTable({ version, copies }: Props) {
       )}
       {setup && (
         <div className="pt-setup">
-          <div className="pt-turn-choice" role="group" aria-label="Turn order">
-            <button
-              type="button"
-              aria-pressed={first}
-              onClick={() => setFirst(true)}
-            >
-              First
-            </button>
-            <button
-              type="button"
-              aria-pressed={!first}
-              onClick={() => setFirst(false)}
-            >
-              Second
-            </button>
-          </div>
+          <TurnOrderChoice value={turnOrder} onChange={setTurnOrderPreference} />
           <label>
             First vanguard
             <select
@@ -630,7 +694,9 @@ export function HandTable({ version, copies }: Props) {
             }
           >
             <Shuffle size={15} />
-            {session ? "Restart & deal" : "Deal five"}
+            {turnOrder === "random"
+              ? session ? "Flip & restart" : "Flip & deal"
+              : session ? "Restart & deal" : "Deal five"}
           </button>
           {session && (
             <button
@@ -688,12 +754,15 @@ export function HandTable({ version, copies }: Props) {
               }
               aria-haspopup="dialog"
             >
-              {focusedEntry?.card && (
-                <CardArtwork
-                  card={focusedEntry.card}
-                  printing={focusedEntry.printing}
-                />
-              )}
+              {focusedEntry?.card &&
+                (focused?.card.ticket ? (
+                  <PersonaTicketArtwork />
+                ) : (
+                  <CardArtwork
+                    card={focusedEntry.card}
+                    printing={focusedEntry.printing}
+                  />
+                ))}
               <span>{focusedEntry?.card?.name ?? "Card details"}</span>
               <Eye size={16} />
             </button>
@@ -874,6 +943,20 @@ export function HandTable({ version, copies }: Props) {
                 <Shuffle size={15} />
                 Shuffle deck
               </button>
+              <button
+                type="button"
+                className="hand-button"
+                aria-label="Add Persona Shield ticket"
+                title="Add a ticket to hand after resolving its source ability manually"
+                disabled={!playing || setup}
+                onClick={() => {
+                  apply(addPersonaShieldTicket(session!));
+                  setAnnouncement("Persona Shield ticket added to hand.");
+                }}
+              >
+                <ShieldPlus size={14} />
+                Persona Shield
+              </button>
             </div>
             {playing && (
               <PowerControls
@@ -1029,6 +1112,7 @@ export function HandTable({ version, copies }: Props) {
             canDropInGZone(ruleContext, selected),
           )}
           canDropToGZone={canDropOnZone(selected, "g")}
+          canDropToGauge={canDropOnZone(selected, "gauge")}
           strideTargetName={
             strideCandidate
               ? (entries.get(strideCandidate.entryId)?.card?.name ?? "G unit")
@@ -1055,6 +1139,7 @@ export function HandTable({ version, copies }: Props) {
           }}
           destination={destination}
           onClear={() => setSelected([])}
+          onRemoveTickets={removeSelectedTickets}
           onDestinationChange={setDestination}
           onMove={move}
           onChangeCards={(change) =>

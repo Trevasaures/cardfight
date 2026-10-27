@@ -19,6 +19,7 @@ type Props = {
   stridingVanguard: boolean;
   canReturnStride: boolean;
   canDropToGZone: boolean;
+  canDropToGauge: boolean;
   strideTargetName?: string;
   canStride: boolean;
   canFaceUpGUnits: boolean;
@@ -26,6 +27,7 @@ type Props = {
   onFaceUpGUnits: () => void;
   destination: Zone | "deckTop";
   onClear: () => void;
+  onRemoveTickets: () => void;
   onDestinationChange: (destination: Zone | "deckTop") => void;
   onMove: (to: Zone, position?: "top" | "bottom") => void;
   onChangeCards: (change: CardChange) => void;
@@ -54,6 +56,7 @@ export function SelectedCardActions({
   stridingVanguard,
   canReturnStride,
   canDropToGZone,
+  canDropToGauge,
   strideTargetName,
   canStride,
   canFaceUpGUnits,
@@ -61,11 +64,15 @@ export function SelectedCardActions({
   onFaceUpGUnits,
   destination,
   onClear,
+  onRemoveTickets,
   onDestinationChange,
   onMove,
   onChangeCards,
 }: Props) {
   const selectedCount = selection.length;
+  const hasTicket = selection.some(({ card }) => card.ticket);
+  const allTickets = selectedCount > 0 &&
+    selection.every(({ card, zone }) => card.ticket && zone === "hand");
   const selectedAttacker =
     selectedCount === 1 &&
     !selection[0].card.crest &&
@@ -117,6 +124,7 @@ export function SelectedCardActions({
   const hasStrideTarget = Boolean(strideTargetName);
   const stridePlacement = hasStrideTarget && canStride;
   const invalidDestination =
+    (effectiveDestination === "gauge" && !canDropToGauge) ||
     (hasGUnit && effectiveDestination === "crest") ||
     (hasGUnit && effectiveDestination === "g" && !canDropToGZone) ||
     ((gUnitSelection || hasStrideTarget) &&
@@ -192,7 +200,12 @@ export function SelectedCardActions({
           <X size={14} />
         </button>
       </div>
-      {playing && (
+      {playing && allTickets && (
+        <button type="button" className="hand-button" onClick={onRemoveTickets}>
+          {selectedCount === 1 ? "Remove ticket" : "Remove tickets"}
+        </button>
+      )}
+      {playing && !hasTicket && (
         <div className="pt-selection-actions">
           <div
             className="pt-primary-actions"
@@ -288,7 +301,8 @@ export function SelectedCardActions({
                       !(zone === "vanguard" && stridePlacement)) ||
                     (hasCrest && !CREST_DESTINATIONS.includes(zone)) ||
                     (hasGUnit && zone === "crest") ||
-                    (hasGUnit && zone === "g" && !canDropToGZone)
+                    (hasGUnit && zone === "g" && !canDropToGZone) ||
+                    (zone === "gauge" && !canDropToGauge)
                   }
                 >
                   {zone === "deck" ? "Deck bottom" : ZONES[zone]}

@@ -4,6 +4,7 @@ import type { DeckCardEntry } from "../../types/api";
 import { ZONES, type TableCard, type Zone } from "./playtest";
 import { formatPower } from "./cardDisplay";
 import { isCrestEntry } from "./crests";
+import { PersonaTicketArtwork } from "./PersonaTicketArtwork";
 import "./card-inspector.css";
 
 type Props = {
@@ -24,27 +25,32 @@ export function CardInspector({
 }: Props) {
   if (!entry.card) return null;
   const crest = Boolean(card.crest || isCrestEntry(entry));
+  const ticket = card.ticket === "personaShield";
   return (
     <section
       className={`pt-card-detail ${crest ? "is-crest" : ""}`}
       aria-label="Selected card"
     >
       <div className="pt-detail-overview">
-        <CardArtwork card={entry.card} printing={entry.printing} detail />
+        {ticket ? (
+          <PersonaTicketArtwork />
+        ) : (
+          <CardArtwork card={entry.card} printing={entry.printing} detail />
+        )}
         <div>
           <span className="pt-detail-zone">
             {ZONES[zone]}
             {card.faceDown ? " · Face down" : card.rested ? " · Rest" : ""}
           </span>
           {showName && <strong>{entry.card.name}</strong>}
-          {!crest && (
+          {!crest && !ticket && (
             <div className="pt-detail-stats">
               <span>G{effectiveGrade ?? entry.card.grade ?? "?"}</span>
               <strong>{formatPower(card, entry.card.power)}</strong>
               <span>★{(entry.card.critical ?? 1) + card.critical}</span>
             </div>
           )}
-          {!crest && Boolean(card.power || card.critical) && (
+          {!crest && !ticket && Boolean(card.power || card.critical) && (
             <small>
               Bonus {card.power >= 0 ? "+" : ""}
               {card.power.toLocaleString()} / {card.critical >= 0 ? "+" : ""}

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { TableSession, Zone } from "../playtest";
 import { ritualCount } from "./luard";
-import { resolveXceed } from "./impauldio";
+import { canResolveXceed, resolveXceed, xceedPowerBonus } from "./impauldio";
 import { setRuleToken } from "./index";
 import { hasRuleToken, type RuleContext } from "./types";
 import { ruleVisibility } from "./visibility";
@@ -16,9 +16,13 @@ type Props = {
 
 function GaugeChoice({ context, disabled, onApply }: Omit<Props, "onInspect">) {
   const [chosen, setChosen] = useState("");
-  const drop = context.session.zones.drop;
+  const drop = context.session.zones.drop.filter((card) =>
+    canResolveXceed(context, card.key),
+  );
   const empty = drop.length === 0;
   const valid = drop.some((card) => card.key === chosen);
+  const ready = canResolveXceed(context, empty ? null : chosen);
+  const bonus = xceedPowerBonus(context, !empty);
   return (
     <div className="pt-rule-choice" role="group" aria-label="Resolve X-ceed">
       <strong>X-ceed</strong>
@@ -44,7 +48,7 @@ function GaugeChoice({ context, disabled, onApply }: Omit<Props, "onInspect">) {
       <button
         type="button"
         className="cinema-button"
-        disabled={disabled || (!empty && !valid)}
+        disabled={disabled || !ready}
         onClick={() => {
           onApply(resolveXceed(context, empty ? null : chosen));
           setChosen("");
@@ -52,6 +56,13 @@ function GaugeChoice({ context, disabled, onApply }: Omit<Props, "onInspect">) {
       >
         {empty ? "Resolve" : "Add gauge"}
       </button>
+      <span
+        className="pt-rule-outcome"
+        aria-label="X-ceed power this turn"
+        title="At four or more AutoMOD gauges, X-ceed also grants power after a trigger check"
+      >
+        {bonus ? "+5,000 this turn" : "No X-ceed power"}
+      </span>
       {context.session.rules.pending.length > 1 && (
         <small>{context.session.rules.pending.length} pending</small>
       )}
