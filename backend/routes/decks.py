@@ -4,22 +4,13 @@ from sqlalchemy import or_
 from backend.database import db
 from backend.errors import ConflictError, ValidationError, json_object
 from backend.models import Deck, Match
+from backend.services.nations import NATION_ICONS
 from backend.services.serializers import serialize_deck
 
 
 bp_decks = Blueprint("decks", __name__, url_prefix="/api/decks")
 
 VALID_DECK_TYPES = {"Standard", "Stride"}
-
-NATION_OPTIONS = {
-    None: None,
-    "": None,
-    "Dragon Empire": "dragon_empire.png",
-    "Dark States": "dark_states.png",
-    "Brandt Gate": "brandt_gate.png",
-    "Keter Sanctuary": "keter_sanctuary.png",
-    "Stoicheia": "stoicheia.png",
-}
 
 
 def _normalize_nation(value):
@@ -28,11 +19,14 @@ def _normalize_nation(value):
 
     nation = str(value).strip()
 
-    if nation not in NATION_OPTIONS:
-        valid = ", ".join([item for item in NATION_OPTIONS.keys() if item])
+    if not nation:
+        return None, None
+
+    if nation not in NATION_ICONS:
+        valid = ", ".join(NATION_ICONS)
         raise ValidationError(f"nation must be one of: {valid}")
 
-    return nation, NATION_OPTIONS[nation]
+    return nation, NATION_ICONS[nation]
 
 
 def _text_field(data, field_name):
@@ -71,10 +65,9 @@ def deck_options():
                 {
                     "name": nation,
                     "icon": icon,
-                    "icon_path": f"/nations/{icon}" if icon else None,
+                    "icon_path": f"/nations/{icon}",
                 }
-                for nation, icon in NATION_OPTIONS.items()
-                if nation
+                for nation, icon in NATION_ICONS.items()
             ],
         }
     )

@@ -23,16 +23,10 @@ from backend.services.card_set_names import (
     lookup_set_name,
     remember_custom_set,
 )
+from backend.services.nations import NATION_ICONS
 
 
-CARD_NATION_OPTIONS = [
-    "Dragon Empire",
-    "Dark States",
-    "Brandt Gate",
-    "Keter Sanctuary",
-    "Stoicheia",
-    "Lyrical Monasterio",
-]
+CARD_NATION_OPTIONS = list(NATION_ICONS)
 
 NATIONLESS_CARD_OPTION = "Nationless"
 
