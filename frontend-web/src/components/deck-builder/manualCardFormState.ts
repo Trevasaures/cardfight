@@ -97,12 +97,15 @@ export function withSavedCardSet(
   };
 }
 
-export function manualCardFormIsComplete(value: ManualCardFormState) {
+export function sharedCardFormIsComplete(value: ManualCardFormState) {
   if (!isCrestCard(value) && !value.grade.trim()) return false;
-  return [
-    value.name,
-    value.nation,
-    value.card_type,
+  return [value.name, value.nation, value.card_type].every(
+    (field) => field.trim().length > 0,
+  );
+}
+
+export function manualCardFormIsComplete(value: ManualCardFormState) {
+  return sharedCardFormIsComplete(value) && [
     value.set_code,
     value.set_name,
     value.card_number,

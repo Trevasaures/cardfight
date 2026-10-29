@@ -30,6 +30,10 @@ import "../components/collection-workspace.css";
 import { CardCatalogPanel } from "../components/deck-builder/CardCatalogPanel";
 import { artworkPayload } from "../components/cards/cardArtworkState";
 import {
+  hasPrintingDraftChanges,
+  printingFormPayload,
+} from "../components/cards/cardPrintingFormState";
+import {
   clearCardSetSelection,
   replaceCardSetSelection,
 } from "../components/cards/cardSetSelectionState";
@@ -41,6 +45,7 @@ import {
   DEFAULT_CARD_FORM_OPTIONS,
   EMPTY_MANUAL_CARD_FORM,
   manualCardFormIsComplete,
+  sharedCardFormIsComplete,
   cardToManualForm,
   withSavedCardSet,
 } from "../components/deck-builder/manualCardFormState";
@@ -260,9 +265,16 @@ export function DeckBuilder() {
     });
   }, [selectedCard]);
 
+  const recoveredPrintingChanges = Boolean(
+    cardFormMode === "edit" &&
+    editingCardSnapshot &&
+    hasPrintingDraftChanges(editingCardSnapshot, newCard),
+  );
   const manualCardIsComplete = useMemo(() => {
-    return manualCardFormIsComplete(newCard);
-  }, [newCard]);
+    return cardFormMode === "edit" && !recoveredPrintingChanges
+      ? sharedCardFormIsComplete(newCard)
+      : manualCardFormIsComplete(newCard);
+  }, [newCard, cardFormMode, recoveredPrintingChanges]);
 
   const versionEditIsDirty = useMemo(() => {
     if (!currentVersion) return false;
@@ -741,18 +753,14 @@ export function DeckBuilder() {
         card_type: newCard.card_type,
         skill_text: newCard.skill_text,
       };
-      const printingPayload = {
-        set_code: newCard.set_code,
-        set_name: newCard.set_name,
-        card_number: newCard.card_number,
-        rarity: newCard.rarity,
-        ...artworkPayload(newCard.artwork),
-      };
-
       if (cardFormMode === "edit" && editingCardSnapshot) {
+        // Preserve printing edits recovered from the former combined editor.
+        // Fresh shared edits omit printing data entirely.
         await updateCard(editingCardSnapshot.id, {
           ...cardPayload,
-          printing: printingPayload,
+          ...(recoveredPrintingChanges
+            ? { printing: printingFormPayload(newCard) }
+            : {}),
         });
 
         const refreshedCard = await getCard(editingCardSnapshot.id);
@@ -782,7 +790,11 @@ export function DeckBuilder() {
 
       const created = await createCard({
         ...cardPayload,
-        ...printingPayload,
+        set_code: newCard.set_code,
+        set_name: newCard.set_name,
+        card_number: newCard.card_number,
+        rarity: newCard.rarity,
+        ...artworkPayload(newCard.artwork),
       });
 
       setCardResults((rows) => [created, ...rows]);
@@ -1074,9 +1086,14 @@ export function DeckBuilder() {
         <CardInspector
           key={inspectedCard.card.id}
           card={inspectedCard.card}
-          printing={inspectedCard.printing}
-          editingPrimary={
-            cardFormMode === "edit" &&
+          printing={
+            recoveredPrintingChanges &&
+            editingCardSnapshot?.id === inspectedCard.card.id
+              ? editingCardSnapshot.primary_printing
+              : inspectedCard.printing
+          }
+          printingSelectionDisabled={
+            recoveredPrintingChanges &&
             editingCardSnapshot?.id === inspectedCard.card.id
           }
           onClose={() => {
@@ -1105,17 +1122,25 @@ export function DeckBuilder() {
           )}
           {cardFormMode === "edit" &&
             editingCardSnapshot?.id === inspectedCard.card.id && (
-              <ManualCardForm
-                value={newCard}
-                mode="edit"
-                onChange={setNewCard}
-                onSubmit={handleSaveCardForm}
-                onCancelEdit={handleCancelCardEdit}
-                disabled={saving}
-                canSubmit={manualCardIsComplete}
-                options={cardFormOptions}
-                onSetSaved={handleSetSaved}
-              />
+              <>
+                {recoveredPrintingChanges && (
+                  <p className="mb-3 text-xs text-slate-400">
+                    Recovered printing changes
+                  </p>
+                )}
+                <ManualCardForm
+                  value={newCard}
+                  mode="edit"
+                  includePrinting={recoveredPrintingChanges}
+                  onChange={setNewCard}
+                  onSubmit={handleSaveCardForm}
+                  onCancelEdit={handleCancelCardEdit}
+                  disabled={saving}
+                  canSubmit={manualCardIsComplete}
+                  options={cardFormOptions}
+                  onSetSaved={handleSetSaved}
+                />
+              </>
             )}
         </CardInspector>
       )}

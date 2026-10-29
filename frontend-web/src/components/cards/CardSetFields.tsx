@@ -1,5 +1,5 @@
 import { BookmarkPlus } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { saveCardSet } from "../../api/cards";
 import type { CardFormOptions, CardSetOption } from "../../types/api";
@@ -11,6 +11,7 @@ type CardSetFieldsProps = {
   value: CardSetFormValue;
   options: CardFormOptions;
   disabled?: boolean;
+  required?: boolean;
   onChange: (value: CardSetFormValue) => void;
   onSetSaved: (cardSet: CardSetOption) => void;
 };
@@ -19,11 +20,25 @@ export function CardSetFields({
   value,
   options,
   disabled = false,
+  required = true,
   onChange,
   onSetSaved,
 }: CardSetFieldsProps) {
   const [savingSet, setSavingSet] = useState(false);
   const toast = useToast();
+  const mounted = useRef(false);
+  const callbacks = useRef({ onChange, onSetSaved, value, toast });
+
+  useEffect(() => {
+    callbacks.current = { onChange, onSetSaved, value, toast };
+  }, [onChange, onSetSaved, value, toast]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
   const normalizedCode = value.set_code.trim().toUpperCase();
   const isCustomSelection = value.set_selection === "__custom__";
   const knownSet = isCustomSelection
@@ -61,25 +76,36 @@ export function CardSetFields({
   async function handleSaveSet() {
     if (!customSetIsComplete || savingSet) return;
 
+    const requestedCode = value.set_code.trim();
+    const requestedName = value.set_name.trim();
     setSavingSet(true);
     try {
-      const savedSet = await saveCardSet(
-        value.set_code.trim(),
-        value.set_name.trim(),
+      const savedSet = await saveCardSet(requestedCode, requestedName);
+      // Switching printings unmounts this form. An old request must never write
+      // into the next printing's draft or revert edits made while it was saving.
+      if (!mounted.current) return;
+      const latest = callbacks.current;
+      latest.onSetSaved(savedSet);
+      if (
+        latest.value.set_code.trim() === requestedCode &&
+        latest.value.set_name.trim() === requestedName
+      ) {
+        latest.onChange({
+          set_selection: savedSet.code,
+          set_code: savedSet.code,
+          set_name: savedSet.name,
+        });
+      }
+      latest.toast.success(
+        `${savedSet.code} is now available in every set dropdown.`,
       );
-      onSetSaved(savedSet);
-      onChange({
-        set_selection: savedSet.code,
-        set_code: savedSet.code,
-        set_name: savedSet.name,
-      });
-      toast.success(`${savedSet.code} is now available in every set dropdown.`);
     } catch (error) {
-      toast.error(
+      if (!mounted.current) return;
+      callbacks.current.toast.error(
         error instanceof Error ? error.message : "Failed to save card set.",
       );
     } finally {
-      setSavingSet(false);
+      if (mounted.current) setSavingSet(false);
     }
   }
 
@@ -90,7 +116,7 @@ export function CardSetFields({
         value={selectedSetValue}
         onChange={updateSetSelection}
         placeholder="Choose a card set"
-        required
+        required={required}
         options={[
           ...options.sets.map((set) => ({
             value: set.code,
@@ -113,7 +139,7 @@ export function CardSetFields({
               })
             }
             placeholder="Example: DZ-SS15"
-            required
+            required={required}
           />
 
           <FormTextInput
@@ -127,7 +153,7 @@ export function CardSetFields({
               })
             }
             placeholder="Example: The Legendary Vanguards"
-            required
+            required={required}
           />
 
           <div className="flex flex-col justify-end rounded-2xl border border-dashed border-cyan-300/20 bg-cyan-300/[0.04] p-3 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
@@ -149,7 +175,7 @@ export function CardSetFields({
           value={value.set_name}
           onChange={(setName) => onChange({ ...value, set_name: setName })}
           placeholder="Select a card set first"
-          required
+          required={required}
           readOnly
         />
       )}

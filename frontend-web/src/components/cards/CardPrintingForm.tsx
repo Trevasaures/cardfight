@@ -1,4 +1,4 @@
-import { Layers3 } from "lucide-react";
+import { Layers3, Save } from "lucide-react";
 import { useState } from "react";
 
 import { FormTextInput } from "../forms/HelpfulField";
@@ -12,6 +12,7 @@ import { CardArtworkInput } from "./CardArtworkInput";
 
 type CardPrintingFormProps = {
   value: CardPrintingFormState;
+  mode?: "create" | "edit";
   options: CardFormOptions;
   cardType?: string | null;
   disabled?: boolean;
@@ -23,6 +24,7 @@ type CardPrintingFormProps = {
 
 export function CardPrintingForm({
   value,
+  mode = "create",
   options,
   cardType,
   disabled = false,
@@ -31,7 +33,9 @@ export function CardPrintingForm({
   onCancel,
   onSetSaved,
 }: CardPrintingFormProps) {
-  const canSubmit = cardPrintingFormIsComplete(value);
+  const isEditing = mode === "edit";
+  // Older printings may have incomplete metadata; artwork can still be repaired.
+  const canSubmit = isEditing || cardPrintingFormIsComplete(value);
   const [importingArtwork, setImportingArtwork] = useState(false);
 
   function updateField(field: keyof CardPrintingFormState, fieldValue: string) {
@@ -53,6 +57,7 @@ export function CardPrintingForm({
           <CardSetFields
             value={value}
             options={options}
+            required={!isEditing}
             disabled={disabled}
             onChange={(setFields) => onChange({ ...value, ...setFields })}
             onSetSaved={onSetSaved}
@@ -63,7 +68,7 @@ export function CardPrintingForm({
             value={value.card_number}
             onChange={(fieldValue) => updateField("card_number", fieldValue)}
             placeholder="Example: DZ-BT01/001EN"
-            required
+            required={!isEditing}
           />
 
           <FormTextInput
@@ -71,7 +76,7 @@ export function CardPrintingForm({
             value={value.rarity}
             onChange={(fieldValue) => updateField("rarity", fieldValue)}
             placeholder="Example: SR"
-            required
+            required={!isEditing}
           />
         </div>
 
@@ -101,12 +106,18 @@ export function CardPrintingForm({
             className="inline-flex items-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
             title={
               canSubmit
-                ? "Add this printing to the existing card"
+                ? isEditing
+                  ? "Save changes to this printing"
+                  : "Add this printing to the existing card"
                 : "Complete all printing fields before saving"
             }
           >
-            <Layers3 className="h-4 w-4" />
-            Add printing
+            {isEditing ? (
+              <Save className="h-4 w-4" />
+            ) : (
+              <Layers3 className="h-4 w-4" />
+            )}
+            {isEditing ? "Save printing" : "Add printing"}
           </button>
         </div>
       </fieldset>

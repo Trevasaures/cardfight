@@ -25,6 +25,7 @@ type ManualCardFormProps = {
   onSubmit: () => void;
   onCancelEdit: () => void;
   disabled?: boolean;
+  includePrinting?: boolean;
   canSubmit: boolean;
   options: CardFormOptions;
   onSetSaved: (cardSet: CardSetOption) => void;
@@ -37,6 +38,7 @@ export function ManualCardForm({
   onSubmit,
   onCancelEdit,
   disabled = false,
+  includePrinting = true,
   canSubmit,
   options,
   onSetSaved,
@@ -45,6 +47,7 @@ export function ManualCardForm({
   const isCrest = isCrestCard(value);
   const abilityTextId = useId();
   const [importingArtwork, setImportingArtwork] = useState(false);
+  const artworkBusy = includePrinting && importingArtwork;
 
   const nationOptions =
     value.nation && !options.nations.includes(value.nation)
@@ -74,7 +77,7 @@ export function ManualCardForm({
       className="mt-4"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!disabled && !importingArtwork && canSubmit) onSubmit();
+        if (!disabled && !artworkBusy && canSubmit) onSubmit();
       }}
     >
       <fieldset disabled={disabled}>
@@ -149,29 +152,33 @@ export function ManualCardForm({
             }))}
           />
 
-          <CardSetFields
-            value={value}
-            options={options}
-            disabled={disabled}
-            onChange={(setFields) => onChange({ ...value, ...setFields })}
-            onSetSaved={onSetSaved}
-          />
+          {includePrinting && (
+            <>
+              <CardSetFields
+                value={value}
+                options={options}
+                disabled={disabled}
+                onChange={(setFields) => onChange({ ...value, ...setFields })}
+                onSetSaved={onSetSaved}
+              />
 
-          <FormTextInput
-            label="Card number"
-            value={value.card_number}
-            onChange={(fieldValue) => updateField("card_number", fieldValue)}
-            placeholder="Example: DZ-BT01/001"
-            required
-          />
+              <FormTextInput
+                label="Card number"
+                value={value.card_number}
+                onChange={(fieldValue) => updateField("card_number", fieldValue)}
+                placeholder="Example: DZ-BT01/001"
+                required
+              />
 
-          <FormTextInput
-            label="Rarity"
-            value={value.rarity}
-            onChange={(fieldValue) => updateField("rarity", fieldValue)}
-            placeholder="Example: RRR"
-            required
-          />
+              <FormTextInput
+                label="Rarity"
+                value={value.rarity}
+                onChange={(fieldValue) => updateField("rarity", fieldValue)}
+                placeholder="Example: RRR"
+                required
+              />
+            </>
+          )}
 
           <div className="sm:col-span-2">
             <FieldLabel
@@ -193,21 +200,23 @@ export function ManualCardForm({
               className="w-full resize-y rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm leading-6 text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-300/50 disabled:opacity-50"
             />
           </div>
-          <div className="sm:col-span-2">
-            <CardArtworkInput
-              value={value.artwork}
-              cardType={value.card_type}
-              disabled={disabled}
-              onChange={(artwork) => onChange({ ...value, artwork })}
-              onBusyChange={setImportingArtwork}
-            />
-          </div>
+          {includePrinting && (
+            <div className="sm:col-span-2">
+              <CardArtworkInput
+                value={value.artwork}
+                cardType={value.card_type}
+                disabled={disabled}
+                onChange={(artwork) => onChange({ ...value, artwork })}
+                onBusyChange={setImportingArtwork}
+              />
+            </div>
+          )}
         </div>
 
         <div className="inspector-form-actions">
           <button
             type="submit"
-            disabled={disabled || importingArtwork || !canSubmit}
+            disabled={disabled || artworkBusy || !canSubmit}
             className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
             title={
               canSubmit
