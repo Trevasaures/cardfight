@@ -1,4 +1,4 @@
-import type { CardPrinting } from "../../types/api";
+import type { Card, CardPrinting } from "../../types/api";
 
 export type CardArtworkValue = {
   id: string | null;
@@ -15,6 +15,22 @@ export function artworkFromPrinting(
     image_url: printing.image_url,
     thumbnail_url: printing.thumbnail_url || printing.image_url,
   };
+}
+
+/**
+ * A chosen printing owns its artwork, including the absence of an image.
+ * Only card-level catalog views may borrow artwork from another printing.
+ */
+export function resolveCardArtwork(
+  card: Card,
+  printing?: CardPrinting | null,
+): CardArtworkValue | null {
+  if (printing) return artworkFromPrinting(printing);
+
+  const fallback = [card.primary_printing, ...card.printings].find(
+    (candidate) => candidate?.image_url,
+  );
+  return artworkFromPrinting(fallback);
 }
 
 export function artworkPayload(artwork: CardArtworkValue | null) {

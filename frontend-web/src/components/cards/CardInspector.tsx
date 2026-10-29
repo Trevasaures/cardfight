@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { Pencil } from "lucide-react";
 import { ModalDialog } from "../layout/ModalDialog";
 import { CardArtwork } from "./CardArtwork";
 import { CardAbilityText } from "./CardAbilityText";
@@ -17,7 +18,9 @@ type Props = {
   children?: ReactNode;
   footer?: ReactNode;
   title?: string;
-  editingPrimary?: boolean;
+  onPrintingChange?: (printing: CardPrinting) => void;
+  onEditPrinting?: (printing: CardPrinting) => void;
+  printingSelectionDisabled?: boolean;
 };
 
 export function CardInspector({
@@ -27,13 +30,15 @@ export function CardInspector({
   children,
   footer,
   title,
-  editingPrimary = false,
+  onPrintingChange,
+  onEditPrinting,
+  printingSelectionDisabled = false,
 }: Props) {
   const [printingId, setPrintingId] = useState(
     printing?.id ?? card.primary_printing?.id ?? null,
   );
-  const selectedPrinting = editingPrimary
-    ? card.primary_printing
+  const selectedPrinting = onPrintingChange
+    ? printing
     : (card.printings.find((item) => item.id === printingId) ??
       printing ??
       card.primary_printing);
@@ -77,27 +82,41 @@ export function CardInspector({
         </div>
       </div>
       {card.printings.length > 0 && (
-        <label className="card-inspector-printing">
-          <span>{editingPrimary ? "Primary printing" : "Printing"}</span>
-          <select
-            disabled={editingPrimary}
-            className="workspace-control"
-            value={
-              editingPrimary
-                ? (card.primary_printing?.id ?? "")
-                : (printingId ?? "")
-            }
-            onChange={(event) => setPrintingId(Number(event.target.value))}
-          >
-            {card.printings.map((item) => (
-              <option key={item.id} value={item.id}>
-                {[item.set_code, item.card_number, item.rarity]
-                  .filter(Boolean)
-                  .join(" · ") || `Printing ${item.id}`}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="card-inspector-printing-row">
+          <label className="card-inspector-printing">
+            <span>Printing</span>
+            <select
+              disabled={printingSelectionDisabled}
+              className="workspace-control"
+              value={selectedPrinting?.id ?? ""}
+              onChange={(event) => {
+                const next = card.printings.find(
+                  (item) => item.id === Number(event.target.value),
+                );
+                if (!next) return;
+                if (onPrintingChange) onPrintingChange(next);
+                else setPrintingId(next.id);
+              }}
+            >
+              {card.printings.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {[item.set_code, item.card_number, item.rarity]
+                    .filter(Boolean)
+                    .join(" · ") || `Printing ${item.id}`}
+                </option>
+              ))}
+            </select>
+          </label>
+          {onEditPrinting && selectedPrinting && (
+            <button
+              type="button"
+              className="workspace-button"
+              onClick={() => onEditPrinting(selectedPrinting)}
+            >
+              <Pencil size={14} /> Edit printing
+            </button>
+          )}
+        </div>
       )}
       <CardAbilityText text={card.skill_text} />
       {children && <div className="card-inspector-editor">{children}</div>}

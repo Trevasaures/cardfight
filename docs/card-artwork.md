@@ -1,10 +1,25 @@
 # Card artwork
 
-Card details in Card Library and Deck Builder accept an approved public image URL or a
-JPEG, PNG, or WebP upload. Import shows a preview; Save attaches it to the card's
-primary printing. Add printing can also attach artwork to a new printing.
-Removing artwork is a draft change until Save. Failed imports leave the previous
-preview intact. Card details and their primary printing save in one transaction.
+Each printing has its own artwork. In Card Library, click a printing badge or open
+a card and choose its printing, then select **Edit printing**. Import an approved
+public image URL or upload a JPEG, PNG, or WebP file. **Save printing** attaches
+the preview only to that printing; **Add printing** creates a new variant with
+its own image. Removing artwork remains a draft change until Save. Failed
+imports leave the previous preview intact, and closing the drawer retains the
+draft. Cancel discards it; changing to a different printing checks for unsaved work.
+
+**Edit card** changes the shared name, nation, grade, type, and abilities in Card
+Library or Deck Builder. Printing metadata and artwork are edited separately in
+Card Library. Existing cards and printings do not need to be recreated.
+An unsaved draft from the older combined editor keeps its printing fields under
+**Recovered printing changes** for one final atomic save. New edits use the
+separate card and printing forms.
+
+Deck Builder, Order Tracker, and Hand Lab use the selected printing's artwork.
+A selected printing without artwork shows a placeholder, even if another printing
+has an image. Card-level catalog rows without a printing choice may use another
+available printing as their default preview. Hand Lab recovery and Undo retain
+printing identity through the deck entry; an artwork update does not reset play.
 
 ## Implementation
 
@@ -50,7 +65,10 @@ Card creation and printing updates accept `image_id`; `null` detaches artwork.
 The form also clears the legacy `image_url` on removal so old external artwork
 does not reappear. Existing external URLs continue to work until replaced.
 `PATCH /api/cards/<id>` accepts a nested `printing` object to update card details
-and the primary printing atomically.
+and the primary printing atomically for existing API clients. The shared card
+editors omit that object. Printing editors use
+`PATCH /api/cards/printings/<printing_id>` so an alternate edit cannot change the
+primary printing. Artwork removal clears both `image_id` and legacy `image_url`.
 
 Application startup creates the image table and adds the nullable printing
 reference/index through the existing schema upgrade helper. Existing card and
@@ -58,7 +76,7 @@ deck records are preserved. Artwork is included in normal SQLite backups.
 
 ## Checks
 
-Run `python -m pytest tests/test_card_images.py -q` and the frontend test, lint,
+Run `python -m pytest tests/test_card_images.py tests/test_printing_artwork.py -q` and the frontend test, lint,
 and build scripts. Coverage includes conversion, orientation, size limits,
 deduplication, draft cleanup, atomic saves, image responses, cache validation,
 lightweight catalog queries, and remote import validation.

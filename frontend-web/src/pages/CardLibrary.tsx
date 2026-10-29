@@ -24,6 +24,7 @@ import {
   getCardFormOptions,
   getCardLibraryPage,
   updateCard,
+  updateCardPrinting,
 } from "../api/cards";
 import { CardCreationTools } from "../components/cards/CardCreationTools";
 import { CardArtwork } from "../components/cards/CardArtwork";
@@ -36,6 +37,10 @@ import {
 } from "../components/cards/cardSetSelectionState";
 import {
   EMPTY_CARD_PRINTING_FORM,
+  hasPrintingDraftChanges,
+  printingToForm,
+  printingFormPayload,
+  withSavedPrinting,
   type CardPrintingFormState,
 } from "../components/cards/cardPrintingFormState";
 import { ManualCardForm } from "../components/deck-builder/ManualCardForm";
@@ -45,6 +50,7 @@ import {
   cardAnalysisToManualForm,
   cardToManualForm,
   manualCardFormIsComplete,
+  sharedCardFormIsComplete,
   type ManualCardFormState,
   withSavedCardSet,
 } from "../components/deck-builder/manualCardFormState";
@@ -141,6 +147,7 @@ export function CardLibrary() {
 
   const [cards, setCards] = useState<Card[]>([]);
   const [inspectedCard, setInspectedCard] = useState<Card | null>(null);
+  const [selectedPrintingId, setSelectedPrintingId] = useState<number | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [query, setQuery] = usePersistentState("cardfight.cards.query", "");
   const [catalog, setCatalog] = usePersistentState(
@@ -157,8 +164,10 @@ export function CardLibrary() {
     "cardfight.cards.editing",
     null,
   );
-  const [addingPrintingCard, setAddingPrintingCard] =
+  const [printingCard, setPrintingCard] =
     usePersistentState<Card | null>("cardfight.cards.printing-card", null);
+  const [editingPrintingId, setEditingPrintingId] =
+    usePersistentState<number | null>("cardfight.cards.edit-printing-id", null);
   const [editForm, setEditForm] = usePersistentState<ManualCardFormState>(
     "cardfight.cards.edit-draft",
     EMPTY_MANUAL_CARD_FORM,
@@ -263,9 +272,14 @@ export function CardLibrary() {
     return () => window.clearTimeout(timeout);
   }, [query, searchPending, setCatalog]);
 
+  const recoveredPrintingChanges = Boolean(
+    editingCard && hasPrintingDraftChanges(editingCard, editForm),
+  );
   const editFormIsComplete = useMemo(() => {
-    return manualCardFormIsComplete(editForm);
-  }, [editForm]);
+    return recoveredPrintingChanges
+      ? manualCardFormIsComplete(editForm)
+      : sharedCardFormIsComplete(editForm);
+  }, [editForm, recoveredPrintingChanges]);
 
   const createFormIsComplete = useMemo(() => {
     return manualCardFormIsComplete(createForm);
@@ -477,7 +491,8 @@ export function CardLibrary() {
   function startEditingCard(card: Card) {
     if (!canReplaceEditor(card.id, "edit")) return;
     if (editingCard?.id !== card.id) setEditForm(cardToManualForm(card));
-    setAddingPrintingCard(null);
+    setPrintingCard(null);
+    setEditingPrintingId(null);
     setPrintingForm(EMPTY_CARD_PRINTING_FORM);
     setEditingCard(card);
     setInspectedCard(null);
@@ -493,12 +508,22 @@ export function CardLibrary() {
   }
 
   function startAddingPrinting(card: Card) {
-    if (!canReplaceEditor(card.id, "printing")) return;
-    if (addingPrintingCard?.id !== card.id)
-      setPrintingForm(EMPTY_CARD_PRINTING_FORM);
+    startPrintingEditor(card);
+  }
+
+  function startPrintingEditor(card: Card, printing?: CardPrinting) {
+    const printingId = printing?.id ?? null;
+    if (!canReplaceEditor(card.id, "printing", printingId)) return;
+    if (printingCard?.id !== card.id || editingPrintingId !== printingId) {
+      setPrintingForm(
+        printing ? printingToForm(printing) : EMPTY_CARD_PRINTING_FORM,
+      );
+    }
+    setEditingPrintingId(printingId);
+    setSelectedPrintingId(printingId);
     setEditingCard(null);
     setEditForm(EMPTY_MANUAL_CARD_FORM);
-    setAddingPrintingCard(card);
+    setPrintingCard(card);
     setInspectedCard(null);
     setEditorOpen(true);
     setError(null);
@@ -506,23 +531,37 @@ export function CardLibrary() {
 
   function cancelAddingPrinting() {
     setEditorOpen(false);
-    setAddingPrintingCard(null);
+    setPrintingCard(null);
+    setEditingPrintingId(null);
     setPrintingForm(EMPTY_CARD_PRINTING_FORM);
     setError(null);
   }
 
-  function canReplaceEditor(cardId: number, mode: "edit" | "printing") {
+  function canReplaceEditor(
+    cardId: number,
+    mode: "edit" | "printing",
+    printingId: number | null = null,
+  ) {
     if (
       (mode === "edit" && editingCard?.id === cardId) ||
-      (mode === "printing" && addingPrintingCard?.id === cardId)
+      (mode === "printing" &&
+        printingCard?.id === cardId &&
+        editingPrintingId === printingId)
     )
       return true;
+    const initialPrinting = printingCard?.printings.find(
+      (item) => item.id === editingPrintingId,
+    );
     const dirty = editingCard
       ? JSON.stringify(editForm) !==
         JSON.stringify(cardToManualForm(editingCard))
-      : addingPrintingCard &&
+      : printingCard &&
         JSON.stringify(printingForm) !==
-          JSON.stringify(EMPTY_CARD_PRINTING_FORM);
+          JSON.stringify(
+            initialPrinting
+              ? printingToForm(initialPrinting)
+              : EMPTY_CARD_PRINTING_FORM,
+          );
     return !dirty || window.confirm("Discard the unfinished card edit?");
   }
 
@@ -534,32 +573,55 @@ export function CardLibrary() {
   }
 
   const inspectorCard =
-    inspectedCard ?? (editorOpen ? (editingCard ?? addingPrintingCard) : null);
+    inspectedCard ?? (editorOpen ? (editingCard ?? printingCard) : null);
+  const inspectorPrintingId =
+    editorOpen && recoveredPrintingChanges
+      ? editingCard?.primary_printing?.id
+      : editorOpen && printingCard
+        ? editingPrintingId
+        : selectedPrintingId;
+  const inspectorPrinting =
+    inspectorCard?.printings.find((printing) => printing.id === inspectorPrintingId) ??
+    inspectorCard?.primary_printing ??
+    null;
 
-  async function saveNewPrinting() {
-    if (!addingPrintingCard) return;
+  function inspectCard(card: Card, printing?: CardPrinting) {
+    setInspectedCard(card);
+    setSelectedPrintingId(printing?.id ?? card.primary_printing?.id ?? null);
+    setEditorOpen(false);
+    setError(null);
+  }
+
+  function selectPrinting(printing: CardPrinting) {
+    if (editorOpen && printingCard) startPrintingEditor(printingCard, printing);
+    else setSelectedPrintingId(printing.id);
+  }
+
+  async function savePrinting() {
+    if (!printingCard || savingPrinting) return;
 
     setSavingPrinting(true);
     setError(null);
 
     try {
-      const printing = await addCardPrinting(addingPrintingCard.id, {
-        set_code: printingForm.set_code,
-        set_name: printingForm.set_name,
-        card_number: printingForm.card_number,
-        rarity: printingForm.rarity,
-        ...artworkPayload(printingForm.artwork),
-      });
+      const payload = printingFormPayload(printingForm);
+      const printing =
+        editingPrintingId === null
+          ? await addCardPrinting(printingCard.id, payload)
+          : await updateCardPrinting(editingPrintingId, payload);
+      const savedCard = withSavedPrinting(printingCard, printing);
 
       rememberFormSet(printing.set_code, printing.set_name);
       await loadCards({ preserveScroll: true });
+      const wasEditing = editingPrintingId !== null;
       cancelAddingPrinting();
+      inspectCard(savedCard, printing);
       toast.success(
-        `Added ${printing.rarity ?? "another"} printing to ${addingPrintingCard.name}.`,
+        wasEditing ? "Printing saved." : `Added a printing to ${savedCard.name}.`,
       );
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to add card printing",
+        err instanceof Error ? err.message : "Failed to save card printing",
       );
     } finally {
       setSavingPrinting(false);
@@ -584,13 +646,9 @@ export function CardLibrary() {
         nation: cardNationToApiValue(editForm.nation),
         card_type: editForm.card_type,
         skill_text: editForm.skill_text,
-        printing: {
-          set_code: editForm.set_code,
-          set_name: editForm.set_name,
-          card_number: editForm.card_number,
-          rarity: editForm.rarity,
-          ...artworkPayload(editForm.artwork),
-        },
+        ...(recoveredPrintingChanges
+          ? { printing: printingFormPayload(editForm) }
+          : {}),
       });
 
       rememberFormSet(
@@ -648,7 +706,7 @@ export function CardLibrary() {
           description={`${resultSummary}${activeFilterCount ? ` · ${activeFilterCount} active filter${activeFilterCount === 1 ? "" : "s"}` : ""}`}
           actions={
             <div className="flex gap-2">
-              {(editingCard || addingPrintingCard) && (
+              {(editingCard || printingCard) && (
                 <button
                   type="button"
                   className="workspace-button"
@@ -877,7 +935,7 @@ export function CardLibrary() {
                                 type="button"
                                 className="catalog-card-title"
                                 aria-haspopup="dialog"
-                                onClick={() => setInspectedCard(card)}
+                                onClick={() => inspectCard(card)}
                               >
                                 <span>{card.name}</span>
                                 <ChevronDown
@@ -896,13 +954,16 @@ export function CardLibrary() {
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             {card.printings.length ? (
                               card.printings.map((printing) => (
-                                <span
+                                <button
+                                  type="button"
                                   key={printing.id}
-                                  className="max-w-full break-words rounded-lg border border-white/10 bg-black/20 px-2 py-1 text-[0.65rem] font-bold text-slate-500"
+                                  onClick={() => inspectCard(card, printing)}
+                                  aria-label={`View ${card.name}, ${printingLabel(printing) || `printing ${printing.id}`}`}
+                                  className="max-w-full break-words rounded-lg border border-white/10 bg-black/20 px-2 py-1 text-[0.65rem] font-bold text-slate-400 transition hover:border-white/25 hover:text-slate-100"
                                 >
                                   {printingLabel(printing) ||
                                     `Printing ${printing.id}`}
-                                </span>
+                                </button>
                               ))
                             ) : (
                               <span className="text-xs text-slate-600">
@@ -932,7 +993,7 @@ export function CardLibrary() {
                             title="Edit this card record"
                           >
                             <Pencil className="h-3.5 w-3.5" />
-                            Edit
+                            Edit card
                           </button>
                         </div>
                       </div>
@@ -995,8 +1056,19 @@ export function CardLibrary() {
         <CardInspector
           key={inspectorCard.id}
           card={inspectorCard}
+          printing={inspectorPrinting}
           onClose={closeInspector}
-          editingPrimary={editorOpen && Boolean(editingCard)}
+          onPrintingChange={selectPrinting}
+          printingSelectionDisabled={
+            savingEdit ||
+            savingPrinting ||
+            (editorOpen && (!printingCard || editingPrintingId === null))
+          }
+          onEditPrinting={
+            !editorOpen
+              ? (printing) => startPrintingEditor(inspectorCard, printing)
+              : undefined
+          }
           footer={
             !editorOpen ? (
               <>
@@ -1012,7 +1084,7 @@ export function CardLibrary() {
                   className="workspace-button"
                   onClick={() => startEditingCard(inspectorCard)}
                 >
-                  <Pencil size={16} /> Edit
+                  <Pencil size={16} /> Edit card
                 </button>
               </>
             ) : undefined
@@ -1027,28 +1099,37 @@ export function CardLibrary() {
             </p>
           )}
           {editorOpen && editingCard && (
-            <ManualCardForm
-              key={editingCard.id}
-              value={editForm}
-              mode="edit"
-              onChange={setEditForm}
-              onSubmit={saveEditingCard}
-              onCancelEdit={cancelEditingCard}
-              disabled={savingEdit}
-              canSubmit={editFormIsComplete}
-              options={cardFormOptions}
-              onSetSaved={handleSetSaved}
-            />
+            <>
+              {recoveredPrintingChanges && (
+                <p className="mb-3 text-xs text-amber-200" role="status">
+                  Recovered printing changes
+                </p>
+              )}
+              <ManualCardForm
+                key={editingCard.id}
+                value={editForm}
+                mode="edit"
+                includePrinting={recoveredPrintingChanges}
+                onChange={setEditForm}
+                onSubmit={saveEditingCard}
+                onCancelEdit={cancelEditingCard}
+                disabled={savingEdit}
+                canSubmit={editFormIsComplete}
+                options={cardFormOptions}
+                onSetSaved={handleSetSaved}
+              />
+            </>
           )}
-          {editorOpen && addingPrintingCard && (
+          {editorOpen && printingCard && (
             <CardPrintingForm
-              key={addingPrintingCard.id}
-              cardType={addingPrintingCard.card_type}
+              key={`${printingCard.id}:${editingPrintingId ?? "new"}`}
+              mode={editingPrintingId === null ? "create" : "edit"}
+              cardType={printingCard.card_type}
               value={printingForm}
               options={cardFormOptions}
               disabled={savingPrinting}
               onChange={setPrintingForm}
-              onSubmit={saveNewPrinting}
+              onSubmit={savePrinting}
               onCancel={cancelAddingPrinting}
               onSetSaved={handleSetSaved}
             />

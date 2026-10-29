@@ -5,6 +5,7 @@ import { nationColor } from "../../utils/nations";
 import { cardGradeLabel, isCrestCard } from "../../utils/cards";
 import { apiAssetUrl } from "../../api/client";
 import { ArtworkDialog } from "./ArtworkDialog";
+import { resolveCardArtwork } from "./cardArtworkState";
 
 export function CardArtwork({
   card,
@@ -15,14 +16,17 @@ export function CardArtwork({
   printing?: CardPrinting | null;
   detail?: boolean;
 }) {
-  const artwork = [printing, card.primary_printing, ...card.printings].find(
-    (candidate) => candidate?.image_url,
-  );
+  const artwork = resolveCardArtwork(card, printing);
   const source = detail
     ? artwork?.image_url
     : artwork?.thumbnail_url || artwork?.image_url;
   const [failedSource, setFailedSource] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const unavailableLabel = source
+    ? "Artwork unavailable"
+    : printing
+      ? "No artwork for this printing"
+      : "No artwork saved";
   const image =
     source && source !== failedSource ? (
       <img
@@ -37,6 +41,9 @@ export function CardArtwork({
     <div
       className={`catalog-artwork${isCrestCard(card) ? " crest-artwork" : ""}`}
       style={{ "--nation-color": nationColor(card.nation) } as CSSProperties}
+      role={image ? undefined : "img"}
+      aria-label={image ? undefined : `${card.name}: ${unavailableLabel}`}
+      title={image ? undefined : unavailableLabel}
     >
       {image ? (
         detail ? (
@@ -61,7 +68,7 @@ export function CardArtwork({
           <span>{cardGradeLabel(card)}</span>
         </>
       )}
-      {expanded && source && (
+      {expanded && image && source && (
         <ArtworkDialog
           source={source}
           name={card.name}
