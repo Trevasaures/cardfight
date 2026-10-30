@@ -15,6 +15,7 @@ from backend.services.acquisition import (
     restore_acquisition_plan,
     split_acquisition_item,
     update_acquisition_item,
+    update_acquisition_removal,
     update_acquisition_plan,
 )
 from backend.services.serializers import (
@@ -126,6 +127,12 @@ def receive_acquisition_item_route(item_id):
     )
 
     return jsonify(serialize_acquisition_item(item))
+
+
+@bp_acquisition.post("/items/<int:item_id>/removal")
+def update_acquisition_removal_route(item_id):
+    plan = update_acquisition_removal(item_id, json_object())
+    return jsonify(serialize_acquisition_plan(plan))
 
 
 @bp_acquisition.delete("/items/<int:item_id>")

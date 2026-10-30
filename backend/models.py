@@ -501,6 +501,8 @@ class AcquisitionPlanItem(db.Model):
     required_quantity = db.Column(db.Integer, default=1, nullable=False)
     source_quantity = db.Column(db.Integer, default=0, nullable=False)
     removed_quantity = db.Column(db.Integer, default=0, nullable=False)
+    confirmed_removed_quantity = db.Column(db.Integer, default=0, nullable=False)
+    removal_confirmed_at = db.Column(db.DateTime, nullable=True)
     owned_quantity = db.Column(db.Integer, default=0, nullable=False)
     ordered_quantity = db.Column(db.Integer, default=0, nullable=False)
     unit_price_cents = db.Column(db.Integer, default=0, nullable=False)
@@ -530,6 +532,10 @@ class AcquisitionPlanItem(db.Model):
         db.CheckConstraint(
             "removed_quantity >= 0",
             name="ck_acquisition_item_removed_nonnegative",
+        ),
+        db.CheckConstraint(
+            "confirmed_removed_quantity >= 0",
+            name="ck_acquisition_item_confirmed_removed_nonnegative",
         ),
         db.CheckConstraint(
             "owned_quantity >= 0",

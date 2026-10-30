@@ -182,9 +182,9 @@ export function PurchasePlanWorkspace({
               : "No target copies"}
           </span>
           <span>
-            {summary.line_count} card lines
+            {summary.active_line_count ?? summary.line_count} target lines
             {summary.removed_quantity > 0
-              ? ` · ${summary.removed_quantity} outgoing`
+              ? ` · ${summary.pending_removed_quantity ?? summary.removed_quantity} pending removal · ${summary.confirmed_removed_quantity ?? 0} removed`
               : ""}
             {summary.overage_quantity > 0
               ? ` · ${summary.overage_quantity} extra`

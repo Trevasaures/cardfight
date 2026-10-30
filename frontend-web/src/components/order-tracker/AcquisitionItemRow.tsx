@@ -4,6 +4,7 @@ import {
   Pencil,
   AlertTriangle,
   ArrowRightLeft,
+  Check,
   PackageCheck,
   PackagePlus,
   Layers,
@@ -39,6 +40,8 @@ type AcquisitionItemRowProps = {
   item: AcquisitionPlanItem;
   planItems: AcquisitionPlanItem[];
   grouped?: boolean;
+  defaultExpanded?: boolean;
+  showSelection?: boolean;
   busy: boolean;
   draft?: PurchaseItemDraft;
   selected: boolean;
@@ -46,6 +49,10 @@ type AcquisitionItemRowProps = {
   onDraftChange: (itemId: number, draft: PurchaseItemDraft | null) => void;
   onInspect: (item: AcquisitionPlanItem) => void;
   onPrintingAction: (item: AcquisitionPlanItem, mode: "split" | "add") => void;
+  onRemovalAction: (
+    item: AcquisitionPlanItem,
+    action: "confirm" | "undo_confirmation" | "restore_target",
+  ) => void;
   readOnly?: boolean;
   onSave: (
     itemId: number,
@@ -73,6 +80,8 @@ export function AcquisitionItemRow({
   item,
   planItems,
   grouped = false,
+  defaultExpanded = false,
+  showSelection = true,
   busy,
   draft: savedDraft,
   selected,
@@ -80,12 +89,13 @@ export function AcquisitionItemRow({
   onDraftChange,
   onInspect,
   onPrintingAction,
+  onRemovalAction,
   readOnly = false,
   onSave,
   onReceive,
   onRemove,
 }: AcquisitionItemRowProps) {
-  const [expanded, setExpanded] = useState(Boolean(savedDraft));
+  const [expanded, setExpanded] = useState(Boolean(savedDraft) || defaultExpanded);
   const [receiving, setReceiving] = useState(false);
   const [receiveQuantity, setReceiveQuantity] = useState("1");
   const [receiveError, setReceiveError] = useState("");
@@ -152,6 +162,11 @@ export function AcquisitionItemRow({
   );
   const comesFromCurrentDeck = item.source_quantity > 0;
   const isOutgoing = item.target_quantity === 0 && item.removed_quantity > 0;
+  const confirmedRemoved = item.confirmed_removed_quantity ?? 0;
+  const pendingRemoved =
+    item.pending_removed_quantity ??
+    Math.max(item.removed_quantity - confirmedRemoved, 0);
+  const removalComplete = item.removed_quantity > 0 && pendingRemoved === 0;
   const hasChanges = isItemDraftDirty(item, draft);
   const draftValid =
     isItemDraftValid(draft, 0) &&
@@ -164,7 +179,7 @@ export function AcquisitionItemRow({
   return (
     <article aria-label={lineLabel} className="orders-row">
       <div className="orders-row-summary">
-        {!readOnly && (
+        {!readOnly && showSelection && (
           <input
             type="checkbox"
             className="orders-select-box"
@@ -206,25 +221,48 @@ export function AcquisitionItemRow({
               {item.target_quantity === 0 && !isOutgoing
                 ? "Not in target"
                 : isOutgoing
-                  ? `${item.removed_quantity} outgoing`
+                  ? removalComplete
+                    ? `${item.removed_quantity} removed`
+                    : `${item.removed_quantity} outgoing`
                   : STATUS_LABELS[item.status]}
             </span>
             {item.removed_quantity > 0 && !isOutgoing && (
-              <span className="ml-2 text-[10px] text-rose-200">
-                {item.removed_quantity} outgoing
+              <span
+                className={`ml-2 text-[10px] ${removalComplete ? "text-slate-400" : "text-rose-200"}`}
+                aria-label={`${item.source_quantity} in current deck, ${item.target_quantity} in next build; ${item.removed_quantity} outgoing, ${confirmedRemoved} confirmed removed`}
+              >
+                {item.source_quantity} → {item.target_quantity} ·{" "}
+                {item.removed_quantity} {removalComplete ? "removed" : "outgoing"}
+              </span>
+            )}
+            {confirmedRemoved > 0 && pendingRemoved > 0 && (
+              <span className="ml-2 text-[10px] text-slate-400">
+                {confirmedRemoved} removed · {pendingRemoved} pending
               </span>
             )}
           </div>
         </div>
         <div
           className="orders-row-stat"
-          title={`${item.owned_quantity} on hand; ${item.target_quantity} in the next deck`}
+          title={
+            isOutgoing
+              ? `${item.source_quantity} in the current deck; ${item.target_quantity} in the next build`
+              : `${item.owned_quantity} on hand; ${item.target_quantity} in the next deck`
+          }
         >
           <strong>
-            {item.owned_quantity}/{item.target_quantity}
+            {isOutgoing
+              ? `${item.source_quantity} → ${item.target_quantity}`
+              : `${item.owned_quantity}/${item.target_quantity}`}
           </strong>
-          On hand / target
+          {isOutgoing ? "Current / next" : "On hand / target"}
         </div>
+        {isOutgoing && (
+          <div className="orders-row-stat">
+            <strong>{item.owned_quantity}</strong>
+            On hand
+          </div>
+        )}
         <div className="orders-row-stat">
           <strong className={item.ordered_quantity ? "!text-violet-200" : ""}>
             {item.ordered_quantity}
@@ -323,8 +361,11 @@ export function AcquisitionItemRow({
                 </strong>
               </span>
               {item.removed_quantity > 0 ? (
-                <span className="text-rose-200">
-                  · {item.removed_quantity} leaving the deck
+                <span
+                  className={removalComplete ? "text-slate-400" : "text-rose-200"}
+                >
+                  · {item.removed_quantity}{" "}
+                  {removalComplete ? "removed" : "outgoing"}
                 </span>
               ) : (
                 <span className="text-emerald-200/80">
@@ -497,26 +538,62 @@ export function AcquisitionItemRow({
             <div className="flex flex-wrap gap-1.5">
               {comesFromCurrentDeck ? (
                 item.removed_quantity > 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => setNextVersionQuantity(item.source_quantity)}
-                    disabled={actionDisabled}
-                    title={actionHint}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-2.5 py-2 text-xs font-bold text-slate-300 transition hover:bg-white/[0.08] disabled:opacity-50"
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                    Keep current copies
-                  </button>
+                  <>
+                    {pendingRemoved > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => onRemovalAction(item, "confirm")}
+                        disabled={actionDisabled}
+                        title={
+                          actionHint ??
+                          `Confirm ${pendingRemoved} outgoing copies have left the working deck.`
+                        }
+                        aria-label={`Mark removed from ${lineLabel}`}
+                        className="collection-button"
+                      >
+                        <Check /> Mark removed
+                      </button>
+                    )}
+                    {confirmedRemoved > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => onRemovalAction(item, "undo_confirmation")}
+                        disabled={actionDisabled}
+                        title={
+                          actionHint ??
+                          "Reopen this removal without changing the target."
+                        }
+                        aria-label={`Undo removal confirmation for ${lineLabel}`}
+                        className="collection-button subtle"
+                      >
+                        <RotateCcw /> Undo confirmation
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onRemovalAction(item, "restore_target")}
+                      disabled={actionDisabled}
+                      title={
+                        actionHint ??
+                        `Restore the next-build target to ${item.source_quantity}.`
+                      }
+                      aria-label={`Restore ${lineLabel} to build`}
+                      className="collection-button subtle"
+                    >
+                      <ArrowRightLeft /> Restore to build
+                    </button>
+                  </>
                 ) : (
                   <button
                     type="button"
                     onClick={() => setNextVersionQuantity(0)}
                     disabled={actionDisabled}
                     title={actionHint}
+                    aria-label={`Cut ${lineLabel} from build`}
                     className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-2.5 py-2 text-xs font-bold text-slate-400 transition hover:border-rose-300/25 hover:bg-rose-300/5 hover:text-rose-200 disabled:opacity-50"
                   >
                     <ArrowRightLeft className="h-4 w-4" />
-                    Replace
+                    Cut from build
                   </button>
                 )
               ) : (
@@ -525,10 +602,11 @@ export function AcquisitionItemRow({
                   onClick={() => onRemove(item)}
                   disabled={actionDisabled}
                   title={actionHint}
+                  aria-label={`Delete tracking line for ${lineLabel}`}
                   className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-2.5 py-2 text-xs font-bold text-slate-400 transition hover:border-rose-300/25 hover:bg-rose-300/5 hover:text-rose-200 disabled:opacity-50"
                 >
                   <Trash2 className="h-4 w-4" />
-                  Remove
+                  Delete tracking line
                 </button>
               )}
 

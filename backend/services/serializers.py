@@ -365,6 +365,9 @@ def _acquisition_item_quantities(item):
         0,
     )
     purchase_quantity = max(target_quantity - available_quantity, 0)
+    confirmed_removed_quantity = min(
+        item.confirmed_removed_quantity or 0, item.removed_quantity
+    )
 
     return {
         "target_quantity": target_quantity,
@@ -373,6 +376,8 @@ def _acquisition_item_quantities(item):
         "missing_quantity": missing_quantity,
         "overage_quantity": overage_quantity,
         "purchase_quantity": purchase_quantity,
+        "confirmed_removed_quantity": confirmed_removed_quantity,
+        "pending_removed_quantity": item.removed_quantity - confirmed_removed_quantity,
         "estimated_cost_cents": purchase_quantity * item.unit_price_cents,
         "remaining_cost_cents": missing_quantity * item.unit_price_cents,
         "ordered_value_cents": item.ordered_quantity * item.unit_price_cents,
@@ -402,6 +407,9 @@ def serialize_acquisition_item(item, *, cards_by_id=None):
         "required_quantity": item.required_quantity,
         "source_quantity": item.source_quantity,
         "removed_quantity": item.removed_quantity,
+        "removal_confirmed_at": (
+            item.removal_confirmed_at.isoformat() if item.removal_confirmed_at else None
+        ),
         "owned_quantity": item.owned_quantity,
         "ordered_quantity": item.ordered_quantity,
         **quantities,
@@ -441,6 +449,11 @@ def serialize_acquisition_plan(plan, include_items=True):
     )
     summary = {
         "line_count": len(items),
+        "active_line_count": sum(row["target_quantity"] > 0 for row in quantity_rows),
+        "outgoing_line_count": sum(
+            row["target_quantity"] == 0 and item.removed_quantity > 0
+            for item, row in zip(items, quantity_rows)
+        ),
         "required_quantity": sum(row["target_quantity"] for row in quantity_rows),
         "source_quantity": sum(item.source_quantity for item in items),
         "removed_quantity": sum(item.removed_quantity for item in items),
@@ -456,6 +469,8 @@ def serialize_acquisition_plan(plan, include_items=True):
         "estimated_cost_cents",
         "remaining_cost_cents",
         "ordered_value_cents",
+        "confirmed_removed_quantity",
+        "pending_removed_quantity",
     ):
         summary[field] = sum(row[field] for row in quantity_rows)
 

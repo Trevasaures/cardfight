@@ -26,8 +26,9 @@ export function PurchaseSelectionBar({
   const visibleIds = visibleItems
     .filter(
       (item) =>
-        !drafts[String(item.id)] ||
-        !isItemDraftDirty(item, drafts[String(item.id)]),
+        item.target_quantity > 0 &&
+        (!drafts[String(item.id)] ||
+          !isItemDraftDirty(item, drafts[String(item.id)])),
     )
     .map((item) => item.id);
   const incoming = selectedItems.reduce(
@@ -44,7 +45,7 @@ export function PurchaseSelectionBar({
       <label className="orders-select-visible">
         <input
           type="checkbox"
-          aria-label="Select visible cards"
+          aria-label="Select visible next-build cards"
           className="orders-select-box"
           checked={
             visibleIds.length > 0 && visibleIds.every((id) => ids.includes(id))
