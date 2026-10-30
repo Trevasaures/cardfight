@@ -2,6 +2,7 @@ import { Plus, Search, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { CardArtwork } from "../cards/CardArtwork";
 import { cardGradeBadge } from "../../utils/cards";
+import { printingLabel } from "./order-printings";
 import type { Card, CardPrinting } from "../../types/api";
 
 type Props = {
@@ -89,15 +90,12 @@ export function PurchaseCatalog({
                     <button
                       type="button"
                       className="orders-catalog-inspect min-w-0 flex-1 text-left"
+                      aria-label={`Inspect ${card.name} · ${printingLabel(printing)}`}
                       onClick={() => onInspect(card, printing)}
                     >
                       <span className="builder-card-name">{card.name}</span>
                       <span className="builder-card-meta">
-                        {printing
-                          ? [printing.set_code, printing.rarity]
-                              .filter(Boolean)
-                              .join(" · ")
-                          : "Any printing"}
+                        {printingLabel(printing)}
                       </span>
                     </button>
                     <button
@@ -105,7 +103,8 @@ export function PurchaseCatalog({
                       disabled={busyLine !== null || disabled}
                       onClick={() => onAdd(card, printing)}
                       className="collection-button subtle"
-                      aria-label={`Add ${card.name} to purchase plan`}
+                      aria-label={`Add ${card.name} · ${printingLabel(printing)} to purchase plan`}
+                      title={`Add one ${printingLabel(printing)} copy`}
                     >
                       <Plus size={14} className="shrink-0 text-cyan-200" />
                     </button>

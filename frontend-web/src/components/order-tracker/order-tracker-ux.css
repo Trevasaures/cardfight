@@ -67,6 +67,131 @@
   font-size: 12px;
 }
 
+.orders-printing-group {
+  border-top: 1px solid var(--border);
+}
+.orders-printing-group-heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px;
+  background: rgb(233 199 137 / 0.035);
+  font-size: 12px;
+}
+.orders-printing-group-heading span {
+  font-size: 10px;
+  color: var(--muted);
+}
+.orders-printing-group .orders-row {
+  border-top-color: rgb(255 255 255 / 0.045);
+}
+.orders-printing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.orders-row-price {
+  min-width: 80px;
+}
+.orders-unit-price {
+  display: block;
+  margin-top: 4px;
+  color: #e9c789;
+  font-size: 10px;
+}
+.orders-printing-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.orders-printing-card-name {
+  margin: 0 0 16px;
+  font-weight: 700;
+}
+.orders-printing-form {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+}
+.orders-printing-form .collection-muted {
+  margin: 0;
+  font-size: 12px;
+}
+.orders-printing-preview {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.orders-printing-preview strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.orders-printing-preview .collection-artwork {
+  width: 55px;
+  flex: 0 0 55px;
+}
+.orders-printing-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.orders-printing-inputs > label {
+  min-width: 0;
+}
+.orders-printing-targets {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.03);
+  font-size: 12px;
+}
+.orders-printing-targets > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.orders-printing-targets strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  color: #e9c789;
+}
+.orders-inventory-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.orders-inventory-choice input {
+  flex-shrink: 0;
+  margin-top: 3px;
+  accent-color: #e9c789;
+}
+.orders-printing-total {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid rgb(255 255 255 / 0.1);
+  font-size: 12px;
+}
+.orders-printing-total strong {
+  margin-left: 6px;
+  color: #e9c789;
+}
+
 @media (max-width: 760px) {
   .orders-row-card {
     flex-basis: calc(100% - 30px);

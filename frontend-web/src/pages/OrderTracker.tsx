@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Archive, PackageOpen, Plus } from "lucide-react";
 
 import {
-  addAcquisitionItem,
+  addAcquisitionPrinting,
   batchAcquisitionItems,
   type AcquisitionBatchAction,
   archiveAcquisitionPlan,
@@ -15,6 +15,7 @@ import {
   removeAcquisitionItem,
   updateAcquisitionItem,
   updateAcquisitionPlan,
+  splitAcquisitionItem,
 } from "../api/acquisition";
 import { searchCards } from "../api/cards";
 import { getDeckOptions, getDecks } from "../api/decks";
@@ -26,6 +27,11 @@ import {
 } from "../components/order-tracker/PurchasePlanRail";
 import { PurchaseSelectionBar } from "../components/order-tracker/PurchaseSelectionBar";
 import { PurchaseCatalog } from "../components/order-tracker/PurchaseCatalog";
+import {
+  PrintingAllocationDialog,
+  type PrintingAllocation,
+} from "../components/order-tracker/PrintingAllocationDialog";
+import type { PrintingActionMode } from "../components/order-tracker/printing-allocation";
 import "../components/collection-workspace.css";
 import "../components/order-tracker/order-tracker-ux.css";
 import { ModalDialog } from "../components/layout/ModalDialog";
@@ -81,6 +87,7 @@ function matchesItemFilter(item: AcquisitionPlanItem, filter: ItemFilter) {
     (filter === "needed" && item.missing_quantity > 0) ||
     (filter === "incoming" && item.ordered_quantity > 0) ||
     (filter === "owned" &&
+      item.target_quantity > 0 &&
       item.available_quantity >= item.target_quantity &&
       item.removed_quantity === 0)
   );
@@ -102,6 +109,10 @@ export function OrderTracker() {
   const initialScopeRef = useRef(scope);
   const planRequestRef = useRef(0);
   const [showCatalog, setShowCatalog] = useState(false);
+  const [printingAction, setPrintingAction] = useState<{
+    item: AcquisitionPlanItem;
+    mode: PrintingActionMode;
+  } | null>(null);
   const [inspected, setInspected] = useState<{
     card: Card;
     printing: CardPrinting | null;
@@ -432,15 +443,32 @@ export function OrderTracker() {
   async function handleAddCard(card: Card, printing: CardPrinting | null) {
     if (!selectedPlan) return;
 
+    const destination = selectedPlan.items.find(
+      (item) =>
+        item.card_id === card.id &&
+        item.printing_id === (printing?.id ?? null),
+    );
+    if (
+      destination &&
+      itemDrafts[String(destination.id)] &&
+      isItemDraftDirty(destination, itemDrafts[String(destination.id)])
+    ) {
+      showError("Save or discard edits on this printing before adding copies.");
+      return;
+    }
+
     const lineKey = `${card.id}-${printing?.id ?? "any"}`;
     setBusyCatalogLine(lineKey);
     try {
-      await addAcquisitionItem(selectedPlan.id, {
+      const updated = await addAcquisitionPrinting(selectedPlan.id, {
         card_id: card.id,
         printing_id: printing?.id ?? null,
         required_quantity: 1,
       });
-      await refreshSelectedPlan();
+      setSelectedPlan(updated);
+      setPlans((current) =>
+        current.map((plan) => (plan.id === updated.id ? updated : plan)),
+      );
       toast.success(
         `Added ${card.name}${printing?.rarity ? ` (${printing.rarity})` : ""}.`,
       );
@@ -465,6 +493,69 @@ export function OrderTracker() {
       showError(
         error instanceof Error ? error.message : "Failed to update card",
       );
+    } finally {
+      setBusyItemId(null);
+    }
+  }
+
+  async function handlePrintingAllocation(allocation: PrintingAllocation) {
+    if (!selectedPlan || !printingAction) return "Select a purchase plan first.";
+    const { item, mode } = printingAction;
+    const destination = selectedPlan.items.find(
+      (row) =>
+        row.card_id === item.card_id &&
+        row.printing_id === allocation.printing.id,
+    );
+    // A split updates two saved lines together. Never overwrite a destination draft.
+    if (
+      destination &&
+      itemDrafts[String(destination.id)] &&
+      isItemDraftDirty(destination, itemDrafts[String(destination.id)])
+    ) {
+      return "Save or discard edits on the destination printing first.";
+    }
+    setBusyItemId(item.id);
+    try {
+      const newLineDetails = destination
+        ? {}
+        : {
+            unit_price_cents: allocation.unitPriceCents,
+            notes: allocation.notes,
+          };
+      let updated: AcquisitionPlan;
+      if (mode === "split") {
+        updated = await splitAcquisitionItem(item.id, {
+          printing_id: allocation.printing.id,
+          quantity: allocation.quantity,
+          inventory_policy: "keep_original",
+          ...newLineDetails,
+        });
+      } else {
+        updated = await addAcquisitionPrinting(selectedPlan.id, {
+          card_id: item.card_id,
+          printing_id: allocation.printing.id,
+          required_quantity: allocation.quantity,
+          ...newLineDetails,
+        });
+      }
+      setSelectedPlan(updated);
+      setPlans((current) =>
+        current.map((plan) => (plan.id === updated.id ? updated : plan)),
+      );
+      setSelection(null);
+      // Show both rarity lines even when the previous filter hid ready copies.
+      setItemFilter("all");
+      setItemSearch("");
+      toast.success(
+        mode === "split"
+          ? "Target split between printings."
+          : "Printing added to the plan.",
+      );
+      return null;
+    } catch (error) {
+      return error instanceof Error
+        ? error.message
+        : "Failed to update printings";
     } finally {
       setBusyItemId(null);
     }
@@ -566,6 +657,7 @@ export function OrderTracker() {
         !needle ||
         item.card.name.toLowerCase().includes(needle) ||
         (item.printing?.set_code ?? "").toLowerCase().includes(needle) ||
+        (item.printing?.card_number ?? "").toLowerCase().includes(needle) ||
         (item.printing?.rarity ?? "").toLowerCase().includes(needle);
 
       const matchesFilter =
@@ -860,6 +952,10 @@ export function OrderTracker() {
                         key={key}
                         label={group.label}
                         items={group.items}
+                        planItems={selectedPlan.items}
+                        onPrintingAction={(item, mode) =>
+                          setPrintingAction({ item, mode })
+                        }
                         busyItemId={busyItemId}
                         drafts={itemDrafts}
                         selectedIds={selectedIds}
@@ -994,6 +1090,22 @@ export function OrderTracker() {
             </button>
           </div>
         </ModalDialog>
+      )}
+      {printingAction && selectedPlan && (
+        <PrintingAllocationDialog
+          item={printingAction.item}
+          mode={printingAction.mode}
+          planItems={selectedPlan.items}
+          dirtyItemIds={selectedPlan.items
+            .filter(
+              (item) =>
+                itemDrafts[String(item.id)] &&
+                isItemDraftDirty(item, itemDrafts[String(item.id)]),
+            )
+            .map((item) => item.id)}
+          onClose={() => setPrintingAction(null)}
+          onSave={handlePrintingAllocation}
+        />
       )}
       {inspected && (
         <CardInspector

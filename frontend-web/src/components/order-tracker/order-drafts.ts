@@ -14,6 +14,8 @@ export type PurchaseItemDraft = {
   incoming: string;
   price: string;
   printing: string;
+  // Optional so drafts saved before per-printing notes never erase saved notes.
+  notes?: string;
 };
 
 export type PurchasePlanDraft = Pick<
@@ -52,6 +54,7 @@ export function createItemDraft(item: AcquisitionPlanItem): PurchaseItemDraft {
       ? (item.unit_price_cents / 100).toFixed(2)
       : "",
     printing: item.printing_id ? String(item.printing_id) : "",
+    notes: item.notes ?? "",
   };
 }
 
@@ -73,6 +76,7 @@ export function itemDraftPayload(
     ordered_quantity: Number(draft.incoming),
     unit_price_cents: Math.round(Number(draft.price || 0) * 100),
     printing_id: draft.printing ? Number(draft.printing) : null,
+    ...(draft.notes !== undefined ? { notes: draft.notes } : {}),
   };
 }
 
@@ -89,7 +93,8 @@ export function isItemDraftDirty(
     payload.owned_quantity !== item.owned_quantity ||
     payload.ordered_quantity !== item.ordered_quantity ||
     payload.unit_price_cents !== item.unit_price_cents ||
-    payload.printing_id !== item.printing_id
+    payload.printing_id !== item.printing_id ||
+    (payload.notes !== undefined && payload.notes !== (item.notes ?? ""))
   );
 }
 

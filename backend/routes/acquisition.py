@@ -13,6 +13,7 @@ from backend.services.acquisition import (
     receive_acquisition_item,
     remove_acquisition_item,
     restore_acquisition_plan,
+    split_acquisition_item,
     update_acquisition_item,
     update_acquisition_plan,
 )
@@ -20,7 +21,6 @@ from backend.services.serializers import (
     serialize_acquisition_item,
     serialize_acquisition_plan,
 )
-
 
 bp_acquisition = Blueprint(
     "acquisition",
@@ -100,9 +100,21 @@ def update_acquisition_item_route(item_id):
     return jsonify(serialize_acquisition_item(item))
 
 
+@bp_acquisition.post("/<int:plan_id>/printings")
+def add_acquisition_printing_route(plan_id):
+    item = add_acquisition_item(plan_id, json_object())
+    return jsonify(serialize_acquisition_plan(item.plan)), 201
+
+
 @bp_acquisition.post("/<int:plan_id>/items/batch")
 def batch_acquisition_items_route(plan_id):
     plan = batch_acquisition_items(plan_id, json_object())
+    return jsonify(serialize_acquisition_plan(plan))
+
+
+@bp_acquisition.post("/items/<int:item_id>/split")
+def split_acquisition_item_route(item_id):
+    plan = split_acquisition_item(item_id, json_object())
     return jsonify(serialize_acquisition_plan(plan))
 
 

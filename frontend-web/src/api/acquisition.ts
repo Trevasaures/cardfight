@@ -6,6 +6,7 @@ import type {
   CreateAcquisitionPlanPayload,
   UpdateAcquisitionItemPayload,
   UpdateAcquisitionPlanPayload,
+  SplitAcquisitionItemPayload,
 } from "../types/api";
 
 export function getAcquisitionPlans() {
@@ -58,19 +59,6 @@ export function deleteAcquisitionPlan(planId: number) {
   );
 }
 
-export function addAcquisitionItem(
-  planId: number,
-  payload: AddAcquisitionItemPayload,
-) {
-  return apiRequest<AcquisitionPlanItem>(
-    `/api/acquisition-plans/${planId}/items`,
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-    },
-  );
-}
-
 export function updateAcquisitionItem(
   itemId: number,
   payload: UpdateAcquisitionItemPayload,
@@ -84,12 +72,36 @@ export function updateAcquisitionItem(
   );
 }
 
+/** Return the committed plan without a second refresh request. */
+export function addAcquisitionPrinting(
+  planId: number,
+  payload: AddAcquisitionItemPayload,
+) {
+  return apiRequest<AcquisitionPlan>(`/api/acquisition-plans/${planId}/printings`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function receiveAcquisitionItem(itemId: number, quantity: number) {
   return apiRequest<AcquisitionPlanItem>(
     `/api/acquisition-plans/items/${itemId}/receive`,
     {
       method: "POST",
       body: JSON.stringify({ quantity }),
+    },
+  );
+}
+
+export function splitAcquisitionItem(
+  itemId: number,
+  payload: SplitAcquisitionItemPayload,
+) {
+  return apiRequest<AcquisitionPlan>(
+    `/api/acquisition-plans/items/${itemId}/split`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
     },
   );
 }

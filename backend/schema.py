@@ -85,8 +85,84 @@ def _upgrade_deck_card_crest_zone():
             raise
 
 
+def _upgrade_acquisition_zero_targets():
+    """Retain original printing rows after all requested copies move elsewhere.
+
+    SQLite cannot alter a CHECK in place. Rebuild the table transactionally,
+    copying every existing column, row ID, index, and trigger unchanged.
+    """
+    if db.engine.dialect.name != "sqlite":
+        return
+    with db.engine.connect() as connection:
+        ddl = connection.execute(
+            text(
+                "SELECT sql FROM sqlite_master "
+                "WHERE type='table' AND name='acquisition_plan_item'"
+            )
+        ).scalar()
+        if not ddl:
+            return
+        positive_rule = re.search(
+            r'(?P<column>"required_quantity"|`required_quantity`|\[required_quantity\]|required_quantity)\s*>\s*0\b',
+            ddl,
+            re.IGNORECASE,
+        )
+        if not positive_rule:
+            return
+        indexes = (
+            connection.execute(
+                text(
+                    "SELECT sql FROM sqlite_master WHERE tbl_name='acquisition_plan_item' "
+                    "AND type IN ('index', 'trigger') AND sql IS NOT NULL"
+                )
+            )
+            .scalars()
+            .all()
+        )
+        columns = [
+            column["name"]
+            for column in inspect(connection).get_columns("acquisition_plan_item")
+        ]
+        column_list = ", ".join('"' + name.replace('"', '""') + '"' for name in columns)
+        next_ddl = (
+            ddl[: positive_rule.start()]
+            + positive_rule.group("column")
+            + " >= 0"
+            + ddl[positive_rule.end() :]
+        ).replace(
+            "ck_acquisition_item_required_positive",
+            "ck_acquisition_item_required_nonnegative",
+        )
+        next_ddl = re.sub(
+            r'^(CREATE\s+TABLE\s+)(?:"acquisition_plan_item"|`acquisition_plan_item`|\[acquisition_plan_item\]|acquisition_plan_item)',
+            r'\1"acquisition_plan_item_target_upgrade"',
+            next_ddl,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+        connection.commit()
+        connection.exec_driver_sql("BEGIN IMMEDIATE")
+        try:
+            connection.exec_driver_sql(next_ddl)
+            connection.exec_driver_sql(
+                f"INSERT INTO acquisition_plan_item_target_upgrade ({column_list}) "
+                f"SELECT {column_list} FROM acquisition_plan_item"
+            )
+            connection.exec_driver_sql("DROP TABLE acquisition_plan_item")
+            connection.exec_driver_sql(
+                "ALTER TABLE acquisition_plan_item_target_upgrade RENAME TO acquisition_plan_item"
+            )
+            for index in indexes:
+                connection.exec_driver_sql(index)
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+
+
 def ensure_schema_upgrades():
     _upgrade_deck_card_crest_zone()
+    _upgrade_acquisition_zero_targets()
     inspector = inspect(db.engine)
     table_names = set(inspector.get_table_names())
 

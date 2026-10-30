@@ -6,6 +6,7 @@ import {
   ArrowRightLeft,
   PackageCheck,
   PackagePlus,
+  Layers,
   RotateCcw,
   Save,
   Trash2,
@@ -22,6 +23,12 @@ import {
   itemDraftPayload,
   type PurchaseItemDraft,
 } from "./order-drafts";
+import {
+  acquisitionLineLabel,
+  canChangeOrderPrinting,
+  printingAlreadyTracked,
+  printingLabel,
+} from "./order-printings";
 
 import type {
   AcquisitionPlanItem,
@@ -30,12 +37,15 @@ import type {
 
 type AcquisitionItemRowProps = {
   item: AcquisitionPlanItem;
+  planItems: AcquisitionPlanItem[];
+  grouped?: boolean;
   busy: boolean;
   draft?: PurchaseItemDraft;
   selected: boolean;
   onSelectionChange: (selected: boolean) => void;
   onDraftChange: (itemId: number, draft: PurchaseItemDraft | null) => void;
   onInspect: (item: AcquisitionPlanItem) => void;
+  onPrintingAction: (item: AcquisitionPlanItem, mode: "split" | "add") => void;
   readOnly?: boolean;
   onSave: (
     itemId: number,
@@ -61,12 +71,15 @@ const STATUS_STYLES = {
 
 export function AcquisitionItemRow({
   item,
+  planItems,
+  grouped = false,
   busy,
   draft: savedDraft,
   selected,
   onSelectionChange,
   onDraftChange,
   onInspect,
+  onPrintingAction,
   readOnly = false,
   onSave,
   onReceive,
@@ -86,7 +99,12 @@ export function AcquisitionItemRow({
   } = draft;
 
   function edit(field: keyof PurchaseItemDraft, value: string) {
-    const next = { ...draft, [field]: value };
+    // A quote belongs to one printing, so a new rarity starts without a price.
+    const next = {
+      ...draft,
+      [field]: value,
+      ...(field === "printing" ? { price: "" } : {}),
+    };
     onDraftChange(item.id, isItemDraftDirty(item, next) ? next : null);
   }
 
@@ -120,27 +138,37 @@ export function AcquisitionItemRow({
     quantity > 0 &&
     quantity <= item.ordered_quantity;
 
-  const printingLabel = item.printing
-    ? [item.printing.set_code, item.printing.card_number, item.printing.rarity]
-        .filter(Boolean)
-        .join(" · ")
-    : "Any printing";
+  const variantLabel = printingLabel(item.printing);
+  const lineLabel = acquisitionLineLabel(item);
+  const printingLocked = !canChangeOrderPrinting(item);
+  const printingChanged = printingId !== String(item.printing_id ?? "");
+  const printingCollision = printingAlreadyTracked(
+    planItems,
+    item,
+    printingId ? Number(printingId) : null,
+  );
+  const hasOtherPrintings = item.card.printings.some(
+    (printing) => printing.id !== item.printing_id,
+  );
   const comesFromCurrentDeck = item.source_quantity > 0;
   const isOutgoing = item.target_quantity === 0 && item.removed_quantity > 0;
   const hasChanges = isItemDraftDirty(item, draft);
-  const draftValid = isItemDraftValid(draft, comesFromCurrentDeck ? 0 : 1);
+  const draftValid =
+    isItemDraftValid(draft, 0) &&
+    (!printingChanged ||
+      (!printingLocked && !printingCollision && price.trim() !== ""));
   const actionDisabled = busy || hasChanges;
   const actionHint = hasChanges
     ? "Save or discard row edits before using this action."
     : undefined;
   return (
-    <article aria-label={item.card.name} className="orders-row">
+    <article aria-label={lineLabel} className="orders-row">
       <div className="orders-row-summary">
         {!readOnly && (
           <input
             type="checkbox"
             className="orders-select-box"
-            aria-label={`Select ${item.card.name}`}
+            aria-label={`Select ${lineLabel}`}
             checked={selected}
             disabled={busy || hasChanges}
             onChange={(event) => onSelectionChange(event.target.checked)}
@@ -163,18 +191,23 @@ export function AcquisitionItemRow({
               <button
                 type="button"
                 className="orders-card-inspect"
+                aria-label={`Inspect ${lineLabel}`}
                 onClick={() => onInspect(item)}
               >
-                {item.card.name}
+                {grouped ? variantLabel : item.card.name}
               </button>
             </h4>
-            <span className="builder-card-meta">{printingLabel}</span>
+            {!grouped && (
+              <span className="builder-card-meta">{variantLabel}</span>
+            )}
             <span
               className={`mt-1.5 inline-block rounded-md border px-1.5 py-0.5 text-[9px] ${isOutgoing ? "border-rose-300/30 bg-rose-300/10 text-rose-100" : STATUS_STYLES[item.status]}`}
             >
-              {isOutgoing
-                ? `${item.removed_quantity} outgoing`
-                : STATUS_LABELS[item.status]}
+              {item.target_quantity === 0 && !isOutgoing
+                ? "Not in target"
+                : isOutgoing
+                  ? `${item.removed_quantity} outgoing`
+                  : STATUS_LABELS[item.status]}
             </span>
             {item.removed_quantity > 0 && !isOutgoing && (
               <span className="ml-2 text-[10px] text-rose-200">
@@ -198,13 +231,18 @@ export function AcquisitionItemRow({
           </strong>
           Incoming
         </div>
-        <div className="orders-row-stat">
+        <div className="orders-row-stat orders-row-price">
           <strong>
-            {formatUsdCents(
-              readOnly ? item.unit_price_cents : item.estimated_cost_cents,
-            )}
+            {item.purchase_quantity > 0 && item.unit_price_cents === 0
+              ? "Unpriced"
+              : formatUsdCents(item.estimated_cost_cents)}
           </strong>
-          {readOnly ? "Unit price" : "Purchase"}
+          Purchase
+          <span className="orders-unit-price">
+            {item.unit_price_cents > 0
+              ? `${formatUsdCents(item.unit_price_cents)} each`
+              : "No price set"}
+          </span>
         </div>
         {!readOnly && (
           <>
@@ -214,6 +252,7 @@ export function AcquisitionItemRow({
                 onClick={openReceive}
                 disabled={actionDisabled}
                 className="collection-button"
+                aria-label={`Receive ${lineLabel}`}
                 title={actionHint}
               >
                 <PackageCheck /> Receive
@@ -224,7 +263,7 @@ export function AcquisitionItemRow({
               onClick={() => setExpanded((value) => !value)}
               aria-expanded={expanded}
               aria-controls={`purchase-item-${item.id}`}
-              aria-label={`${expanded ? "Close" : "Edit"} ${item.card.name}`}
+              aria-label={`${expanded ? "Close" : "Edit"} ${lineLabel}`}
               className="collection-button subtle"
             >
               {expanded ? <ChevronDown /> : <Pencil />}
@@ -235,8 +274,35 @@ export function AcquisitionItemRow({
           </>
         )}
       </div>
+      {readOnly && item.notes && (
+        <p className="orders-printing-note">{item.notes}</p>
+      )}
       {expanded && !readOnly && (
         <div id={`purchase-item-${item.id}`} className="orders-row-editor">
+          {hasOtherPrintings && (
+            <div className="orders-printing-actions">
+              <button
+                type="button"
+                className="collection-button"
+                disabled={actionDisabled || item.target_quantity <= 0}
+                title={actionHint}
+                aria-label={`Split ${lineLabel} by rarity`}
+                onClick={() => onPrintingAction(item, "split")}
+              >
+                <ArrowRightLeft /> Split by rarity
+              </button>
+              <button
+                type="button"
+                className="collection-button subtle"
+                disabled={actionDisabled}
+                title={actionHint}
+                aria-label={`Add another printing of ${item.card.name}`}
+                onClick={() => onPrintingAction(item, "add")}
+              >
+                <Layers /> Add printing
+              </button>
+            </div>
+          )}
           {comesFromCurrentDeck ? (
             <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
               <ArrowRightLeft
@@ -275,7 +341,7 @@ export function AcquisitionItemRow({
               </span>
               <input
                 type="number"
-                min={comesFromCurrentDeck ? "0" : "1"}
+                min="0"
                 value={targetQuantity}
                 onChange={(event) => edit("target", event.target.value)}
                 className="w-full min-w-0 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm tabular-nums outline-none focus:border-cyan-300/50"
@@ -334,19 +400,61 @@ export function AcquisitionItemRow({
               </span>
               <select
                 value={printingId}
+                disabled={printingLocked}
                 onChange={(event) => edit("printing", event.target.value)}
-                title={printingLabel}
+                title={variantLabel}
                 className="w-full min-w-0 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs outline-none focus:border-cyan-300/50"
               >
-                <option value="">Any printing</option>
+                <option
+                  value=""
+                  disabled={printingAlreadyTracked(planItems, item, null)}
+                >
+                  Any printing
+                </option>
                 {item.card.printings.map((printing) => (
-                  <option key={printing.id} value={printing.id}>
-                    {[printing.set_code, printing.card_number, printing.rarity]
-                      .filter(Boolean)
-                      .join(" · ") || `Printing ${printing.id}`}
+                  <option
+                    key={printing.id}
+                    value={printing.id}
+                    disabled={printingAlreadyTracked(
+                      planItems,
+                      item,
+                      printing.id,
+                    )}
+                  >
+                    {printingLabel(printing)}
+                    {printingAlreadyTracked(planItems, item, printing.id)
+                      ? " · Already tracked"
+                      : ""}
                   </option>
                 ))}
               </select>
+              {printingLocked && (
+                <span className="text-[10px] text-slate-400">
+                  Copies stay with this printing. Use Split by rarity to change
+                  the target.
+                </span>
+              )}
+              {printingChanged && (
+                <span className="text-[10px] text-amber-200" role="status">
+                  {printingLocked
+                    ? "This saved draft changes a printing with tracked copies. Discard it and use Split by rarity."
+                    : printingCollision
+                      ? "This printing already has a line. Use Split by rarity instead."
+                      : "Enter this printing's unit price, or 0 to leave it unpriced."}
+                </span>
+              )}
+            </label>
+            <label className="wide grid min-w-0 gap-1.5">
+              <span className="text-[0.6rem] font-bold uppercase tracking-[0.1em] text-slate-400">
+                Notes
+              </span>
+              <input
+                type="text"
+                value={draft.notes ?? item.notes}
+                onChange={(event) => edit("notes", event.target.value)}
+                placeholder="Ride deck, seller, condition…"
+                className="workspace-control w-full"
+              />
             </label>
           </fieldset>
 
@@ -487,7 +595,7 @@ export function AcquisitionItemRow({
       )}
       {receiving && (
         <ModalDialog
-          title={`Receive ${item.card.name}`}
+          title={`Receive ${lineLabel}`}
           onClose={() => {
             if (!busy) setReceiving(false);
           }}

@@ -2,6 +2,7 @@ import { ChevronDown } from "lucide-react";
 
 import { AcquisitionItemRow } from "./AcquisitionItemRow";
 import type { PurchaseItemDraft } from "./order-drafts";
+import { groupOrderPrintings } from "./order-printings";
 import type {
   AcquisitionPlanItem,
   UpdateAcquisitionItemPayload,
@@ -10,6 +11,7 @@ import type {
 type AcquisitionGradeSectionProps = {
   label: string;
   items: AcquisitionPlanItem[];
+  planItems: AcquisitionPlanItem[];
   busyItemId: number | null;
   open: boolean;
   readOnly?: boolean;
@@ -19,6 +21,7 @@ type AcquisitionGradeSectionProps = {
   onSelectionChange: (itemId: number, selected: boolean) => void;
   onDraftChange: (itemId: number, draft: PurchaseItemDraft | null) => void;
   onInspect: (item: AcquisitionPlanItem) => void;
+  onPrintingAction: (item: AcquisitionPlanItem, mode: "split" | "add") => void;
   onOpenChange: (open: boolean) => void;
   onSave: (
     itemId: number,
@@ -31,6 +34,7 @@ type AcquisitionGradeSectionProps = {
 export function AcquisitionGradeSection({
   label,
   items,
+  planItems,
   busyItemId,
   open,
   readOnly = false,
@@ -40,6 +44,7 @@ export function AcquisitionGradeSection({
   onSelectionChange,
   onDraftChange,
   onInspect,
+  onPrintingAction,
   onOpenChange,
   onSave,
   onReceive,
@@ -49,6 +54,7 @@ export function AcquisitionGradeSection({
   const missing = items.reduce((sum, item) => sum + item.missing_quantity, 0);
   const target = items.reduce((sum, item) => sum + item.target_quantity, 0);
   const outgoing = items.reduce((sum, item) => sum + item.removed_quantity, 0);
+  const cardGroups = groupOrderPrintings(items);
 
   return (
     <details
@@ -69,27 +75,45 @@ export function AcquisitionGradeSection({
               ? `${missing} to buy`
               : target === 0 && outgoing > 0
                 ? `${outgoing} outgoing`
-                : "Ready"}
+                : target === 0
+                  ? "Not in target"
+                  : "Ready"}
         </span>
       </summary>
       <div>
-        {items.map((item) => (
-          <AcquisitionItemRow
-            key={item.id}
-            item={item}
-            draft={drafts[String(item.id)]}
-            selected={selectedIds.includes(item.id)}
-            onSelectionChange={(selected) =>
-              onSelectionChange(item.id, selected)
-            }
-            onDraftChange={onDraftChange}
-            onInspect={onInspect}
-            busy={disabled || busyItemId !== null}
-            readOnly={readOnly}
-            onSave={onSave}
-            onReceive={onReceive}
-            onRemove={onRemove}
-          />
+        {cardGroups.map((group) => (
+          <div
+            key={group[0].card_id}
+            className={group.length > 1 ? "orders-printing-group" : undefined}
+          >
+            {group.length > 1 && (
+              <div className="orders-printing-group-heading">
+                <strong>{group[0].card.name}</strong>
+                <span>{group.length} printings</span>
+              </div>
+            )}
+            {group.map((item) => (
+              <AcquisitionItemRow
+                key={item.id}
+                item={item}
+                planItems={planItems}
+                grouped={group.length > 1}
+                draft={drafts[String(item.id)]}
+                selected={selectedIds.includes(item.id)}
+                onSelectionChange={(selected) =>
+                  onSelectionChange(item.id, selected)
+                }
+                onDraftChange={onDraftChange}
+                onInspect={onInspect}
+                onPrintingAction={onPrintingAction}
+                busy={disabled || busyItemId !== null}
+                readOnly={readOnly}
+                onSave={onSave}
+                onReceive={onReceive}
+                onRemove={onRemove}
+              />
+            ))}
+          </div>
         ))}
       </div>
     </details>
