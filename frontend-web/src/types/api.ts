@@ -633,6 +633,15 @@ export type AddAcquisitionItemPayload = {
   notes?: string;
 };
 
+/** Reassign purchase targets while physical inventory stays with its printing. */
+export type SplitAcquisitionItemPayload = {
+  printing_id: number;
+  quantity: number;
+  inventory_policy: "keep_original";
+  unit_price_cents?: number;
+  notes?: string;
+};
+
 export type UpdateAcquisitionItemPayload = Partial<
   Pick<
     AcquisitionPlanItem,

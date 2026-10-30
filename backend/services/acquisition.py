@@ -15,7 +15,6 @@ from backend.models import (
     now_central,
 )
 
-
 ALLOWED_PLAN_TYPES = {"new_build", "existing_deck"}
 ALLOWED_LIST_SOURCES = {"empty", "deck_version"}
 ALLOWED_PLAN_STATUSES = {"planning", "buying", "waiting", "complete", "paused"}
@@ -123,6 +122,22 @@ def get_acquisition_item_or_raise(item_id):
 def _require_active_plan(plan):
     if plan.archived_at is not None:
         raise ValidationError("Restore this purchase plan before editing it")
+
+
+def _item_for_printing(plan_id, card_id, printing_id):
+    return AcquisitionPlanItem.query.filter_by(
+        plan_id=plan_id,
+        card_id=card_id,
+        printing_id=printing_id,
+    ).first()
+
+
+def _set_item_target(item, target_quantity):
+    """Change the next build while retaining its original deck quantities."""
+    if target_quantity < 0:
+        raise ValidationError("target_quantity cannot be negative")
+    item.required_quantity = max(item.source_quantity, target_quantity)
+    item.removed_quantity = max(item.source_quantity - target_quantity, 0)
 
 
 def archive_acquisition_plan(plan_id):
@@ -405,14 +420,22 @@ def add_acquisition_item(plan_id, payload):
         if value < 0:
             raise ValidationError(f"{field_name} cannot be negative")
 
-    existing = AcquisitionPlanItem.query.filter_by(
-        plan_id=plan.id,
-        card_id=card.id,
-        printing_id=printing.id if printing else None,
-    ).first()
+    existing = _item_for_printing(plan.id, card.id, printing.id if printing else None)
 
     if existing:
-        existing.required_quantity += required_quantity
+        if (
+            "unit_price_cents" in payload
+            and unit_price_cents != existing.unit_price_cents
+        ):
+            raise ValidationError(
+                "This printing already has a price. Edit its existing line to change it"
+            )
+        if "source_quantity" in payload or "removed_quantity" in payload:
+            # Legacy callers may explicitly import tracked/source quantities.
+            existing.required_quantity += required_quantity
+        else:
+            target = max(existing.required_quantity - existing.removed_quantity, 0)
+            _set_item_target(existing, target + required_quantity)
         if "source_quantity" in payload:
             existing.source_quantity += source_quantity
         if "removed_quantity" in payload:
@@ -421,8 +444,6 @@ def add_acquisition_item(plan_id, payload):
             existing.owned_quantity += owned_quantity
         if "ordered_quantity" in payload:
             existing.ordered_quantity += ordered_quantity
-        if "unit_price_cents" in payload:
-            existing.unit_price_cents = unit_price_cents
         db.session.commit()
         return existing
 
@@ -451,23 +472,43 @@ def update_acquisition_item(item_id, payload):
     item = get_acquisition_item_or_raise(item_id)
     _require_active_plan(item.plan)
 
-    quantity_fields = {
-        "required_quantity": True,
-        "source_quantity": False,
-        "removed_quantity": False,
-        "owned_quantity": False,
-        "ordered_quantity": False,
-        "unit_price_cents": False,
-    }
+    if "printing_id" in payload:
+        printing = _get_printing_or_raise(payload.get("printing_id"), item.card_id)
+        printing_id = printing.id if printing else None
+        if printing_id != item.printing_id:
+            if _item_for_printing(item.plan_id, item.card_id, printing_id):
+                raise ValidationError(
+                    "This printing is already in the plan. Split quantities into its existing line"
+                )
+            # Check saved inventory before applying the payload: zeroing these
+            # fields in the same request must not silently relabel physical cards.
+            if item.source_quantity or item.owned_quantity or item.ordered_quantity:
+                raise ValidationError(
+                    "Keep existing copies on their printing and split the target instead"
+                )
+            item.printing_id = printing_id
+            item.printing = printing
+            # A quote belongs to a printing, not to the shared gameplay card.
+            if "unit_price_cents" not in payload:
+                item.unit_price_cents = 0
 
-    for field_name, must_be_positive in quantity_fields.items():
+    quantity_fields = (
+        "required_quantity",
+        "source_quantity",
+        "removed_quantity",
+        "owned_quantity",
+        "ordered_quantity",
+        "unit_price_cents",
+    )
+
+    for field_name in quantity_fields:
         if field_name not in payload:
             continue
 
         value = _int_value(payload.get(field_name), field_name)
 
-        if value is None or (must_be_positive and value <= 0):
-            raise ValidationError(f"{field_name} must be greater than 0")
+        if value is None:
+            raise ValidationError(f"{field_name} must be a whole number")
 
         if value < 0:
             raise ValidationError(f"{field_name} cannot be negative")
@@ -482,8 +523,7 @@ def update_acquisition_item(item_id, payload):
         if target_quantity is None or target_quantity < 0:
             raise ValidationError("target_quantity cannot be negative")
 
-        item.required_quantity = max(item.source_quantity, target_quantity, 1)
-        item.removed_quantity = max(item.source_quantity - target_quantity, 0)
+        _set_item_target(item, target_quantity)
 
     if item.removed_quantity > item.source_quantity:
         raise ValidationError("removed_quantity cannot exceed the source deck quantity")
@@ -491,15 +531,74 @@ def update_acquisition_item(item_id, payload):
     if item.removed_quantity > item.required_quantity:
         raise ValidationError("removed_quantity cannot exceed the tracked quantity")
 
-    if "printing_id" in payload:
-        printing = _get_printing_or_raise(payload.get("printing_id"), item.card_id)
-        item.printing_id = printing.id if printing else None
-
     if "notes" in payload:
         item.notes = _clean_string(payload.get("notes")) or ""
 
     db.session.commit()
     return item
+
+
+def split_acquisition_item(item_id, payload):
+    """Allocate targets to another printing in one transaction, never inventory.
+
+    Owned, incoming, and source-deck copies keep their original identity. An
+    existing destination keeps its quote and notes; a new one starts unowned.
+    """
+    if not isinstance(payload, dict):
+        raise ValidationError("Request body must be a JSON object")
+
+    item = get_acquisition_item_or_raise(item_id)
+    plan = item.plan
+    _require_active_plan(plan)
+    if payload.get("inventory_policy") != "keep_original":
+        raise ValidationError(
+            "Confirm that on-hand and incoming copies stay on their original printing"
+        )
+
+    printing = _get_printing_or_raise(payload.get("printing_id"), item.card_id)
+    if printing is None:
+        raise ValidationError("Choose a specific destination printing")
+    if printing.id == item.printing_id:
+        raise ValidationError("Choose a different printing to split into")
+
+    quantity = _int_value(payload.get("quantity"), "quantity")
+    if quantity is None or quantity <= 0:
+        raise ValidationError("quantity must be greater than 0")
+    target = max(item.required_quantity - item.removed_quantity, 0)
+    if quantity > target:
+        raise ValidationError("quantity cannot exceed the original target")
+    remaining = target - quantity
+    price = _int_value(payload.get("unit_price_cents"), "unit_price_cents", default=0)
+    if price < 0:
+        raise ValidationError("unit_price_cents cannot be negative")
+    destination = _item_for_printing(plan.id, item.card_id, printing.id)
+    if destination and "unit_price_cents" in payload:
+        if price != destination.unit_price_cents:
+            raise ValidationError(
+                "This printing already has a price. Edit its existing line to change it"
+            )
+
+    # Validate both sides before mutation so an invalid split cannot partially
+    # reduce the original target or overwrite the destination's purchase data.
+    _set_item_target(item, remaining)
+    if destination:
+        destination_target = max(
+            destination.required_quantity - destination.removed_quantity, 0
+        )
+        _set_item_target(destination, destination_target + quantity)
+    else:
+        db.session.add(
+            AcquisitionPlanItem(
+                plan_id=plan.id,
+                card_id=item.card_id,
+                printing_id=printing.id,
+                required_quantity=quantity,
+                unit_price_cents=price,
+                notes=_clean_string(payload.get("notes")) or "",
+            )
+        )
+    db.session.commit()
+    return plan
 
 
 def receive_acquisition_item(item_id, payload):

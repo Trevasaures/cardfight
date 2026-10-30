@@ -16,6 +16,7 @@ const item = {
   ordered_quantity: 2,
   unit_price_cents: 175,
   printing_id: 12,
+  notes: "Ride deck",
 } as AcquisitionPlanItem;
 
 test("purchase drafts retain incomplete input and reject invalid quantities before save", () => {
@@ -42,8 +43,21 @@ test("purchase drafts round cents, keep the printing, and support removing old d
     ordered_quantity: 2,
     unit_price_cents: 176,
     printing_id: 12,
+    notes: "Ride deck",
   });
   assert.equal(isItemDraftDirty(item, createItemDraft(item)), false);
+});
+
+test("per-printing notes survive older drafts and remain independent", () => {
+  const legacyDraft = createItemDraft(item);
+  delete legacyDraft.notes;
+  assert.equal("notes" in itemDraftPayload(legacyDraft), false);
+  assert.equal(isItemDraftDirty(item, legacyDraft), false);
+  const edited = { ...legacyDraft, notes: "Main deck · base rarity" };
+  assert.equal(isItemDraftDirty(item, edited), true);
+  assert.equal(itemDraftPayload(edited).notes, "Main deck · base rarity");
+  assert.equal(createItemDraft(item).notes, "Ride deck");
+  assert.equal(itemDraftPayload({ ...edited, notes: "" }).notes, "");
 });
 
 test("saving or discarding one draft preserves all other line drafts", () => {

@@ -520,8 +520,8 @@ class AcquisitionPlanItem(db.Model):
 
     __table_args__ = (
         db.CheckConstraint(
-            "required_quantity > 0",
-            name="ck_acquisition_item_required_positive",
+            "required_quantity >= 0",
+            name="ck_acquisition_item_required_nonnegative",
         ),
         db.CheckConstraint(
             "source_quantity >= 0",
