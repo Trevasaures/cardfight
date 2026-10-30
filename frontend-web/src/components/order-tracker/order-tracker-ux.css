@@ -66,6 +66,10 @@
   color: #fda4af;
   font-size: 12px;
 }
+.orders-dialog-incoming {
+  color: #c4b5fd;
+  font-size: 12px;
+}
 
 .orders-printing-group {
   border-top: 1px solid var(--border);

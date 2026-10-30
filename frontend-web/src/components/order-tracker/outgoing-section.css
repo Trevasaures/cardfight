@@ -1,0 +1,219 @@
+.orders-outgoing {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgb(255 255 255 / 0.015);
+}
+
+.orders-outgoing summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  padding: 12px;
+  list-style: none;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.orders-outgoing summary::-webkit-details-marker {
+  display: none;
+}
+
+.orders-outgoing summary > svg {
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+
+.orders-outgoing details[open] > summary > svg {
+  transform: rotate(180deg);
+}
+
+.orders-outgoing summary > span,
+.orders-outgoing-state,
+.orders-outgoing-change > span,
+.orders-outgoing-notes {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.orders-outgoing-summary-status {
+  margin-left: auto;
+}
+
+.orders-outgoing-alert {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgb(196 181 253 / 0.12);
+  background: rgb(196 181 253 / 0.045);
+  color: #ddd6fe;
+  font-size: 11px;
+}
+
+.orders-outgoing-alert > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.orders-outgoing .collection-button {
+  min-height: 30px;
+  padding: 6px 9px;
+  font-size: 10px;
+}
+
+.orders-outgoing-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.orders-outgoing-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.orders-outgoing-card:hover strong {
+  color: #e9c789;
+}
+
+.orders-outgoing-card:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid #e9c789;
+  outline-offset: 4px;
+}
+
+.orders-outgoing-card .collection-artwork {
+  width: 34px;
+  min-width: 34px;
+  flex: 0 0 34px;
+}
+
+.orders-outgoing-card-label {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+
+.orders-outgoing-card-label strong {
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.orders-outgoing-card-label > span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.orders-outgoing-change,
+.orders-outgoing-state {
+  display: grid;
+  gap: 4px;
+  text-align: right;
+}
+
+.orders-outgoing-change strong {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  color: #fda4af;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.orders-outgoing-state .orders-outgoing-pending,
+.orders-outgoing-notes .orders-outgoing-pending {
+  color: #e9c789;
+}
+
+.orders-outgoing-state .orders-outgoing-incoming {
+  color: #ddd6fe;
+}
+
+.orders-outgoing-confirmed {
+  display: inline-flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  color: #a7f3d0;
+}
+
+.orders-outgoing-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.orders-outgoing-draft-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #e9c789;
+}
+
+.orders-outgoing-notes {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  overflow-wrap: anywhere;
+}
+
+.orders-outgoing-history > summary {
+  border-top: 1px solid var(--border);
+  background: rgb(255 255 255 / 0.02);
+}
+
+@media (max-width: 600px) {
+  .orders-outgoing-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .orders-outgoing-card {
+    grid-column: 1 / -1;
+  }
+
+  .orders-outgoing-change {
+    text-align: left;
+  }
+
+  .orders-outgoing-change strong {
+    justify-content: flex-start;
+  }
+
+  .orders-outgoing-summary-status {
+    margin-left: 0;
+  }
+
+  .orders-outgoing-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orders-outgoing summary > svg {
+    transition: none;
+  }
+}

@@ -22,6 +22,10 @@ type AcquisitionGradeSectionProps = {
   onDraftChange: (itemId: number, draft: PurchaseItemDraft | null) => void;
   onInspect: (item: AcquisitionPlanItem) => void;
   onPrintingAction: (item: AcquisitionPlanItem, mode: "split" | "add") => void;
+  onRemovalAction: (
+    item: AcquisitionPlanItem,
+    action: "confirm" | "undo_confirmation" | "restore_target",
+  ) => void;
   onOpenChange: (open: boolean) => void;
   onSave: (
     itemId: number,
@@ -45,6 +49,7 @@ export function AcquisitionGradeSection({
   onDraftChange,
   onInspect,
   onPrintingAction,
+  onRemovalAction,
   onOpenChange,
   onSave,
   onReceive,
@@ -106,6 +111,7 @@ export function AcquisitionGradeSection({
                 onDraftChange={onDraftChange}
                 onInspect={onInspect}
                 onPrintingAction={onPrintingAction}
+                onRemovalAction={onRemovalAction}
                 busy={disabled || busyItemId !== null}
                 readOnly={readOnly}
                 onSave={onSave}

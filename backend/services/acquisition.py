@@ -138,6 +138,20 @@ def _set_item_target(item, target_quantity):
         raise ValidationError("target_quantity cannot be negative")
     item.required_quantity = max(item.source_quantity, target_quantity)
     item.removed_quantity = max(item.source_quantity - target_quantity, 0)
+    _clamp_removal_confirmation(item)
+
+
+def _clamp_removal_confirmation(item):
+    """A changed target cannot retain confirmation for copies no longer cut.
+
+    Growing a cut keeps already-confirmed copies, leaving only the new cuts
+    pending. Physical inventory is independent of removal from the deck.
+    """
+    item.confirmed_removed_quantity = min(
+        item.confirmed_removed_quantity or 0, item.removed_quantity
+    )
+    if item.confirmed_removed_quantity == 0:
+        item.removal_confirmed_at = None
 
 
 def archive_acquisition_plan(plan_id):
@@ -444,6 +458,7 @@ def add_acquisition_item(plan_id, payload):
             existing.owned_quantity += owned_quantity
         if "ordered_quantity" in payload:
             existing.ordered_quantity += ordered_quantity
+        _clamp_removal_confirmation(existing)
         db.session.commit()
         return existing
 
@@ -534,8 +549,41 @@ def update_acquisition_item(item_id, payload):
     if "notes" in payload:
         item.notes = _clean_string(payload.get("notes")) or ""
 
+    _clamp_removal_confirmation(item)
     db.session.commit()
     return item
+
+
+def update_acquisition_removal(item_id, payload):
+    """Confirm deck cuts separately from restoring purchase targets or stock."""
+    if not isinstance(payload, dict):
+        raise ValidationError("Request body must be a JSON object")
+
+    item = get_acquisition_item_or_raise(item_id)
+    _require_active_plan(item.plan)
+    action = _choice(
+        payload.get("action"),
+        "action",
+        {"confirm", "undo_confirmation", "restore_target"},
+    )
+    if action == "restore_target":
+        if item.source_quantity <= 0:
+            raise ValidationError("This line has no source-deck copies to restore")
+        _set_item_target(item, item.source_quantity)
+    elif action == "confirm":
+        if item.removed_quantity <= 0:
+            raise ValidationError("This line has no outgoing copies to mark removed")
+        newly_confirmed = item.confirmed_removed_quantity < item.removed_quantity
+        item.confirmed_removed_quantity = item.removed_quantity
+        # Keep repeated confirmations harmless, including the recorded date.
+        if newly_confirmed or item.removal_confirmed_at is None:
+            item.removal_confirmed_at = now_central()
+    else:
+        item.confirmed_removed_quantity = 0
+        item.removal_confirmed_at = None
+
+    db.session.commit()
+    return item.plan
 
 
 def split_acquisition_item(item_id, payload):
@@ -687,5 +735,9 @@ def batch_acquisition_items(plan_id, payload):
 def remove_acquisition_item(item_id):
     item = get_acquisition_item_or_raise(item_id)
     _require_active_plan(item.plan)
+    if item.source_quantity > 0 or item.removed_quantity > 0:
+        raise ValidationError(
+            "Keep this source-deck line as removal history. Change its target or restore it instead"
+        )
     db.session.delete(item)
     db.session.commit()

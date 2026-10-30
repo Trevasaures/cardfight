@@ -16,10 +16,22 @@ import {
   updateAcquisitionItem,
   updateAcquisitionPlan,
   splitAcquisitionItem,
+  updateAcquisitionRemoval,
 } from "../api/acquisition";
 import { searchCards } from "../api/cards";
 import { getDeckOptions, getDecks } from "../api/decks";
 import { AcquisitionGradeSection } from "../components/order-tracker/AcquisitionGradeSection";
+import { AcquisitionItemRow } from "../components/order-tracker/AcquisitionItemRow";
+import { OutgoingSection } from "../components/order-tracker/OutgoingSection";
+import { RemovalActionDialog } from "../components/order-tracker/RemovalActionDialog";
+import { acquisitionLineLabel } from "../components/order-tracker/order-printings";
+import {
+  checklistItems,
+  outgoingItems,
+  matchesItemFilter,
+  selectablePurchaseItems,
+  type ItemFilter,
+} from "../components/order-tracker/order-views";
 import { OrderTrackerSetup } from "../components/order-tracker/OrderTrackerSetup";
 import {
   PurchasePlanRail,
@@ -53,6 +65,7 @@ import { isCrestCard } from "../utils/cards";
 import type {
   AcquisitionPlan,
   AcquisitionPlanItem,
+  AcquisitionRemovalAction,
   Card,
   CardPrinting,
   CreateAcquisitionPlanPayload,
@@ -60,8 +73,6 @@ import type {
   DeckOptionsResponse,
   UpdateAcquisitionItemPayload,
 } from "../types/api";
-
-type ItemFilter = "changes" | "all" | "needed" | "incoming" | "owned";
 
 const EMPTY_OPTIONS: DeckOptionsResponse = {
   types: ["Standard", "Stride"],
@@ -75,23 +86,6 @@ const ITEM_FILTERS = [
   ["incoming", "Incoming"],
   ["owned", "Ready"],
 ] as const;
-
-function matchesItemFilter(item: AcquisitionPlanItem, filter: ItemFilter) {
-  return (
-    filter === "all" ||
-    (filter === "changes" &&
-      (item.missing_quantity > 0 ||
-        item.ordered_quantity > 0 ||
-        item.removed_quantity > 0 ||
-        item.source_quantity === 0)) ||
-    (filter === "needed" && item.missing_quantity > 0) ||
-    (filter === "incoming" && item.ordered_quantity > 0) ||
-    (filter === "owned" &&
-      item.target_quantity > 0 &&
-      item.available_quantity >= item.target_quantity &&
-      item.removed_quantity === 0)
-  );
-}
 
 export function OrderTracker() {
   const [plans, setPlans] = useState<AcquisitionPlan[]>([]);
@@ -109,6 +103,12 @@ export function OrderTracker() {
   const initialScopeRef = useRef(scope);
   const planRequestRef = useRef(0);
   const [showCatalog, setShowCatalog] = useState(false);
+  const [reviewItemId, setReviewItemId] = useState<number | null>(null);
+  const [removalRequest, setRemovalRequest] = useState<{
+    item: AcquisitionPlanItem;
+    action: AcquisitionRemovalAction;
+  } | null>(null);
+  const [removalError, setRemovalError] = useState("");
   const [printingAction, setPrintingAction] = useState<{
     item: AcquisitionPlanItem;
     mode: PrintingActionMode;
@@ -592,12 +592,57 @@ export function OrderTracker() {
     }
   }
 
+  function requestRemoval(
+    item: AcquisitionPlanItem,
+    action: AcquisitionRemovalAction,
+  ) {
+    const draft = itemDrafts[String(item.id)];
+    if (draft && isItemDraftDirty(item, draft)) {
+      showError("Save or discard row edits before updating removal tracking.");
+      return;
+    }
+    setRemovalError("");
+    setRemovalRequest({ item, action });
+  }
+
+  async function handleRemoval() {
+    if (!removalRequest) return;
+    const { item, action } = removalRequest;
+    setBusyItemId(item.id);
+    try {
+      const updated = await updateAcquisitionRemoval(item.id, action);
+      setSelectedPlan(updated);
+      setPlans((current) =>
+        current.map((plan) => (plan.id === updated.id ? updated : plan)),
+      );
+      setSelection(null);
+      setRemovalRequest(null);
+      if (action === "restore_target") setReviewItemId(null);
+      toast.success(
+        action === "confirm"
+          ? "Outgoing copies marked removed."
+          : action === "restore_target"
+            ? "Copies restored to the target build."
+            : "Removal confirmation undone.",
+      );
+    } catch (error) {
+      setRemovalError(
+        error instanceof Error
+          ? error.message
+          : "Failed to update removal tracking",
+      );
+    } finally {
+      setBusyItemId(null);
+    }
+  }
+
   const selectedIds =
     selectedPlan && selection?.planId === selectedPlan.id
       ? selection.ids.filter((id) =>
           selectedPlan.items.some(
             (item) =>
               item.id === id &&
+              item.target_quantity > 0 &&
               (!itemDrafts[String(id)] ||
                 !isItemDraftDirty(item, itemDrafts[String(id)])),
           ),
@@ -650,22 +695,21 @@ export function OrderTracker() {
 
   const filteredItems = useMemo(() => {
     if (!selectedPlan) return [];
-    const needle = itemSearch.trim().toLowerCase();
-
-    return selectedPlan.items.filter((item) => {
-      const matchesSearch =
-        !needle ||
-        item.card.name.toLowerCase().includes(needle) ||
-        (item.printing?.set_code ?? "").toLowerCase().includes(needle) ||
-        (item.printing?.card_number ?? "").toLowerCase().includes(needle) ||
-        (item.printing?.rarity ?? "").toLowerCase().includes(needle);
-
-      const matchesFilter =
-        selectedPlan.archived_at || matchesItemFilter(item, itemFilter);
-
-      return matchesSearch && matchesFilter;
-    });
+    return checklistItems(
+      selectedPlan.items,
+      itemFilter,
+      itemSearch,
+      Boolean(selectedPlan.archived_at),
+    );
   }, [itemFilter, itemSearch, selectedPlan]);
+  const visibleOutgoing = selectedPlan
+    ? outgoingItems(
+        selectedPlan.items,
+        itemSearch,
+        !selectedPlan.archived_at && itemFilter === "incoming",
+      )
+    : [];
+  const reviewedItem = selectedPlan?.items.find((item) => item.id === reviewItemId);
 
   const groupedItems = useMemo(() => {
     const groups = new Map<
@@ -837,6 +881,19 @@ export function OrderTracker() {
                 onArchive={handleArchive}
                 onRestore={handleRestore}
               />
+              <OutgoingSection
+                key={selectedPlan.id}
+                items={visibleOutgoing}
+                busy={planBusy}
+                readOnly={archived}
+                drafts={itemDrafts}
+                forceOpen={itemFilter === "incoming" || Boolean(itemSearch.trim())}
+                onInspect={(item) =>
+                  setInspected({ card: item.card, printing: item.printing })
+                }
+                onEdit={(item) => setReviewItemId(item.id)}
+                onRemovalAction={requestRemoval}
+              />
               <section
                 data-anime="motion-panel"
                 aria-label="Purchase checklist"
@@ -933,7 +990,7 @@ export function OrderTracker() {
                 </div>
                 {!archived && (
                   <PurchaseSelectionBar
-                    visibleItems={filteredItems}
+                    visibleItems={selectablePurchaseItems(filteredItems)}
                     selectedItems={selectedItems}
                     drafts={itemDrafts}
                     dirtyCount={dirtyItemCount}
@@ -953,6 +1010,7 @@ export function OrderTracker() {
                         label={group.label}
                         items={group.items}
                         planItems={selectedPlan.items}
+                        onRemovalAction={requestRemoval}
                         onPrintingAction={(item, mode) =>
                           setPrintingAction({ item, mode })
                         }
@@ -991,7 +1049,7 @@ export function OrderTracker() {
                       <PackageOpen size={28} />
                       <p>
                         {selectedPlan.items.length
-                          ? "No cards match this view."
+                          ? "No purchase lines match this view."
                           : "Add cards to start your plan."}
                       </p>
                       {selectedPlan.items.length > 0 && !archived && (
@@ -1046,7 +1104,7 @@ export function OrderTracker() {
           title={
             pendingDelete.kind === "plan"
               ? "Delete purchase plan?"
-              : "Remove card?"
+              : "Delete tracking line?"
           }
           onClose={() => {
             if (!planBusy) setPendingDelete(null);
@@ -1055,7 +1113,7 @@ export function OrderTracker() {
           <p className="collection-muted">
             {pendingDelete.kind === "plan"
               ? `Delete ${pendingDelete.plan.name} and its full checklist?`
-              : `Remove ${pendingDelete.item.card.name} from this purchase plan?`}
+              : `Permanently delete the erroneous tracking line for ${acquisitionLineLabel(pendingDelete.item)}? This does not record a deck removal.`}
           </p>
           {deleteError && (
             <p className="orders-dialog-error" role="alert">
@@ -1086,10 +1144,54 @@ export function OrderTracker() {
                 ? "Removing…"
                 : pendingDelete.kind === "plan"
                   ? "Delete plan"
-                  : "Remove card"}
+                  : "Delete tracking line"}
             </button>
           </div>
         </ModalDialog>
+      )}
+      {reviewedItem && selectedPlan && (
+        <ModalDialog
+          title="Outgoing card"
+          onClose={() => {
+            if (!planBusy) setReviewItemId(null);
+          }}
+        >
+          <AcquisitionItemRow
+            key={reviewedItem.id}
+            item={reviewedItem}
+            planItems={selectedPlan.items}
+            defaultExpanded
+            showSelection={false}
+            busy={planBusy}
+            draft={itemDrafts[String(reviewedItem.id)]}
+            selected={false}
+            onSelectionChange={() => {}}
+            onDraftChange={editItem}
+            onInspect={(item) =>
+              setInspected({ card: item.card, printing: item.printing })
+            }
+            onPrintingAction={(item, mode) => setPrintingAction({ item, mode })}
+            onRemovalAction={requestRemoval}
+            readOnly={archived}
+            onSave={handleSaveItem}
+            onReceive={handleReceiveItem}
+            onRemove={(item) => {
+              setDeleteError("");
+              setPendingDelete({ kind: "item", item });
+              return Promise.resolve();
+            }}
+          />
+        </ModalDialog>
+      )}
+      {removalRequest && (
+        <RemovalActionDialog
+          item={removalRequest.item}
+          action={removalRequest.action}
+          busy={planBusy}
+          error={removalError}
+          onClose={() => setRemovalRequest(null)}
+          onConfirm={handleRemoval}
+        />
       )}
       {printingAction && selectedPlan && (
         <PrintingAllocationDialog

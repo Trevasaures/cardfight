@@ -2,6 +2,7 @@ import { apiRequest } from "./client";
 import type {
   AcquisitionPlan,
   AcquisitionPlanItem,
+  AcquisitionRemovalAction,
   AddAcquisitionItemPayload,
   CreateAcquisitionPlanPayload,
   UpdateAcquisitionItemPayload,
@@ -123,5 +124,18 @@ export function removeAcquisitionItem(itemId: number) {
   return apiRequest<{ deleted: boolean; id: number }>(
     `/api/acquisition-plans/items/${itemId}`,
     { method: "DELETE" },
+  );
+}
+
+export function updateAcquisitionRemoval(
+  itemId: number,
+  action: AcquisitionRemovalAction,
+) {
+  return apiRequest<AcquisitionPlan>(
+    `/api/acquisition-plans/items/${itemId}/removal`,
+    {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    },
   );
 }

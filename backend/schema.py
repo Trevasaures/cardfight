@@ -230,6 +230,23 @@ def ensure_schema_upgrades():
                 )
             )
 
+        if "confirmed_removed_quantity" not in item_columns:
+            db.session.execute(
+                text(
+                    "ALTER TABLE acquisition_plan_item "
+                    "ADD COLUMN confirmed_removed_quantity INTEGER NOT NULL DEFAULT 0 "
+                    "CHECK (confirmed_removed_quantity >= 0)"
+                )
+            )
+
+        if "removal_confirmed_at" not in item_columns:
+            db.session.execute(
+                text(
+                    "ALTER TABLE acquisition_plan_item "
+                    "ADD COLUMN removal_confirmed_at DATETIME"
+                )
+            )
+
         if added_source_quantity:
             db.session.execute(
                 text(

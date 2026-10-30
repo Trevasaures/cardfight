@@ -50,6 +50,8 @@ Purchase rows and plan totals display actual **On hand / target** counts, includ
 
 Select checklist lines to mark missing copies incoming or receive their deliveries together. Bulk actions validate the entire selection and save it in one transaction. Individual **Receive** actions accept partial quantities. Unfinished row, plan, and new-plan forms are retained locally; Save clears the relevant draft, and Discard removes it. Draft rows are excluded from bulk changes until saved or discarded.
 
+For deck upgrades, full cuts appear in a compact **Outgoing** area and partial cuts stay in the next-build checklist. **Mark removed** confirms a physical deck change; **Undo confirmation** reopens that work, and **Restore to build** restores the source quantity as the target. Ownership and incoming orders remain separate. Confirmed cuts stay available in removal history, including after archive/restore. See the [outgoing-card workflow](docs/outgoing-cards.md).
+
 ## Workspace interactions
 
 Card names open a shared inspector in Card Library, Deck Builder, and Order Tracker. Artwork, printing choices, and ability text stay together in a drawer. Card Library and Deck Builder retain unfinished edits when the drawer closes; **Resume edit** reopens them. The card editor identifies its primary printing separately from the inspector's printing preview. Forms support Enter to save and Escape to close, with focus returned to their opener.

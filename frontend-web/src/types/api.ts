@@ -525,6 +525,10 @@ export type AcquisitionPlanStatus =
   "planning" | "buying" | "waiting" | "complete" | "paused";
 export type AcquisitionBuildMode = "physical" | "proxy" | "mixed";
 export type AcquisitionItemStatus = "needed" | "partial" | "ordered" | "owned";
+export type AcquisitionRemovalAction =
+  | "confirm"
+  | "undo_confirmation"
+  | "restore_target";
 
 export type AcquisitionPlanItem = {
   id: number;
@@ -534,6 +538,9 @@ export type AcquisitionPlanItem = {
   required_quantity: number;
   source_quantity: number;
   removed_quantity: number;
+  confirmed_removed_quantity: number;
+  pending_removed_quantity: number;
+  removal_confirmed_at: string | null;
   target_quantity: number;
   owned_quantity: number;
   available_quantity: number;
@@ -556,9 +563,13 @@ export type AcquisitionPlanItem = {
 
 export type AcquisitionPlanSummary = {
   line_count: number;
+  active_line_count: number;
+  outgoing_line_count: number;
   required_quantity: number;
   source_quantity: number;
   removed_quantity: number;
+  confirmed_removed_quantity: number;
+  pending_removed_quantity: number;
   /** All owned copies, including cards planned to leave the current deck. */
   owned_quantity: number;
   /** Owned copies applied to each card's target; used for readiness. */
