@@ -5,9 +5,11 @@ Functions in this module handle the creation, updating, and deletion of decks, d
 They also provide validation and normalization of input data to ensure consistency and integrity in the database.
 """
 
+from sqlalchemy import or_
+
 from backend.database import db
-from backend.errors import NotFoundError, ValidationError
-from backend.models import Card, CardPrinting, Deck, DeckCard, DeckVersion
+from backend.errors import ConflictError, NotFoundError, ValidationError
+from backend.models import Card, CardPrinting, Deck, DeckCard, DeckVersion, Match
 from backend.services.card_types import CREST_CARD_TYPES
 
 
@@ -304,6 +306,23 @@ def delete_deck_version(version_id):
     if version.is_active:
         raise ValidationError(
             "Active deck versions cannot be deleted. Activate another version first."
+        )
+
+    # Check either participant before deleting the version and its card entries.
+    match_reference = (
+        db.session.query(Match.id)
+        .filter(
+            or_(
+                Match.deck1_version_id == version.id,
+                Match.deck2_version_id == version.id,
+            )
+        )
+        .first()
+    )
+    if match_reference is not None:
+        raise ConflictError(
+            "This deck version is referenced by match history. "
+            "Retain this historical version to preserve saved matches."
         )
 
     db.session.delete(version)
