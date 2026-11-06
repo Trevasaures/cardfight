@@ -52,6 +52,30 @@ Expected validation and conflict errors retain useful messages. Unexpected
 failures return a fixed JSON error and roll back the transaction; diagnostics
 remain in server logs. The local launcher writes logs under `instance/`.
 
+## Backups and recovery
+
+Before changing hosting, dependencies that affect stored data, or database schema,
+create a SQLite checkpoint and verify a disposable restored copy with the matching
+application version:
+
+```sh
+python -m backend.backup create
+python -m backend.backup verify "instance/backups/BACKUP.sqlite3" --app-check
+```
+
+Replace `BACKUP.sqlite3` with the backup filename returned by `create`. Backups
+default to ignored `instance/backups/`; each database must remain beside its
+`.manifest.json` file. The online backup includes committed WAL data, but stop
+application writes for the final pre-upgrade or cutover checkpoint. Keep a
+verified copy off the machine. Backup scheduling, retention, and cloud copies
+require separate configuration.
+
+Restore to a new path, then switch `DATABASE_URL` after stopping the app; the
+restore command refuses to overwrite an existing target or its sidecars. Follow
+the [backup and recovery runbook](backup-and-restore.md) for retention, verification
+gates, compatible-code rehearsal, and rollback after a failed upgrade. Do not
+reseed as a recovery step.
+
 ## Checks before release
 
 Install `requirements-dev.txt` for tests and audit tools. CI runs the complete

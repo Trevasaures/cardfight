@@ -352,6 +352,19 @@ The seed is additive:
 
 After seeding, use the Deck Library in the web application to set nations, icons, formats, and other deck details.
 
+### Backing up and recovering saved data
+
+Create a SQLite checkpoint before upgrades, schema changes, or moving to another host:
+
+```bash
+python -m backend.backup create
+python -m backend.backup verify "instance/backups/BACKUP.sqlite3" --app-check
+```
+
+Replace `BACKUP.sqlite3` with the filename printed by `create`. The default source is the configured absolute SQLite `DATABASE_URL`, or `instance/cardfight.db` when no URL is configured. Backups default to ignored `instance/backups/`; keep each `.sqlite3` file beside its `.manifest.json`. Stored artwork is included with the saved database records. Keep verified external copies separately; these commands do not schedule or prune backups.
+
+The online backup can capture committed data while the app runs. Stop writes for the final pre-upgrade checkpoint, verify it with the matching application version, and restore only to a separate new path. See the [backup and recovery runbook](docs/backup-and-restore.md) for commands, retention, rehearsal, and rollback. Seeding does not restore saved data.
+
 ### Creating a completely fresh database
 
 1. Stop the Flask application.
