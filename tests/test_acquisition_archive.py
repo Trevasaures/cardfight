@@ -3,7 +3,7 @@ from sqlalchemy import inspect, text
 
 from backend.database import db
 from backend.models import AcquisitionPlan, AcquisitionPlanItem, Card
-from backend.schema import ensure_schema_upgrades
+from migrations.legacy_v1 import upgrade_schema
 
 
 def make_plan(owned=4, ordered=0, required=4):
@@ -123,8 +123,23 @@ def test_archive_schema_upgrade_preserves_existing_plans(client, app_context):
     # Recreate the pre-upgrade column layout in the isolated in-memory database.
     db.session.execute(text("ALTER TABLE acquisition_plan DROP COLUMN archived_at"))
     db.session.commit()
-    ensure_schema_upgrades()
-    ensure_schema_upgrades()
+    for _ in range(2):
+        db.session.commit()
+        with db.engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            connection.commit()
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                upgrade_schema(connection)
+                assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+                connection.commit()
+                db.session.expire_all()
+            except BaseException:
+                connection.rollback()
+                raise
+            finally:
+                connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+                connection.commit()
     columns = {
         column["name"] for column in inspect(db.engine).get_columns("acquisition_plan")
     }

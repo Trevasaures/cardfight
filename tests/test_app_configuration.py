@@ -1,11 +1,16 @@
 """App-factory, database, and HTTP defaults independent of route business rules."""
 
+from contextlib import closing
+from hashlib import sha256
+import sqlite3
+
 import pytest
 from sqlalchemy import text
 
 from backend.app import create_app
 from backend.config import frontend_origins
 from backend.database import db
+from backend.migrate import MigrationError, migrate_database
 
 
 def isolated_app(**overrides):
@@ -95,3 +100,39 @@ def test_oversized_non_image_request_gets_a_safe_json_error():
     response = client.post("/api/decks", json={"name": "x" * 100, "type": "Standard"})
     assert response.status_code == 413
     assert response.get_json() == {"error": "request entity too large"}
+
+
+def test_persistent_startup_requires_explicit_initialization_without_creating_files(tmp_path):
+    database = tmp_path / "missing" / "cardfight.db"
+    with pytest.raises(MigrationError):
+        isolated_app(SQLALCHEMY_DATABASE_URI=f"sqlite:///{database.as_posix()}")
+    assert not database.exists()
+
+
+def test_persistent_startup_does_not_adopt_or_repair_an_unversioned_database(tmp_path):
+    database = tmp_path / "unversioned.db"
+    with closing(sqlite3.connect(database)) as connection:
+        connection.executescript(
+            "CREATE TABLE deck(id INTEGER PRIMARY KEY, name TEXT);"
+            'CREATE TABLE "match"(id INTEGER PRIMARY KEY);'
+            "INSERT INTO deck VALUES(1, 'Retain existing data');"
+        )
+    before = sha256(database.read_bytes()).hexdigest()
+    with pytest.raises(MigrationError):
+        isolated_app(SQLALCHEMY_DATABASE_URI=f"sqlite:///{database.as_posix()}")
+    assert sha256(database.read_bytes()).hexdigest() == before
+
+
+def test_current_persistent_startup_only_validates_existing_schema(tmp_path):
+    database = tmp_path / "initialized.db"
+    migrate_database(database, app_check=False)
+    before = sha256(database.read_bytes()).hexdigest()
+    application = isolated_app(SQLALCHEMY_DATABASE_URI=f"sqlite:///{database.as_posix()}")
+    try:
+        assert application.test_client().get("/api/health").status_code == 200
+        with application.app_context():
+            assert db.session.scalar(text("SELECT COUNT(*) FROM deck")) == 0
+            db.session.remove()
+            db.engine.dispose()
+    finally:
+        assert sha256(database.read_bytes()).hexdigest() == before

@@ -19,6 +19,15 @@ not enable Flask's development debugger or reloader. The existing `backend.app:a
 entry point is retained for other WSGI hosts. The application factory accepts an
 explicit config mapping for tests or custom hosting.
 
+Persistent databases must be initialized or upgraded explicitly before launching
+the WSGI process. For a new database use `python -m backend.migrate upgrade`;
+existing unversioned data first uses `python -m backend.migrate baseline`.
+Stop all writers before either command. Existing data receives a verified backup
+and disposable upgrade rehearsal before migration. Gate startup/deployment with
+`python -m backend.migrate status --require-current`. Startup itself performs
+read-only schema checks and never applies upgrades. Follow the
+[migration runbook](database-migrations.md) for recovery and legacy support.
+
 ## Frontend
 
 Build the React app with Node 24 LTS:

@@ -23,6 +23,7 @@ from backend.backup import (
     verify_backup,
 )
 from backend.database import db
+from backend.migrate import migrate_database
 from backend.models import (
     AcquisitionPlan,
     AcquisitionPlanItem,
@@ -58,6 +59,7 @@ def image_data(color):
 def saved_database(tmp_path):
     """Keep every current entity and several easy-to-lose relationships populated."""
     source = tmp_path / "player workspace.db"
+    migrate_database(source, app_check=False)
     application = create_app(
         {"TESTING": True, "SQLALCHEMY_DATABASE_URI": f"sqlite:///{source.as_posix()}"}
     )
