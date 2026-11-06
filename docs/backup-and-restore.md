@@ -72,6 +72,13 @@ establish an exact pre-upgrade recovery point, verify it with the code version
 that created it before testing a newer version. A successful SQLite check alone
 does not establish compatibility with every future application version.
 
+For an unversioned checkpoint with the new migration-enabled application, use
+raw `backup verify` without `--app-check`, then `python -m backend.migrate rehearse`
+with that checkpoint path. The rehearsal upgrades only the restored copy before
+running the new app's read-only checks. See the
+[migration runbook](database-migrations.md); do not alter the original checkpoint
+just to satisfy the new startup guard.
+
 Require a successful `verify --app-check` before a migration, a hosting cutover,
 or deleting an older recovery point. After copying a backup off the machine,
 verify that copy as well. A failed or missing-manifest verification is not a

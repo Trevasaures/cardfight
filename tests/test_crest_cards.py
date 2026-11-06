@@ -4,7 +4,6 @@ from sqlalchemy.engine import Connection
 
 from backend.database import db
 from backend.models import Card, CardPrinting, Deck, DeckCard, DeckVersion
-from backend.schema import ensure_schema_upgrades
 from backend.services.acquisition import create_acquisition_plan
 from backend.services.cards import (
     DuplicateCardNameError,
@@ -21,6 +20,27 @@ from backend.services.serializers import (
     serialize_acquisition_plan,
     serialize_deck_version,
 )
+from migrations.legacy_v1 import upgrade_schema
+
+
+def explicit_legacy_upgrade():
+    """Exercise the frozen legacy conversion in its caller-owned transaction."""
+    db.session.commit()
+    with db.engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        connection.commit()
+        connection.exec_driver_sql("BEGIN IMMEDIATE")
+        try:
+            upgrade_schema(connection)
+            assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+            connection.commit()
+            db.session.expire_all()
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+            connection.commit()
 
 
 def _version():
@@ -239,8 +259,8 @@ def test_legacy_sqlite_zone_upgrade_preserves_entries_and_acquisition_references
             text(f"INSERT INTO deck_card ({columns}) VALUES ({values})"),
             dict(row_before),
         )
-    ensure_schema_upgrades()
-    ensure_schema_upgrades()
+    explicit_legacy_upgrade()
+    explicit_legacy_upgrade()
     row_after = db.session.execute(text("SELECT * FROM deck_card")).mappings().one()
     assert dict(row_after) == dict(row_before)
     assert serialize_acquisition_plan(plan) == plan_before
@@ -287,7 +307,7 @@ def test_zone_upgrade_rolls_back_table_replacement_if_index_recreation_fails(
 
     monkeypatch.setattr(Connection, "exec_driver_sql", fail_on_index)
     with pytest.raises(RuntimeError, match="Simulated migration failure"):
-        ensure_schema_upgrades()
+        explicit_legacy_upgrade()
     assert dict(
         db.session.execute(text("SELECT * FROM deck_card")).mappings().one()
     ) == dict(row_before)

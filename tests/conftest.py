@@ -13,6 +13,7 @@ from backend.database import db  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def clean_database():
+    """Own the disposable memory schema; persistent setup uses migration tests."""
     app.config.update(TESTING=True)
 
     with app.app_context():

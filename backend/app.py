@@ -8,7 +8,7 @@ from backend.config import PROJECT_ROOT, default_config
 from backend.database import db
 from backend.errors import register_api_errors
 from backend.routes import all_blueprints
-from backend.schema import ensure_schema_upgrades
+from backend.schema import ensure_schema_current
 
 load_dotenv(PROJECT_ROOT / ".env")
 
@@ -31,8 +31,7 @@ def create_app(config=None):
     CORS(app, resources={r"/api/*": {"origins": origins}})
 
     with app.app_context():
-        db.create_all()
-        ensure_schema_upgrades()
+        ensure_schema_current(db.engine)
 
     @app.get("/health")
     @app.get("/api/health")

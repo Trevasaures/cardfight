@@ -170,11 +170,16 @@ Copy-Item .env.example .env
 
 The default mock image analyzer does not require an API key.
 
-### 5. Seed and launch the application
+### 5. Initialize, seed, and launch the application
 
 ```powershell
+python -m backend.migrate upgrade
 .\start.ps1 -Seed
 ```
+
+The migration command above initializes a new database. If you already have saved
+data from before version tracking, stop the app and follow the
+[existing-database baseline workflow](docs/database-migrations.md) first.
 
 This starts:
 
@@ -218,6 +223,7 @@ npm ci
 cd ..
 
 cp .env.example .env
+python -m backend.migrate upgrade
 python -m backend.seed
 ```
 
@@ -326,15 +332,25 @@ SQLite is the expected development database. Other database engines have not bee
 
 ## SQLite database creation and seeding
 
-### Automatic database creation
+### Explicit database initialization and upgrades
 
-Starting the Flask application imports `backend.app`, calls `db.create_all()`, and creates missing tables automatically. A first launch therefore creates:
+Initialize a new SQLite database before starting the API or running the seed:
 
-```text
-instance/cardfight.db
+```bash
+python -m backend.migrate upgrade
+python -m backend.migrate status --require-current
 ```
 
-The application also runs the lightweight compatibility helpers in `backend/schema.py`. These helpers add a small number of known columns to older local databases. The project does not currently use Alembic or Flask-Migrate.
+The default file is `instance/cardfight.db`. Existing unversioned databases use
+`python -m backend.migrate baseline` once, after stopping app writes. That command
+creates a verified backup, rehearses the supported schema transition on a restored
+copy, and checks existing values before committing the Alembic baseline. Future
+versioned upgrades use `upgrade`.
+
+Startup validates persistent schemas without creating tables, stamping revisions,
+or running compatibility upgrades. Missing, unsupported, and incomplete schemas
+produce actionable errors. See the [migration runbook](docs/database-migrations.md)
+for supported legacy layouts, rehearsal, upgrade, and backup recovery commands.
 
 ### Seeding starter decks
 
@@ -367,12 +383,13 @@ The online backup can capture committed data while the app runs. Stop writes for
 
 ### Creating a completely fresh database
 
-1. Stop the Flask application.
-2. Back up `instance/cardfight.db` if its data matters.
-3. Delete `instance/cardfight.db`.
-4. Start Flask or run `python -m backend.seed`.
+1. Stop the Flask application and back up the existing database if its data matters.
+2. Set `DATABASE_URL` to a separate, new SQLite file's absolute path.
+3. Run `python -m backend.migrate upgrade` to initialize that file.
+4. Optionally run `python -m backend.seed`, then start the app.
 
-The tables and database file will be recreated. Seeding after recreation restores only the starter decks from `deck.py`; it does not restore match history, cards, or deck lists.
+The original file remains available. Seeding a new database adds only the starter
+decks from `deck.py`; it does not restore match history, cards, or deck lists.
 
 The `instance/` directory and SQLite files are ignored by Git, so each clone maintains its own local data.
 
@@ -384,7 +401,8 @@ cardfight/
 │   ├── app.py                 # Flask application factory and API setup
 │   ├── database.py            # Shared SQLAlchemy instance
 │   ├── models.py              # Database models and relationships
-│   ├── schema.py              # Lightweight SQLite compatibility upgrades
+│   ├── schema.py              # Read-only database revision/schema startup guard
+│   ├── migrate.py             # Explicit backup/rehearsal/migration commands
 │   ├── seed.py                # Additive starter-deck seed
 │   ├── routes/                # HTTP request/response layer
 │   └── services/              # Validation, queries, and business logic

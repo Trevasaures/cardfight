@@ -1,0 +1,1488 @@
+{
+  "schema_version": 1,
+  "table_order": [
+    "card",
+    "card_image",
+    "card_set",
+    "deck",
+    "card_printing",
+    "deck_version",
+    "acquisition_plan",
+    "deck_card",
+    "match",
+    "acquisition_plan_item"
+  ],
+  "tables": {
+    "acquisition_plan": {
+      "checks": [
+        {
+          "name": "ck_acquisition_plan_build_mode",
+          "sqltext": "build_mode IN ('physical','proxy','mixed')"
+        },
+        {
+          "name": "ck_acquisition_plan_source",
+          "sqltext": "list_source IN ('empty','deck_version')"
+        },
+        {
+          "name": "ck_acquisition_plan_status",
+          "sqltext": "status IN ('planning','buying','waiting','complete','paused')"
+        },
+        {
+          "name": "ck_acquisition_plan_type",
+          "sqltext": "plan_type IN ('new_build','existing_deck')"
+        }
+      ],
+      "columns": [
+        {
+          "default": null,
+          "name": "id",
+          "nullable": false,
+          "primary_key": 1,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "name",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "VARCHAR(160)"
+        },
+        {
+          "default": null,
+          "name": "plan_type",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "VARCHAR(40)"
+        },
+        {
+          "default": null,
+          "name": "list_source",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "VARCHAR(40)"
+        },
+        {
+          "default": null,
+          "name": "status",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "VARCHAR(40)"
+        },
+        {
+          "default": null,
+          "name": "archived_at",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "DATETIME"
+        },
+        {
+          "default": null,
+          "name": "build_mode",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "VARCHAR(40)"
+        },
+        {
+          "default": null,
+          "name": "deck_id",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "deck_version_id",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "source_deck_version_id",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "deck_type",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "VARCHAR(20)"
+        },
+        {
+          "default": null,
+          "name": "nation",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "VARCHAR(80)"
+        },
+        {
+          "default": null,
+          "name": "notes",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "TEXT"
+        },
+        {
+          "default": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "DATETIME"
+        },
+        {
+          "default": null,
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "create_sql": "CREATE TABLE acquisition_plan (\n\tid INTEGER NOT NULL, \n\tname VARCHAR(160) NOT NULL, \n\tplan_type VARCHAR(40) NOT NULL, \n\tlist_source VARCHAR(40) NOT NULL, \n\tstatus VARCHAR(40) NOT NULL, \n\tarchived_at DATETIME, \n\tbuild_mode VARCHAR(40) NOT NULL, \n\tdeck_id INTEGER, \n\tdeck_version_id INTEGER, \n\tsource_deck_version_id INTEGER, \n\tdeck_type VARCHAR(20), \n\tnation VARCHAR(80), \n\tnotes TEXT NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT ck_acquisition_plan_type CHECK (plan_type IN ('new_build','existing_deck')), \n\tCONSTRAINT ck_acquisition_plan_source CHECK (list_source IN ('empty','deck_version')), \n\tCONSTRAINT ck_acquisition_plan_status CHECK (status IN ('planning','buying','waiting','complete','paused')), \n\tCONSTRAINT ck_acquisition_plan_build_mode CHECK (build_mode IN ('physical','proxy','mixed')), \n\tFOREIGN KEY(deck_id) REFERENCES deck (id) ON DELETE SET NULL, \n\tFOREIGN KEY(deck_version_id) REFERENCES deck_version (id) ON DELETE SET NULL, \n\tFOREIGN KEY(source_deck_version_id) REFERENCES deck_version (id) ON DELETE SET NULL\n)",
+      "foreign_keys": [
+        {
+          "constrained_columns": [
+            "deck_id"
+          ],
+          "name": null,
+          "options": {
+            "ondelete": "SET NULL"
+          },
+          "referred_columns": [
+            "id"
+          ],
+          "referred_schema": null,
+          "referred_table": "deck"
+        },
+        {
+          "constrained_columns": [
+            "deck_version_id"
+          ],
+          "name": null,
+          "options": {
+            "ondelete": "SET NULL"
+          },
+          "referred_columns": [
+            "id"
+          ],
+          "referred_schema": null,
+          "referred_table": "deck_version"
+        },
+        {
+          "constrained_columns": [
+            "source_deck_version_id"
+          ],
+          "name": null,
+          "options": {
+            "ondelete": "SET NULL"
+          },
+          "referred_columns": [
+            "id"
+          ],
+          "referred_schema": null,
+          "referred_table": "deck_version"
+        }
+      ],
+      "indexes": [
+        {
+          "column_names": [
+            "deck_id"
+          ],
+          "create_sql": "CREATE INDEX ix_acquisition_plan_deck ON acquisition_plan (deck_id)",
+          "dialect_options": {},
+          "name": "ix_acquisition_plan_deck",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "source_deck_version_id"
+          ],
+          "create_sql": "CREATE INDEX ix_acquisition_plan_source_version ON acquisition_plan (source_deck_version_id)",
+          "dialect_options": {},
+          "name": "ix_acquisition_plan_source_version",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "status"
+          ],
+          "create_sql": "CREATE INDEX ix_acquisition_plan_status ON acquisition_plan (status)",
+          "dialect_options": {},
+          "name": "ix_acquisition_plan_status",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "deck_version_id"
+          ],
+          "create_sql": "CREATE INDEX ix_acquisition_plan_version ON acquisition_plan (deck_version_id)",
+          "dialect_options": {},
+          "name": "ix_acquisition_plan_version",
+          "unique": 0
+        }
+      ],
+      "unique_constraints": []
+    },
+    "acquisition_plan_item": {
+      "checks": [
+        {
+          "name": "ck_acquisition_item_confirmed_removed_nonnegative",
+          "sqltext": "confirmed_removed_quantity >= 0"
+        },
+        {
+          "name": "ck_acquisition_item_ordered_nonnegative",
+          "sqltext": "ordered_quantity >= 0"
+        },
+        {
+          "name": "ck_acquisition_item_owned_nonnegative",
+          "sqltext": "owned_quantity >= 0"
+        },
+        {
+          "name": "ck_acquisition_item_price_nonnegative",
+          "sqltext": "unit_price_cents >= 0"
+        },
+        {
+          "name": "ck_acquisition_item_removed_nonnegative",
+          "sqltext": "removed_quantity >= 0"
+        },
+        {
+          "name": "ck_acquisition_item_required_nonnegative",
+          "sqltext": "required_quantity >= 0"
+        },
+        {
+          "name": "ck_acquisition_item_source_nonnegative",
+          "sqltext": "source_quantity >= 0"
+        }
+      ],
+      "columns": [
+        {
+          "default": null,
+          "name": "id",
+          "nullable": false,
+          "primary_key": 1,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "plan_id",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "card_id",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "printing_id",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "required_quantity",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "source_quantity",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "removed_quantity",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "confirmed_removed_quantity",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "removal_confirmed_at",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "DATETIME"
+        },
+        {
+          "default": null,
+          "name": "owned_quantity",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "ordered_quantity",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "unit_price_cents",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "notes",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "TEXT"
+        },
+        {
+          "default": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "DATETIME"
+        },
+        {
+          "default": null,
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "create_sql": "CREATE TABLE acquisition_plan_item (\n\tid INTEGER NOT NULL, \n\tplan_id INTEGER NOT NULL, \n\tcard_id INTEGER NOT NULL, \n\tprinting_id INTEGER, \n\trequired_quantity INTEGER NOT NULL, \n\tsource_quantity INTEGER NOT NULL, \n\tremoved_quantity INTEGER NOT NULL, \n\tconfirmed_removed_quantity INTEGER NOT NULL, \n\tremoval_confirmed_at DATETIME, \n\towned_quantity INTEGER NOT NULL, \n\tordered_quantity INTEGER NOT NULL, \n\tunit_price_cents INTEGER NOT NULL, \n\tnotes TEXT NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT ck_acquisition_item_required_nonnegative CHECK (required_quantity >= 0), \n\tCONSTRAINT ck_acquisition_item_source_nonnegative CHECK (source_quantity >= 0), \n\tCONSTRAINT ck_acquisition_item_removed_nonnegative CHECK (removed_quantity >= 0), \n\tCONSTRAINT ck_acquisition_item_confirmed_removed_nonnegative CHECK (confirmed_removed_quantity >= 0), \n\tCONSTRAINT ck_acquisition_item_owned_nonnegative CHECK (owned_quantity >= 0), \n\tCONSTRAINT ck_acquisition_item_ordered_nonnegative CHECK (ordered_quantity >= 0), \n\tCONSTRAINT ck_acquisition_item_price_nonnegative CHECK (unit_price_cents >= 0), \n\tFOREIGN KEY(plan_id) REFERENCES acquisition_plan (id) ON DELETE CASCADE, \n\tFOREIGN KEY(card_id) REFERENCES card (id) ON DELETE CASCADE, \n\tFOREIGN KEY(printing_id) REFERENCES card_printing (id) ON DELETE SET NULL\n)",
+      "foreign_keys": [
+        {
+          "constrained_columns": [
+            "plan_id"
+          ],
+          "name": null,
+          "options": {
+            "ondelete": "CASCADE"
+          },
+          "referred_columns": [
+            "id"
+          ],
+          "referred_schema": null,
+          "referred_table": "acquisition_plan"
+        },
+        {
+          "constrained_columns": [
+            "card_id"
+          ],
+          "name": null,
+          "options": {
+            "ondelete": "CASCADE"
+          },
+          "referred_columns": [
+            "id"
+          ],
+          "referred_schema": null,
+          "referred_table": "card"
+        },
+        {
+          "constrained_columns": [
+            "printing_id"
+          ],
+          "name": null,
+          "options": {
+            "ondelete": "SET NULL"
+          },
+          "referred_columns": [
+            "id"
+          ],
+          "referred_schema": null,
+          "referred_table": "card_printing"
+        }
+      ],
+      "indexes": [
+        {
+          "column_names": [
+            "card_id"
+          ],
+          "create_sql": "CREATE INDEX ix_acquisition_item_card ON acquisition_plan_item (card_id)",
+          "dialect_options": {},
+          "name": "ix_acquisition_item_card",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "plan_id"
+          ],
+          "create_sql": "CREATE INDEX ix_acquisition_item_plan ON acquisition_plan_item (plan_id)",
+          "dialect_options": {},
+          "name": "ix_acquisition_item_plan",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "printing_id"
+          ],
+          "create_sql": "CREATE INDEX ix_acquisition_item_printing ON acquisition_plan_item (printing_id)",
+          "dialect_options": {},
+          "name": "ix_acquisition_item_printing",
+          "unique": 0
+        }
+      ],
+      "unique_constraints": []
+    },
+    "card": {
+      "checks": [],
+      "columns": [
+        {
+          "default": null,
+          "name": "id",
+          "nullable": false,
+          "primary_key": 1,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "name",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "VARCHAR(160)"
+        },
+        {
+          "default": null,
+          "name": "grade",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "nation",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "VARCHAR(80)"
+        },
+        {
+          "default": null,
+          "name": "card_type",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "VARCHAR(80)"
+        },
+        {
+          "default": null,
+          "name": "clan",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "VARCHAR(80)"
+        },
+        {
+          "default": null,
+          "name": "race",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "VARCHAR(80)"
+        },
+        {
+          "default": null,
+          "name": "power",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "shield",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "critical",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "trigger_type",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "VARCHAR(80)"
+        },
+        {
+          "default": null,
+          "name": "skill_text",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "TEXT"
+        },
+        {
+          "default": null,
+          "name": "flavor_text",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "TEXT"
+        },
+        {
+          "default": null,
+          "name": "source",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "VARCHAR(80)"
+        },
+        {
+          "default": null,
+          "name": "external_id",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "VARCHAR(160)"
+        },
+        {
+          "default": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "DATETIME"
+        },
+        {
+          "default": null,
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "create_sql": "CREATE TABLE card (\n\tid INTEGER NOT NULL, \n\tname VARCHAR(160) NOT NULL, \n\tgrade INTEGER, \n\tnation VARCHAR(80), \n\tcard_type VARCHAR(80) NOT NULL, \n\tclan VARCHAR(80), \n\trace VARCHAR(80), \n\tpower INTEGER, \n\tshield INTEGER, \n\tcritical INTEGER, \n\ttrigger_type VARCHAR(80), \n\tskill_text TEXT NOT NULL, \n\tflavor_text TEXT NOT NULL, \n\tsource VARCHAR(80) NOT NULL, \n\texternal_id VARCHAR(160), \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id)\n)",
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "column_names": [
+            "external_id"
+          ],
+          "create_sql": "CREATE INDEX ix_card_external_id ON card (external_id)",
+          "dialect_options": {},
+          "name": "ix_card_external_id",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "grade"
+          ],
+          "create_sql": "CREATE INDEX ix_card_grade ON card (grade)",
+          "dialect_options": {},
+          "name": "ix_card_grade",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "name"
+          ],
+          "create_sql": "CREATE INDEX ix_card_name ON card (name)",
+          "dialect_options": {},
+          "name": "ix_card_name",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "nation"
+          ],
+          "create_sql": "CREATE INDEX ix_card_nation ON card (nation)",
+          "dialect_options": {},
+          "name": "ix_card_nation",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "card_type"
+          ],
+          "create_sql": "CREATE INDEX ix_card_type ON card (card_type)",
+          "dialect_options": {},
+          "name": "ix_card_type",
+          "unique": 0
+        }
+      ],
+      "unique_constraints": []
+    },
+    "card_image": {
+      "checks": [],
+      "columns": [
+        {
+          "default": null,
+          "name": "id",
+          "nullable": false,
+          "primary_key": 1,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "default": null,
+          "name": "full_data",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "BLOB"
+        },
+        {
+          "default": null,
+          "name": "thumbnail_data",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "BLOB"
+        },
+        {
+          "default": null,
+          "name": "mimetype",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "VARCHAR(32)"
+        },
+        {
+          "default": null,
+          "name": "width",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "height",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "byte_size",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "thumbnail_byte_size",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "DATETIME"
+        },
+        {
+          "default": null,
+          "name": "last_used_at",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "create_sql": "CREATE TABLE card_image (\n\tid VARCHAR(64) NOT NULL, \n\tfull_data BLOB NOT NULL, \n\tthumbnail_data BLOB NOT NULL, \n\tmimetype VARCHAR(32) NOT NULL, \n\twidth INTEGER NOT NULL, \n\theight INTEGER NOT NULL, \n\tbyte_size INTEGER NOT NULL, \n\tthumbnail_byte_size INTEGER NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tlast_used_at DATETIME NOT NULL, \n\tPRIMARY KEY (id)\n)",
+      "foreign_keys": [],
+      "indexes": [],
+      "unique_constraints": []
+    },
+    "card_printing": {
+      "checks": [],
+      "columns": [
+        {
+          "default": null,
+          "name": "id",
+          "nullable": false,
+          "primary_key": 1,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "card_id",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "set_code",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "VARCHAR(80)"
+        },
+        {
+          "default": null,
+          "name": "set_name",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "VARCHAR(160)"
+        },
+        {
+          "default": null,
+          "name": "card_number",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "VARCHAR(80)"
+        },
+        {
+          "default": null,
+          "name": "rarity",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "VARCHAR(80)"
+        },
+        {
+          "default": null,
+          "name": "image_url",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "VARCHAR(500)"
+        },
+        {
+          "default": null,
+          "name": "image_id",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "default": null,
+          "name": "product_url",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "VARCHAR(500)"
+        },
+        {
+          "default": null,
+          "name": "source",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "VARCHAR(80)"
+        },
+        {
+          "default": null,
+          "name": "external_id",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "VARCHAR(160)"
+        },
+        {
+          "default": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "DATETIME"
+        },
+        {
+          "default": null,
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "create_sql": "CREATE TABLE card_printing (\n\tid INTEGER NOT NULL, \n\tcard_id INTEGER NOT NULL, \n\tset_code VARCHAR(80), \n\tset_name VARCHAR(160), \n\tcard_number VARCHAR(80), \n\trarity VARCHAR(80), \n\timage_url VARCHAR(500), \n\timage_id VARCHAR(64), \n\tproduct_url VARCHAR(500), \n\tsource VARCHAR(80) NOT NULL, \n\texternal_id VARCHAR(160), \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(card_id) REFERENCES card (id) ON DELETE CASCADE, \n\tFOREIGN KEY(image_id) REFERENCES card_image (id)\n)",
+      "foreign_keys": [
+        {
+          "constrained_columns": [
+            "card_id"
+          ],
+          "name": null,
+          "options": {
+            "ondelete": "CASCADE"
+          },
+          "referred_columns": [
+            "id"
+          ],
+          "referred_schema": null,
+          "referred_table": "card"
+        },
+        {
+          "constrained_columns": [
+            "image_id"
+          ],
+          "name": null,
+          "options": {},
+          "referred_columns": [
+            "id"
+          ],
+          "referred_schema": null,
+          "referred_table": "card_image"
+        }
+      ],
+      "indexes": [
+        {
+          "column_names": [
+            "card_id"
+          ],
+          "create_sql": "CREATE INDEX ix_card_printing_card ON card_printing (card_id)",
+          "dialect_options": {},
+          "name": "ix_card_printing_card",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "external_id"
+          ],
+          "create_sql": "CREATE INDEX ix_card_printing_external_id ON card_printing (external_id)",
+          "dialect_options": {},
+          "name": "ix_card_printing_external_id",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "image_id"
+          ],
+          "create_sql": "CREATE INDEX ix_card_printing_image ON card_printing (image_id)",
+          "dialect_options": {},
+          "name": "ix_card_printing_image",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "rarity"
+          ],
+          "create_sql": "CREATE INDEX ix_card_printing_rarity ON card_printing (rarity)",
+          "dialect_options": {},
+          "name": "ix_card_printing_rarity",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "set_code"
+          ],
+          "create_sql": "CREATE INDEX ix_card_printing_set_code ON card_printing (set_code)",
+          "dialect_options": {},
+          "name": "ix_card_printing_set_code",
+          "unique": 0
+        }
+      ],
+      "unique_constraints": []
+    },
+    "card_set": {
+      "checks": [],
+      "columns": [
+        {
+          "default": null,
+          "name": "id",
+          "nullable": false,
+          "primary_key": 1,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "code",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "VARCHAR(80)"
+        },
+        {
+          "default": null,
+          "name": "name",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "VARCHAR(160)"
+        },
+        {
+          "default": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "DATETIME"
+        },
+        {
+          "default": null,
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "create_sql": "CREATE TABLE card_set (\n\tid INTEGER NOT NULL, \n\tcode VARCHAR(80) NOT NULL, \n\tname VARCHAR(160) NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (code)\n)",
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "column_names": [
+            "code"
+          ],
+          "create_sql": "CREATE INDEX ix_card_set_code ON card_set (code)",
+          "dialect_options": {},
+          "name": "ix_card_set_code",
+          "unique": 0
+        }
+      ],
+      "unique_constraints": [
+        {
+          "column_names": [
+            "code"
+          ],
+          "name": null
+        }
+      ]
+    },
+    "deck": {
+      "checks": [
+        {
+          "name": "ck_deck_type",
+          "sqltext": "type IN ('Standard','Stride')"
+        }
+      ],
+      "columns": [
+        {
+          "default": null,
+          "name": "id",
+          "nullable": false,
+          "primary_key": 1,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "name",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "VARCHAR(100)"
+        },
+        {
+          "default": null,
+          "name": "type",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "VARCHAR(20)"
+        },
+        {
+          "default": null,
+          "name": "nation",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "VARCHAR(50)"
+        },
+        {
+          "default": null,
+          "name": "nation_icon",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "VARCHAR(100)"
+        },
+        {
+          "default": null,
+          "name": "wins",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "losses",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "active",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "BOOLEAN"
+        },
+        {
+          "default": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "create_sql": "CREATE TABLE deck (\n\tid INTEGER NOT NULL, \n\tname VARCHAR(100) NOT NULL, \n\ttype VARCHAR(20) NOT NULL, \n\tnation VARCHAR(50), \n\tnation_icon VARCHAR(100), \n\twins INTEGER NOT NULL, \n\tlosses INTEGER NOT NULL, \n\tactive BOOLEAN NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT ck_deck_type CHECK (type IN ('Standard','Stride')), \n\tUNIQUE (name)\n)",
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "column_names": [
+            "name"
+          ],
+          "create_sql": "CREATE INDEX ix_deck_name ON deck (name)",
+          "dialect_options": {},
+          "name": "ix_deck_name",
+          "unique": 0
+        }
+      ],
+      "unique_constraints": [
+        {
+          "column_names": [
+            "name"
+          ],
+          "name": null
+        }
+      ]
+    },
+    "deck_card": {
+      "checks": [
+        {
+          "name": "ck_deck_card_quantity_positive",
+          "sqltext": "quantity > 0"
+        },
+        {
+          "name": "ck_deck_card_zone",
+          "sqltext": "zone IN ('main','ride','g','token','other','crest')"
+        }
+      ],
+      "columns": [
+        {
+          "default": null,
+          "name": "id",
+          "nullable": false,
+          "primary_key": 1,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "deck_version_id",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "card_id",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "printing_id",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "quantity",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "zone",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "VARCHAR(40)"
+        },
+        {
+          "default": null,
+          "name": "sort_order",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "DATETIME"
+        },
+        {
+          "default": null,
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "create_sql": "CREATE TABLE deck_card (\n\tid INTEGER NOT NULL, \n\tdeck_version_id INTEGER NOT NULL, \n\tcard_id INTEGER NOT NULL, \n\tprinting_id INTEGER, \n\tquantity INTEGER NOT NULL, \n\tzone VARCHAR(40) NOT NULL, \n\tsort_order INTEGER NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT ck_deck_card_quantity_positive CHECK (quantity > 0), \n\tCONSTRAINT ck_deck_card_zone CHECK (zone IN ('main','ride','g','token','other','crest')), \n\tFOREIGN KEY(deck_version_id) REFERENCES deck_version (id) ON DELETE CASCADE, \n\tFOREIGN KEY(card_id) REFERENCES card (id) ON DELETE CASCADE, \n\tFOREIGN KEY(printing_id) REFERENCES card_printing (id) ON DELETE SET NULL\n)",
+      "foreign_keys": [
+        {
+          "constrained_columns": [
+            "deck_version_id"
+          ],
+          "name": null,
+          "options": {
+            "ondelete": "CASCADE"
+          },
+          "referred_columns": [
+            "id"
+          ],
+          "referred_schema": null,
+          "referred_table": "deck_version"
+        },
+        {
+          "constrained_columns": [
+            "card_id"
+          ],
+          "name": null,
+          "options": {
+            "ondelete": "CASCADE"
+          },
+          "referred_columns": [
+            "id"
+          ],
+          "referred_schema": null,
+          "referred_table": "card"
+        },
+        {
+          "constrained_columns": [
+            "printing_id"
+          ],
+          "name": null,
+          "options": {
+            "ondelete": "SET NULL"
+          },
+          "referred_columns": [
+            "id"
+          ],
+          "referred_schema": null,
+          "referred_table": "card_printing"
+        }
+      ],
+      "indexes": [
+        {
+          "column_names": [
+            "card_id"
+          ],
+          "create_sql": "CREATE INDEX ix_deck_card_card ON deck_card (card_id)",
+          "dialect_options": {},
+          "name": "ix_deck_card_card",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "printing_id"
+          ],
+          "create_sql": "CREATE INDEX ix_deck_card_printing ON deck_card (printing_id)",
+          "dialect_options": {},
+          "name": "ix_deck_card_printing",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "deck_version_id"
+          ],
+          "create_sql": "CREATE INDEX ix_deck_card_version ON deck_card (deck_version_id)",
+          "dialect_options": {},
+          "name": "ix_deck_card_version",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "zone"
+          ],
+          "create_sql": "CREATE INDEX ix_deck_card_zone ON deck_card (zone)",
+          "dialect_options": {},
+          "name": "ix_deck_card_zone",
+          "unique": 0
+        }
+      ],
+      "unique_constraints": []
+    },
+    "deck_version": {
+      "checks": [],
+      "columns": [
+        {
+          "default": null,
+          "name": "id",
+          "nullable": false,
+          "primary_key": 1,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "deck_id",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "version_name",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "VARCHAR(120)"
+        },
+        {
+          "default": null,
+          "name": "notes",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "TEXT"
+        },
+        {
+          "default": null,
+          "name": "is_active",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "BOOLEAN"
+        },
+        {
+          "default": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "DATETIME"
+        },
+        {
+          "default": null,
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "create_sql": "CREATE TABLE deck_version (\n\tid INTEGER NOT NULL, \n\tdeck_id INTEGER NOT NULL, \n\tversion_name VARCHAR(120) NOT NULL, \n\tnotes TEXT NOT NULL, \n\tis_active BOOLEAN NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(deck_id) REFERENCES deck (id) ON DELETE CASCADE\n)",
+      "foreign_keys": [
+        {
+          "constrained_columns": [
+            "deck_id"
+          ],
+          "name": null,
+          "options": {
+            "ondelete": "CASCADE"
+          },
+          "referred_columns": [
+            "id"
+          ],
+          "referred_schema": null,
+          "referred_table": "deck"
+        }
+      ],
+      "indexes": [
+        {
+          "column_names": [
+            "is_active"
+          ],
+          "create_sql": "CREATE INDEX ix_deck_version_active ON deck_version (is_active)",
+          "dialect_options": {},
+          "name": "ix_deck_version_active",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "deck_id"
+          ],
+          "create_sql": "CREATE INDEX ix_deck_version_deck ON deck_version (deck_id)",
+          "dialect_options": {},
+          "name": "ix_deck_version_deck",
+          "unique": 0
+        }
+      ],
+      "unique_constraints": []
+    },
+    "match": {
+      "checks": [
+        {
+          "name": "ck_match_two_distinct_decks",
+          "sqltext": "deck1_id <> deck2_id"
+        }
+      ],
+      "columns": [
+        {
+          "default": null,
+          "name": "id",
+          "nullable": false,
+          "primary_key": 1,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "deck1_id",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "deck2_id",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "deck1_version_id",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "deck2_version_id",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "winner_id",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "first_player_id",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "INTEGER"
+        },
+        {
+          "default": null,
+          "name": "format",
+          "nullable": true,
+          "primary_key": 0,
+          "type": "VARCHAR(20)"
+        },
+        {
+          "default": null,
+          "name": "date_played",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "DATETIME"
+        },
+        {
+          "default": null,
+          "name": "notes",
+          "nullable": false,
+          "primary_key": 0,
+          "type": "TEXT"
+        }
+      ],
+      "create_sql": "CREATE TABLE \"match\" (\n\tid INTEGER NOT NULL, \n\tdeck1_id INTEGER NOT NULL, \n\tdeck2_id INTEGER NOT NULL, \n\tdeck1_version_id INTEGER, \n\tdeck2_version_id INTEGER, \n\twinner_id INTEGER, \n\tfirst_player_id INTEGER, \n\tformat VARCHAR(20), \n\tdate_played DATETIME NOT NULL, \n\tnotes TEXT NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT ck_match_two_distinct_decks CHECK (deck1_id <> deck2_id), \n\tFOREIGN KEY(deck1_id) REFERENCES deck (id), \n\tFOREIGN KEY(deck2_id) REFERENCES deck (id), \n\tFOREIGN KEY(deck1_version_id) REFERENCES deck_version (id), \n\tFOREIGN KEY(deck2_version_id) REFERENCES deck_version (id), \n\tFOREIGN KEY(winner_id) REFERENCES deck (id), \n\tFOREIGN KEY(first_player_id) REFERENCES deck (id)\n)",
+      "foreign_keys": [
+        {
+          "constrained_columns": [
+            "deck1_id"
+          ],
+          "name": null,
+          "options": {},
+          "referred_columns": [
+            "id"
+          ],
+          "referred_schema": null,
+          "referred_table": "deck"
+        },
+        {
+          "constrained_columns": [
+            "deck2_id"
+          ],
+          "name": null,
+          "options": {},
+          "referred_columns": [
+            "id"
+          ],
+          "referred_schema": null,
+          "referred_table": "deck"
+        },
+        {
+          "constrained_columns": [
+            "deck1_version_id"
+          ],
+          "name": null,
+          "options": {},
+          "referred_columns": [
+            "id"
+          ],
+          "referred_schema": null,
+          "referred_table": "deck_version"
+        },
+        {
+          "constrained_columns": [
+            "deck2_version_id"
+          ],
+          "name": null,
+          "options": {},
+          "referred_columns": [
+            "id"
+          ],
+          "referred_schema": null,
+          "referred_table": "deck_version"
+        },
+        {
+          "constrained_columns": [
+            "winner_id"
+          ],
+          "name": null,
+          "options": {},
+          "referred_columns": [
+            "id"
+          ],
+          "referred_schema": null,
+          "referred_table": "deck"
+        },
+        {
+          "constrained_columns": [
+            "first_player_id"
+          ],
+          "name": null,
+          "options": {},
+          "referred_columns": [
+            "id"
+          ],
+          "referred_schema": null,
+          "referred_table": "deck"
+        }
+      ],
+      "indexes": [
+        {
+          "column_names": [
+            "deck1_id"
+          ],
+          "create_sql": "CREATE INDEX ix_match_d1 ON \"match\" (deck1_id)",
+          "dialect_options": {},
+          "name": "ix_match_d1",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "deck1_version_id"
+          ],
+          "create_sql": "CREATE INDEX ix_match_d1_version ON \"match\" (deck1_version_id)",
+          "dialect_options": {},
+          "name": "ix_match_d1_version",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "deck2_id"
+          ],
+          "create_sql": "CREATE INDEX ix_match_d2 ON \"match\" (deck2_id)",
+          "dialect_options": {},
+          "name": "ix_match_d2",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "deck2_version_id"
+          ],
+          "create_sql": "CREATE INDEX ix_match_d2_version ON \"match\" (deck2_version_id)",
+          "dialect_options": {},
+          "name": "ix_match_d2_version",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "date_played"
+          ],
+          "create_sql": "CREATE INDEX ix_match_date ON \"match\" (date_played)",
+          "dialect_options": {},
+          "name": "ix_match_date",
+          "unique": 0
+        },
+        {
+          "column_names": [
+            "winner_id"
+          ],
+          "create_sql": "CREATE INDEX ix_match_winner ON \"match\" (winner_id)",
+          "dialect_options": {},
+          "name": "ix_match_winner",
+          "unique": 0
+        }
+      ],
+      "unique_constraints": []
+    }
+  }
+}
