@@ -1,11 +1,18 @@
 # Running outside the development server
 
-The API has debug disabled by default and supports a standard WSGI server. It
-remains a single-user application without authentication or authorization. Keep
-the API private or behind an access-controlled reverse proxy; CORS is a browser
-policy, not a replacement for access control.
+The API has debug disabled by default and supports a standard WSGI server.
+Default `local` mode is a loopback-only personal lab. The OIDC modes add managed
+Google/email sign-in, invitation-only application accounts and server sessions.
+Follow the [authentication setup](authentication-setup.md) to configure Auth0.
+CORS is a browser policy, not a replacement for access control.
 
-## API
+The [identity design](adr/0001-identity-and-access.md) describes the security
+boundary for #54. Authenticated accounts currently see a holding screen: the
+private workspace API is closed in OIDC modes until #55's per-account data
+isolation is implemented and verified. There is no configuration switch that
+opens the global legacy queries to hosted accounts.
+
+## Local API
 
 Install the version-pinned runtime lock in a virtual environment:
 
@@ -14,10 +21,22 @@ python -m pip install -r requirements.txt
 waitress-serve --host=127.0.0.1 --port=5000 backend.app:app
 ```
 
-Waitress supports Windows and Unix. This command binds only to loopback and does
-not enable Flask's development debugger or reloader. The existing `backend.app:app`
-entry point is retained for other WSGI hosts. The application factory accepts an
-explicit config mapping for tests or custom hosting.
+Waitress supports Windows and Unix. This command runs on loopback with debug
+disabled. The Windows `start.ps1` launcher uses the same local entry point and
+starts Vite on the configured loopback origin.
+
+## Hosted API
+
+Configure the provider and HTTPS public origin, then start the hosted entry
+point. [Authentication setup](authentication-setup.md)
+
+```sh
+CARDFIGHT_AUTH_MODE=oidc waitress-serve --host=127.0.0.1 --port=5000 backend.hosted:app
+```
+
+`backend.hosted:app` requires `CARDFIGHT_AUTH_MODE=oidc` before serving requests.
+Startup also validates the HTTPS origin and complete OIDC settings. Keep the
+upstream listener reachable only by the HTTPS reverse proxy.
 
 Persistent databases must be initialized or upgraded explicitly before launching
 the WSGI process. For a new database use `python -m backend.migrate upgrade`;
@@ -39,11 +58,16 @@ npm run build
 ```
 
 Serve `frontend-web/dist` using a static web host with an SPA fallback to
-`index.html`. API routes must go to Flask rather than the SPA fallback. If the
-API lives at a different address, set `VITE_CARDFIGHT_API_URL` before building;
-it is a build-time value. An empty value uses same-origin `/api/` requests when
-a reverse proxy routes them to Flask. Vite's development/preview servers are
-intended for development and build checks, not public hosting.
+`index.html`. Route `/api/*`, `/auth/*` and `/join` to Flask before the SPA
+fallback. Serve the frontend and these routes on the configured HTTPS origin.
+Forward its public `Host` header to Flask, including any non-default port. For
+example, set `proxy_set_header Host $http_host;` in the Nginx upstream location.
+[Nginx proxy header settings](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_set_header)
+
+Leave `VITE_CARDFIGHT_API_URL` empty for same-origin requests. Verify
+`GET /api/auth/session` through the public URL returns `mode: oidc`. Verify an
+anonymous request to `/api/decks` returns `401`. A health check alone bypasses
+the Host validation and cannot establish that the auth routes are reachable.
 
 ## Configuration and data
 
@@ -51,7 +75,9 @@ intended for development and build checks, not public hosting.
   keep `instance/cardfight.db` and back it up before changing deployment or schema.
 - `CARDFIGHT_CORS_ORIGINS` accepts comma-separated literal HTTP(S) frontend
   origins. Its default contains localhost/127.0.0.1 on ports 5173 and 4173. Set it
-  to your frontend's exact origin, or blank for same-origin-only hosting.
+  to your frontend's exact origin for local tooling. Local API writes accept
+  same-origin requests, configured origins, and loopback tools that omit
+  `Origin`. OIDC modes require same-origin browser requests.
 - JSON/multipart request bodies have a 16 MB application limit. Artwork imports
   retain the existing 8 MB image limit, decode validation, and approved URL hosts.
 - `.env` is local configuration and stays out of Git. Neither the server setup
@@ -69,11 +95,13 @@ application version:
 
 ```sh
 python -m backend.backup create
-python -m backend.backup verify "instance/backups/BACKUP.sqlite3" --app-check
+python -m backend.backup verify "C:/path/to/your/backups/BACKUP.sqlite3" --app-check
 ```
 
-Replace `BACKUP.sqlite3` with the backup filename returned by `create`. Backups
-default to ignored `instance/backups/`; each database must remain beside its
+Use the full backup path returned by `create`. Set `CARDFIGHT_BACKUP_DIR` to an
+absolute directory outside the checkout, such as your OneDrive backup folder;
+without it, backups use the per-user application-data directory. Migration
+checkpoints use the same destination. Each database must remain beside its
 `.manifest.json` file. The online backup includes committed WAL data, but stop
 application writes for the final pre-upgrade or cutover checkpoint. Keep a
 verified copy off the machine. Backup scheduling, retention, and cloud copies

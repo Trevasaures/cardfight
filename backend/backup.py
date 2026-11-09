@@ -1,7 +1,7 @@
 """Consistent SQLite snapshots and non-destructive restore rehearsals.
 
-This module deliberately never imports backend.app: importing it starts schema
-initialization. Only the optional application check imports it, in a subprocess
+This module deliberately never imports backend.app: importing it validates the
+configured application database. Only the optional application check imports it, in a subprocess
 pointed at a disposable, read-only restored database.
 """
 
@@ -12,6 +12,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -301,12 +302,57 @@ def default_source():
     return Path(database)
 
 
+def _backup_directory(value, setting):
+    if not isinstance(value, str) or not value.strip():
+        raise BackupError(f"{setting} must specify an absolute backup directory.")
+    expanded = os.path.expandvars(os.path.expanduser(value.strip()))
+    if re.search(r"\$(?:[A-Za-z_]\w*|\{[^}]*\})|%[^%]+%", expanded):
+        raise BackupError(f"{setting} contains an unresolved environment variable.")
+    if any(ord(character) < 32 for character in expanded):
+        raise BackupError(f"{setting} contains an invalid path character.")
+    try:
+        directory = Path(expanded)
+        if not directory.is_absolute():
+            raise BackupError(f"{setting} must specify an absolute backup directory.")
+        directory = directory.resolve()
+        if directory.is_relative_to(PROJECT_ROOT.resolve()):
+            raise BackupError(f"{setting} must point outside the Cardfight project.")
+        if directory.exists() and not directory.is_dir():
+            raise BackupError(f"{setting} must point to a directory, not a file.")
+        return directory
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise BackupError(f"{setting} is not a valid backup directory: {exc}") from exc
+
+
+def default_backup_dir():
+    """Resolve external backup storage without importing Flask or creating it."""
+    from dotenv import dotenv_values
+
+    setting = "CARDFIGHT_BACKUP_DIR"
+    if setting in os.environ:
+        return _backup_directory(os.environ[setting], setting)
+    try:
+        configuration = dotenv_values(PROJECT_ROOT / ".env", interpolate=False)
+    except OSError as exc:
+        raise BackupError(f"Could not read backup directory configuration: {exc}") from exc
+    if setting in configuration:
+        return _backup_directory(configuration[setting], setting)
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))
+        destination = Path(base) / "Cardfight" / "backups"
+        return _backup_directory(str(destination), "LOCALAPPDATA backup location")
+    base = os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local" / "state"))
+    destination = Path(base) / "cardfight" / "backups"
+    return _backup_directory(str(destination), "XDG_STATE_HOME backup location")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     create = commands.add_parser("create", help="Create a consistent SQLite backup and manifest")
     create.add_argument("--source", type=Path, help="Override configured SQLite database path")
-    create.add_argument("--backup-dir", type=Path, default=PROJECT_ROOT / "instance" / "backups")
+    create.add_argument("--backup-dir", type=Path,
+                        help="Override CARDFIGHT_BACKUP_DIR or the per-user backup directory")
     verify = commands.add_parser("verify", help="Restore and verify a disposable copy")
     verify.add_argument("backup", type=Path)
     verify.add_argument("--app-check", action="store_true", help="Also read restored data through Flask")
@@ -316,7 +362,8 @@ def main(argv=None):
     arguments = parser.parse_args(argv)
     try:
         if arguments.command == "create":
-            backup = create_backup(arguments.source or default_source(), arguments.backup_dir)
+            backup_dir = arguments.backup_dir if arguments.backup_dir is not None else default_backup_dir()
+            backup = create_backup(arguments.source or default_source(), backup_dir)
             result = {"backup": str(backup), "manifest": str(manifest_path(backup)),
                       "database": check_backup(backup)["database"]}
         elif arguments.command == "verify":

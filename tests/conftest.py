@@ -6,6 +6,16 @@ from sqlalchemy import event
 
 
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+# A developer may have enabled real sign-in in .env. The shared regression app
+# stays an isolated local lab; auth tests explicitly supply their own provider
+# and disposable configuration. Never read live credentials or admission state.
+os.environ["CARDFIGHT_AUTH_MODE"] = "local"
+os.environ["CARDFIGHT_AUTH_PUBLIC_ORIGIN"] = "http://127.0.0.1:5173"
+os.environ["CARDFIGHT_AUTH_ADMISSION_HOLD"] = "true"
+for auth_setting in (
+    "ISSUER", "CLIENT_ID", "CLIENT_SECRET", "TRANSACTION_KEY", "RESTORE_EPOCH"
+):
+    os.environ["CARDFIGHT_AUTH_" + auth_setting] = ""
 
 from backend.app import app  # noqa: E402
 from backend.database import db  # noqa: E402

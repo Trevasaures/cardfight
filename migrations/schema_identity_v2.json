@@ -1,0 +1,77 @@
+{
+  "schema_version": 2,
+  "table_order": [
+    "auth_account",
+    "auth_audit_event",
+    "auth_throttle",
+    "auth_external_identity",
+    "auth_invitation",
+    "auth_session",
+    "auth_transaction"
+  ],
+  "tables": {
+    "auth_account": {
+      "create_sql": "CREATE TABLE auth_account (\n\tid VARCHAR(36) NOT NULL, \n\tdisplay_name VARCHAR(160) NOT NULL, \n\tcontact_email VARCHAR(320), \n\tcontact_email_key VARCHAR(320), \n\tstatus VARCHAR(24) NOT NULL, \n\trole VARCHAR(24) NOT NULL, \n\tauth_version INTEGER NOT NULL, \n\tadmission_epoch VARCHAR(128) NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT ck_auth_account_status CHECK (status IN ('admitted','suspended','pending')), \n\tCONSTRAINT ck_auth_account_role CHECK (role IN ('member','admin')), \n\tCONSTRAINT ck_auth_account_version CHECK (auth_version > 0)\n)",
+      "indexes": [
+        {
+          "name": "ix_auth_account_contact_email_key",
+          "create_sql": "CREATE UNIQUE INDEX ix_auth_account_contact_email_key ON auth_account (contact_email_key)"
+        }
+      ]
+    },
+    "auth_audit_event": {
+      "create_sql": "CREATE TABLE auth_audit_event (\n\tid VARCHAR(36) NOT NULL, \n\taccount_id VARCHAR(36), \n\tcategory VARCHAR(64) NOT NULL, \n\toutcome VARCHAR(32) NOT NULL, \n\tcorrelation_id VARCHAR(36) NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id)\n)",
+      "indexes": [
+        {
+          "name": "ix_auth_audit_event_account_id",
+          "create_sql": "CREATE INDEX ix_auth_audit_event_account_id ON auth_audit_event (account_id)"
+        }
+      ]
+    },
+    "auth_throttle": {
+      "create_sql": "CREATE TABLE auth_throttle (\n\tkey_hash VARCHAR(64) NOT NULL, \n\tattempts INTEGER NOT NULL, \n\texpires_at DATETIME NOT NULL, \n\tPRIMARY KEY (key_hash)\n)",
+      "indexes": [
+        {
+          "name": "ix_auth_throttle_expires_at",
+          "create_sql": "CREATE INDEX ix_auth_throttle_expires_at ON auth_throttle (expires_at)"
+        }
+      ]
+    },
+    "auth_external_identity": {
+      "create_sql": "CREATE TABLE auth_external_identity (\n\tid VARCHAR(36) NOT NULL, \n\taccount_id VARCHAR(36) NOT NULL, \n\tissuer VARCHAR(512) NOT NULL, \n\tsubject VARCHAR(255) NOT NULL, \n\tmethod VARCHAR(24) NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT uq_auth_external_subject UNIQUE (issuer, subject), \n\tFOREIGN KEY(account_id) REFERENCES auth_account (id) ON DELETE CASCADE\n)",
+      "indexes": [
+        {
+          "name": "ix_auth_external_identity_account_id",
+          "create_sql": "CREATE INDEX ix_auth_external_identity_account_id ON auth_external_identity (account_id)"
+        }
+      ]
+    },
+    "auth_invitation": {
+      "create_sql": "CREATE TABLE auth_invitation (\n\tid VARCHAR(36) NOT NULL, \n\ttoken_hash VARCHAR(64) NOT NULL, \n\trecipient_email VARCHAR(320) NOT NULL, \n\trecipient_email_key VARCHAR(320) NOT NULL, \n\tinviter_id VARCHAR(36), \n\trestore_epoch VARCHAR(128) NOT NULL, \n\texpires_at DATETIME NOT NULL, \n\tconsumed_at DATETIME, \n\trevoked_at DATETIME, \n\taccount_id VARCHAR(36), \n\tcreated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (token_hash), \n\tFOREIGN KEY(inviter_id) REFERENCES auth_account (id), \n\tFOREIGN KEY(account_id) REFERENCES auth_account (id)\n)",
+      "indexes": [
+        {
+          "name": "ix_auth_invitation_recipient_email_key",
+          "create_sql": "CREATE INDEX ix_auth_invitation_recipient_email_key ON auth_invitation (recipient_email_key)"
+        }
+      ]
+    },
+    "auth_session": {
+      "create_sql": "CREATE TABLE auth_session (\n\ttoken_hash VARCHAR(64) NOT NULL, \n\tpublic_id VARCHAR(36) NOT NULL, \n\taccount_id VARCHAR(36), \n\tmethod VARCHAR(24), \n\tcsrf_secret VARCHAR(64) NOT NULL, \n\trestore_epoch VARCHAR(128) NOT NULL, \n\taccount_auth_version INTEGER, \n\tinvitation_hash VARCHAR(64), \n\tcreated_at DATETIME NOT NULL, \n\tlast_seen_at DATETIME NOT NULL, \n\tidle_expires_at DATETIME NOT NULL, \n\tabsolute_expires_at DATETIME NOT NULL, \n\tauthenticated_at DATETIME, \n\tprovider_auth_time DATETIME, \n\tmfa_verified BOOLEAN NOT NULL, \n\trevoked_at DATETIME, \n\tPRIMARY KEY (token_hash), \n\tUNIQUE (public_id), \n\tFOREIGN KEY(account_id) REFERENCES auth_account (id) ON DELETE CASCADE\n)",
+      "indexes": [
+        {
+          "name": "ix_auth_session_account_id",
+          "create_sql": "CREATE INDEX ix_auth_session_account_id ON auth_session (account_id)"
+        }
+      ]
+    },
+    "auth_transaction": {
+      "create_sql": "CREATE TABLE auth_transaction (\n\tstate_hash VARCHAR(64) NOT NULL, \n\tsession_hash VARCHAR(64) NOT NULL, \n\tencrypted_payload TEXT NOT NULL, \n\texpires_at DATETIME NOT NULL, \n\tconsumed_at DATETIME, \n\tcreated_at DATETIME NOT NULL, \n\tPRIMARY KEY (state_hash), \n\tFOREIGN KEY(session_hash) REFERENCES auth_session (token_hash) ON DELETE CASCADE\n)",
+      "indexes": [
+        {
+          "name": "ix_auth_transaction_session_hash",
+          "create_sql": "CREATE INDEX ix_auth_transaction_session_hash ON auth_transaction (session_hash)"
+        }
+      ]
+    }
+  }
+}

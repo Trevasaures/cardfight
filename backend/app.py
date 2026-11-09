@@ -5,6 +5,10 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 
 from backend.config import PROJECT_ROOT, default_config
+from backend.auth import init_auth
+from backend import (
+    auth_models,
+)  # Register additive identity metadata; never create it here.
 from backend.database import db
 from backend.errors import register_api_errors
 from backend.routes import all_blueprints
@@ -28,10 +32,13 @@ def create_app(config=None):
     origins = [
         re.compile(rf"\A{re.escape(origin)}\Z") for origin in app.config["CORS_ORIGINS"]
     ]
-    CORS(app, resources={r"/api/*": {"origins": origins}})
+    if app.config["AUTH_MODE"] == "local":
+        CORS(app, resources={r"/api/*": {"origins": origins}})
 
     with app.app_context():
         ensure_schema_current(db.engine)
+
+    init_auth(app)
 
     @app.get("/health")
     @app.get("/api/health")
