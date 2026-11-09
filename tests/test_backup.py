@@ -13,12 +13,14 @@ import sys
 from PIL import Image
 import pytest
 
+from backend import backup as backup_module
 from backend.app import create_app
 from backend.backup import (
     BackupError,
     check_backup,
     create_backup,
     database_summary,
+    default_backup_dir,
     restore_backup,
     verify_backup,
 )
@@ -473,3 +475,104 @@ def test_cli_rejects_non_file_configuration_instead_of_using_default_data(tmp_pa
     )
     assert result.returncode != 0
     assert not list(tmp_path.glob("*.sqlite3"))
+
+
+@pytest.fixture()
+def isolated_backup_configuration(monkeypatch, tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setattr(backup_module, "PROJECT_ROOT", project)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+    for setting in ("CARDFIGHT_BACKUP_DIR", "LOCALAPPDATA", "XDG_STATE_HOME"):
+        monkeypatch.delenv(setting, raising=False)
+    return project
+
+
+@pytest.mark.parametrize("platform,use_os_setting", [("win32", True), ("win32", False), ("linux", True), ("linux", False)])
+def test_default_backup_storage_is_external_and_not_created(
+    isolated_backup_configuration, monkeypatch, tmp_path, platform, use_os_setting
+):
+    monkeypatch.setattr(backup_module.sys, "platform", platform)
+    if platform == "win32":
+        base = tmp_path / "local-app-data" if use_os_setting else tmp_path / "home" / "AppData" / "Local"
+        if use_os_setting:
+            monkeypatch.setenv("LOCALAPPDATA", str(base))
+        expected = base / "Cardfight" / "backups"
+    else:
+        base = tmp_path / "xdg-state" if use_os_setting else tmp_path / "home" / ".local" / "state"
+        if use_os_setting:
+            monkeypatch.setenv("XDG_STATE_HOME", str(base))
+        expected = base / "cardfight" / "backups"
+    destination = default_backup_dir()
+    assert destination == expected.resolve()
+    assert not destination.is_relative_to(isolated_backup_configuration)
+    assert not destination.exists()
+
+
+def test_backup_directory_reads_project_env_and_expands_user_variables(
+    isolated_backup_configuration, monkeypatch, tmp_path
+):
+    environment_file = isolated_backup_configuration / ".env"
+    environment_file.write_text("CARDFIGHT_BACKUP_DIR=~/Cardfight-recovery\n", encoding="utf-8")
+    assert default_backup_dir() == (tmp_path / "home" / "Cardfight-recovery").resolve()
+    monkeypatch.setenv("CARDFIGHT_TEST_BACKUP_ROOT", str(tmp_path / "cloud sync"))
+    environment_file.write_text("CARDFIGHT_BACKUP_DIR=${CARDFIGHT_TEST_BACKUP_ROOT}/Backup_DBs\n", encoding="utf-8")
+    assert default_backup_dir() == (tmp_path / "cloud sync" / "Backup_DBs").resolve()
+    override = tmp_path / "process override"
+    monkeypatch.setenv("CARDFIGHT_BACKUP_DIR", str(override))
+    assert default_backup_dir() == override.resolve()
+    assert not override.exists()
+
+
+@pytest.mark.parametrize("invalid", ["", "relative/backups", "${CARDFIGHT_TEST_UNSET}/backups", "file", "inside-project", "invalid-control"])
+def test_invalid_configured_backup_directory_never_falls_back(
+    isolated_backup_configuration, monkeypatch, tmp_path, invalid
+):
+    monkeypatch.delenv("CARDFIGHT_TEST_UNSET", raising=False)
+    if invalid == "file":
+        target = tmp_path / "existing-file"
+        target.write_text("keep", encoding="utf-8")
+        invalid = str(target)
+    elif invalid == "inside-project":
+        invalid = str(isolated_backup_configuration / "instance" / "backups")
+    elif invalid == "invalid-control":
+        invalid = str(tmp_path / "bad\npath")
+    monkeypatch.setenv("CARDFIGHT_BACKUP_DIR", invalid)
+    with pytest.raises(BackupError, match="CARDFIGHT_BACKUP_DIR"):
+        default_backup_dir()
+    assert not (isolated_backup_configuration / "instance").exists()
+
+
+def test_invalid_backup_directory_in_env_file_is_not_ignored(isolated_backup_configuration):
+    (isolated_backup_configuration / ".env").write_text("CARDFIGHT_BACKUP_DIR=relative/backups\n", encoding="utf-8")
+    with pytest.raises(BackupError, match="absolute"):
+        default_backup_dir()
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_backup_cli_uses_shared_default_or_explicit_override(
+    saved_database, isolated_backup_configuration, monkeypatch, tmp_path, capsys, explicit
+):
+    destination = tmp_path / ("explicit destination" if explicit else "configured destination")
+    monkeypatch.setenv("CARDFIGHT_BACKUP_DIR", "invalid/relative" if explicit else str(destination))
+    arguments = ["create", "--source", str(saved_database)]
+    if explicit:
+        arguments.extend(["--backup-dir", str(destination)])
+    assert backup_module.main(arguments) == 0
+    report = json.loads(capsys.readouterr().out)
+    backup = Path(report["backup"])
+    assert backup.parent == destination.resolve()
+    assert database_summary(backup) == database_summary(saved_database)
+
+
+def test_default_backup_location_does_not_import_the_app_or_create_storage(tmp_path):
+    destination = tmp_path / "not-created"
+    process = subprocess.run(
+        [sys.executable, "-c", "from backend.backup import default_backup_dir; import sys; print(default_backup_dir()); print('backend.app' in sys.modules)"],
+        cwd=PROJECT_ROOT,
+        env={**os.environ, "CARDFIGHT_BACKUP_DIR": str(destination)},
+        capture_output=True, text=True, check=True,
+    )
+    assert process.stdout.splitlines() == [str(destination.resolve()), "False"]
+    assert not destination.exists()

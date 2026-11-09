@@ -19,6 +19,10 @@ def check_application(database):
     # Read-only SQLite also prevents startup helpers or a GET from modifying it.
     os.environ["DATABASE_URL"] = f"sqlite:///{database.as_uri()}?mode=ro&uri=true"
     os.environ["FLASK_DEBUG"] = "false"
+    # Recovery validation is a loopback-only, read-only subprocess over a
+    # disposable copy. It must not depend on a live identity provider or admit
+    # restored sessions. Never use this mode as a hosted serving configuration.
+    os.environ["CARDFIGHT_AUTH_MODE"] = "local"
     from PIL import Image
     from backend.app import app
     from backend.database import db

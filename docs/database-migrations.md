@@ -1,7 +1,7 @@
 # Versioned SQLite database migrations
 
 Persistent database changes are explicit commands backed by Alembic revisions.
-The initial revision is `0001_baseline`. The API only validates schema/revision
+The current revision is `0002_identity`, following `0001_baseline`. The API only validates schema/revision
 at startup: it no longer creates tables or runs the old compatibility helpers.
 Install `requirements.txt` before using these commands and run them from the
 repository root with the project's Python environment active.
@@ -9,6 +9,44 @@ repository root with the project's Python environment active.
 This baseline supports SQLite. PostgreSQL deployment and data transfer remain
 separate work. Tests may explicitly create disposable in-memory schemas; that
 does not bypass the guard for a persistent database, even with `TESTING=True`.
+
+Revision `0002_identity` adds seven empty identity tables for accounts, external
+identities, invitations, sessions, login transactions, audit events and throttles.
+It leaves every existing workspace table and value unchanged, creates no users,
+and assigns no legacy owner. Already-baselined databases use `upgrade`; older
+unversioned databases use `baseline`, which rehearses the complete revision chain.
+The frozen v1 schema and migration remain unchanged. After identity is enabled,
+restoration also requires the external-generation and membership review in the
+[authentication runbook](authentication-setup.md#recovery).
+
+An identity rehearsal on November 5, 2026 upgraded a verified checkpoint of the
+existing workspace to `0002_identity`. All pre-existing table values and artwork
+bytes were preserved; the restored application passed 1,398 read-only API/artwork
+checks. The original file checksum and logical data summary stayed identical.
+The private report is retained in the external project archive described below.
+This is rehearsal evidence only: the live database was not migrated.
+
+## Schema history and the PostgreSQL transfer
+
+The `migrations/` directory is application source: it defines the schema versions
+that the current code can initialize, validate and upgrade. It contains no saved
+decks, matches or artwork. Keep it with the application and its tests; Alembic's
+[migration environment](https://alembic.sqlalchemy.org/en/latest/tutorial.html#the-migration-environment)
+is maintained alongside application source.
+
+[PostgreSQL work #56](https://github.com/Trevasaures/cardfight/issues/56) separately
+adds engine support, a PostgreSQL schema and a repeatable transfer from a verified
+SQLite checkpoint into a new target. A SQLite SQL dump may be an intermediate
+artifact, but its types and statements need conversion and verification. The
+transfer must retain IDs, relationships, quantities, history and artwork, validate
+timestamps and generated-ID sequences, and exercise the PostgreSQL-backed app
+before cutover. Tools such as [pgloader](https://pgloader.readthedocs.io/en/latest/ref/sqlite.html)
+support SQLite input and explicit type conversions; tool selection belongs to
+that implementation. Current startup still rejects non-SQLite databases.
+
+Schema source and transfer tests remain in Cardfight. Backups, retained restored
+copies and run-specific reports belong outside the checkout. No additional
+service or separate orchestration repository is needed for these commands.
 
 ## Inspect without changing data
 
@@ -107,8 +145,8 @@ the versioned revisions or apply the same changes a second time.
 
 ```sh
 python -m backend.backup create
-python -m backend.backup verify "instance/backups/BACKUP.sqlite3"
-python -m backend.migrate rehearse "instance/backups/BACKUP.sqlite3"
+python -m backend.backup verify "C:/path/to/your/backups/BACKUP.sqlite3"
+python -m backend.migrate rehearse "C:/path/to/your/backups/BACKUP.sqlite3"
 ```
 
 Replace the placeholder filename with the one printed by `create`. The migration
@@ -131,6 +169,11 @@ Later revisions use the same backup, rehearsal, locked transaction and
 saved-value verification gates. Stop writers first, retain the matching previous
 code/dependencies and checkpoint, then run the current code's upgrade. The API
 will refuse an older revision until the explicit command succeeds.
+
+Checkpoints use `CARDFIGHT_BACKUP_DIR`, or the external per-user backup directory
+when unset; `--backup-dir` explicitly overrides it. No default checkpoint is
+written under `instance/`. Temporary rehearsal databases are removed when the
+command completes.
 
 If an upgrade fails, do not delete revision metadata, rerun the former helpers,
 or manually stamp a revision to make startup pass. A failed transaction is rolled
@@ -177,8 +220,10 @@ saved another match; that source change was detected rather than treated as a
 failed migration or overwritten. No baseline was applied to the live database as
 part of preparing this branch.
 
-Detailed reports, copied databases, and recovery checkpoints are retained under
-ignored `instance/migration-rehearsals/` and `instance/backups/`, not in the public
-repository. The full backend suite passed 418 tests, including forced failures
+Detailed reports, copied databases, and recovery checkpoints were later relocated
+to a dated `cardfight-project-archive-*` folder under the configured external
+backup directory. Its archive manifest preserves the original relative paths
+and verified hashes; historical JSON reports remain unchanged. The full backend
+suite passed 418 tests, including forced failures
 before revision stamping, rollback/restoration, concurrent-edit detection, and a
 synthetic later revision. Dependency consistency and the dependency audit passed.

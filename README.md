@@ -184,7 +184,7 @@ data from before version tracking, stop the app and follow the
 This starts:
 
 - Flask API: `http://127.0.0.1:5000`
-- React application: `http://localhost:5173`
+- React application: `http://127.0.0.1:5173`
 
 The `-Seed` flag is only necessary when adding starter decks that are not already in the database. For later sessions, use:
 
@@ -203,7 +203,14 @@ Available launcher options:
 .\start.ps1 -DevDebug       # Explicitly enable the development debugger
 ```
 
-The launcher uses `.venv` when present, starts hidden background processes, and writes service logs to `instance/*.log`. Debugging is off unless `-DevDebug` is supplied.
+The launcher uses `.venv` when present, starts hidden background processes, and writes service logs to `instance/*.log`. It checks schema readiness and occupied ports before starting, and reports success only after the services respond. Normal startup uses Waitress; `-DevDebug` selects Flask's debugger/reloader for local mode only.
+
+Development API and artwork requests go through Vite's same-origin proxies. The
+launcher no longer points the browser directly at port 5000. For `oidc-dev`, use
+the exact configured `CARDFIGHT_AUTH_PUBLIC_ORIGIN`; local mode prints
+`http://127.0.0.1:5173`. Stop the previous services before rerunning the launcher.
+It does not migrate or seed a database unless you explicitly run those commands
+or supply `-Seed`.
 
 ## Setup on macOS or Linux
 
@@ -374,10 +381,16 @@ Create a SQLite checkpoint before upgrades, schema changes, or moving to another
 
 ```bash
 python -m backend.backup create
-python -m backend.backup verify "instance/backups/BACKUP.sqlite3" --app-check
+python -m backend.backup verify "C:/path/to/your/backups/BACKUP.sqlite3" --app-check
 ```
 
-Replace `BACKUP.sqlite3` with the filename printed by `create`. The default source is the configured absolute SQLite `DATABASE_URL`, or `instance/cardfight.db` when no URL is configured. Backups default to ignored `instance/backups/`; keep each `.sqlite3` file beside its `.manifest.json`. Stored artwork is included with the saved database records. Keep verified external copies separately; these commands do not schedule or prune backups.
+Use the full backup path printed by `create`. The default source is the configured
+absolute SQLite `DATABASE_URL`, or `instance/cardfight.db` when no URL is
+configured. Set `CARDFIGHT_BACKUP_DIR` in the ignored root `.env` to choose your
+external backup folder; manual checkpoints and migration checkpoints share it.
+Without this setting, backups use the per-user application-data directory outside
+the checkout. Keep each `.sqlite3` beside its `.manifest.json`. Artwork is included.
+These commands do not schedule backups, prune files, or confirm cloud sync.
 
 The online backup can capture committed data while the app runs. Stop writes for the final pre-upgrade checkpoint, verify it with the matching application version, and restore only to a separate new path. See the [backup and recovery runbook](docs/backup-and-restore.md) for commands, retention, rehearsal, and rollback. Seeding does not restore saved data.
 
@@ -417,6 +430,9 @@ cardfight/
 │       ├── App.tsx            # Route definitions
 │       └── main.tsx           # React entry point
 ├── tests/                     # Backend regression tests
+├── migrations/                # Versioned database schema source, shipped with app
+├── docs/                      # Setup, workflows, recovery and design records
+├── instance/                  # Ignored live local database and service logs only
 ├── deck.py                    # Starter deck definitions for seeding
 ├── main.py                    # Optional terminal matchup client
 ├── requirements.txt           # Python dependencies
@@ -425,6 +441,25 @@ cardfight/
 └── README.md
 ```
 
+Source stays in this repository: the API, React app, tests and migration history
+are released together. `backend/services/` contains ordinary Python business
+logic called by Flask. It does not represent additional running servers.
+`migrations/` records schema changes; it is required to initialize a database and
+upgrade existing data safely, including after the future PostgreSQL transfer.
+
+Generated caches (`__pycache__`, `.pytest_cache`), dependencies (`.venv`,
+`frontend-web/node_modules`) and frontend build output are ignored and rebuildable.
+Keep long-lived backups, restored copies and rehearsal reports outside the
+checkout. Rehearsals use temporary storage that is removed automatically.
+Completed ticket scratch directories do not belong in the project root.
+
+The PostgreSQL transfer is tracked by [#56](https://github.com/Trevasaures/cardfight/issues/56).
+It will create a compatible PostgreSQL schema, copy a backed-up SQLite dataset,
+and verify IDs, relationships, timestamps, sequences and artwork before cutover.
+Schema history remains alongside the app; a SQLite SQL dump does not replace it.
+Separate repositories are useful for independently deployed applications such as
+the match service, rather than for this app's tests or database maintenance code.
+
 ## Backend architecture
 
 The backend follows a small route/service/model structure:
@@ -432,9 +467,20 @@ The backend follows a small route/service/model structure:
 - `backend/routes/` validates HTTP-level input, translates errors into status codes, and returns JSON.
 - `backend/services/` owns business rules, database queries, serialization, statistics, and card-image analysis.
 - `backend/models.py` defines the SQLAlchemy entities and relationships.
-- `backend/app.py` configures Flask, CORS, SQLite foreign keys, schema initialization, and blueprint registration.
+- `backend/app.py` configures Flask, CORS, SQLite foreign keys, schema readiness checks, and blueprint registration.
 
-The app remains a single-user workspace without authentication. The default API bind is loopback; a WSGI server, explicit frontend-origin configuration, and private hosting are described in [deployment notes](docs/deployment.md). Public or multi-user hosting requires an access-control layer.
+The default local mode remains a loopback-only personal workspace. Google and
+email sign-in, invitation-only accounts and server sessions are available through
+the [Auth0 setup guide](docs/authentication-setup.md). In OIDC modes the private
+workspace stays closed until #55 implements per-account data ownership; creating
+an account never claims the existing personal database. See [deployment notes](docs/deployment.md).
+
+The hosted identity design is recorded in the
+[identity and access ADR](docs/adr/0001-identity-and-access.md),
+[sign-in experience](docs/identity-experience.md), and
+[implementation and verification plan](docs/identity-delivery-plan.md).
+The setup guide distinguishes implemented boundaries from provider and staging
+verification still required for #54. Hosted workspace access also requires #55.
 
 The major database entities are:
 

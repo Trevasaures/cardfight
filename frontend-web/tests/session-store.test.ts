@@ -99,6 +99,21 @@ function activeGame(): PlaytestState {
   };
 }
 
+test("account-boundary memory reset does not claim or delete the local-only save", () => {
+  const storage = fakeStorage();
+  const store = createPlaytestStore(() => storage);
+  const first = opening();
+  store.save(source, first);
+  const original = storage.getItem(PLAYTEST_STORAGE_KEY);
+  store.resetMemory();
+  assert.equal(storage.getItem(PLAYTEST_STORAGE_KEY), original);
+  assert.deepEqual(store.restore(source, copies).state, first);
+  const replacement = activeGame();
+  createPlaytestStore(() => storage).save(source, replacement);
+  store.resetMemory();
+  assert.deepEqual(store.restore(source, copies).state, replacement);
+});
+
 test("route remount and page refresh recover exact zones, deck order, resources, pending check, and undo", () => {
   const storage = fakeStorage();
   const store = createPlaytestStore(() => storage);

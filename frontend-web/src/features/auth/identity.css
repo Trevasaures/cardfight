@@ -1,0 +1,44 @@
+.identity-page {
+  min-height: 100dvh; padding: 48px 20px; display: grid; place-items: center;
+  background: radial-gradient(ellipse at 50% 0%, #dfb56d09, transparent 60%), var(--bg);
+}
+.identity-card {
+  width: min(100%, 430px); padding: 30px; border: 1px solid var(--border);
+  border-radius: 22px; background: var(--panel); box-shadow: 0 22px 80px #00000022;
+}
+.identity-brand { display: flex; align-items: center; gap: 12px; }
+.identity-brand-mark { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; color: var(--accent); background: #dfb56d12; border: 1px solid #dfb56d30; border-radius: 12px; }
+.identity-brand strong { display: block; color: var(--text); font-size: 12px; letter-spacing: .15em; }
+.identity-brand small { display: block; color: var(--muted); font-size: 10px; letter-spacing: .12em; margin-top: 2px; }
+.identity-content { display: flex; flex-direction: column; gap: 17px; margin-top: 34px; }
+.identity-content h1 { margin: 0; font-size: clamp(25px, 6vw, 29px); line-height: 1.2; letter-spacing: -.04em; font-weight: 650; color: var(--text); }
+.identity-eyebrow { margin: 0; color: var(--accent); font-size: 10px; letter-spacing: .14em; font-weight: 650; text-transform: uppercase; }
+.identity-copy { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.7; }
+.identity-small { font-size: 12px; line-height: 1.65; }
+.identity-actions { display: flex; flex-direction: column; gap: 10px; }
+.identity-actions form { margin: 0; }
+.identity-button { min-height: 45px; width: 100%; padding: 11px 14px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; border: 1px solid var(--border); border-radius: 11px; background: var(--panel); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; text-align: center; transition: background 140ms ease, border-color 140ms ease; }
+.identity-button:hover { background: #ffffff06; border-color: #ffffff26; }
+.identity-button.is-primary { background: var(--accent); color: #231b0f; border-color: var(--accent); }
+.identity-button.is-primary:hover { background: #eac17b; }
+.identity-button.is-quiet { background: transparent; color: var(--muted); border-color: transparent; }
+.identity-button.is-quiet:hover { color: var(--text); background: #ffffff05; }
+.identity-button.is-destructive { color: #f4a5b2; background: #fb718508; }
+.identity-button:disabled { opacity: .5; cursor: not-allowed; }
+.identity-google { font-size: 17px; font-weight: 700; }
+.identity-state-icon { width: 32px; height: 32px; color: var(--accent); }
+.identity-notice { display: flex; align-items: flex-start; gap: 10px; padding: 14px; background: #ffffff04; border: 1px solid var(--border); border-radius: 12px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.identity-notice > svg { flex: 0 0 auto; margin-top: 2px; color: var(--accent); }
+.identity-notice p { margin: 0; }
+.identity-footer { display: flex; justify-content: center; align-items: center; gap: 7px; margin-top: 30px; color: var(--muted); font-size: 11px; }
+.identity-error { color: #f4a5b2; padding: 12px; margin: 18px 0 0; background: #fb718508; border: 1px solid #fb71852b; border-radius: 10px; font-size: 13px; line-height: 1.65; }
+.identity-account-button { justify-content: flex-start; text-align: left; }
+.identity-account-button > span:nth-child(2) { flex: 1; overflow-wrap: anywhere; }
+.identity-avatar { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex: 0 0 auto; border-radius: 9px; background: #dfb56d14; color: var(--accent); font-size: 11px; }
+.identity-account-menu { margin-top: 8px; padding: 8px; border: 1px solid var(--border); border-radius: 12px; background: #1a1b24; }
+.identity-account-menu p { padding: 7px 10px; margin: 0; font-size: 12px; color: var(--muted); }
+.identity-account-menu .identity-button { justify-content: flex-start; }
+.identity-holding { display: flex; gap: 9px; align-items: flex-start; color: var(--muted); margin: 0; font-size: 12px; line-height: 1.6; }
+.identity-holding svg { flex: 0 0 auto; margin-top: 2px; color: var(--accent); }
+@media (max-width: 420px) { .identity-page { padding: 24px 14px; } .identity-card { padding: 26px 22px; border-radius: 18px; } }
+@media (prefers-reduced-motion: reduce) { .identity-button { transition: none; } }

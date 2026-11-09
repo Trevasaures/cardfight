@@ -1,45 +1,23 @@
-const API_BASE_URL =
-  import.meta.env.VITE_CARDFIGHT_API_URL ?? "http://127.0.0.1:5000";
+import { createApiTransport } from "./transport";
 
-// Stored artwork is served by Flask, which may be on a different origin from Vite.
+// Vite serves /api through its same-origin proxy. Ignore older launchers and
+// frontend .env files that still point development requests directly at Flask.
+const API_BASE_URL = import.meta.env.DEV ? "" : import.meta.env.VITE_CARDFIGHT_API_URL ?? "";
+export const apiTransport = createApiTransport({
+  baseUrl: API_BASE_URL,
+  origin: typeof window === "undefined" ? undefined : window.location.origin,
+});
+
+// Hosted artwork and the API share Cardfight's origin through the dev proxy.
 export function apiAssetUrl(path: string) {
   return path.startsWith("/api/")
     ? `${API_BASE_URL.replace(/\/$/, "")}${path}`
     : path;
 }
 
-type ApiRequestOptions = RequestInit;
-
 export async function apiRequest<T>(
   path: string,
-  options: ApiRequestOptions = {},
+  options: RequestInit = {},
 ): Promise<T> {
-  const hasBody = options.body !== undefined && options.body !== null;
-  const isFormData =
-    typeof FormData !== "undefined" && options.body instanceof FormData;
-
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      Accept: "application/json",
-      ...(hasBody && !isFormData ? { "Content-Type": "application/json" } : {}),
-      ...options.headers,
-    },
-  });
-
-  const contentType = response.headers.get("content-type");
-  const isJson = contentType?.includes("application/json");
-
-  const data = isJson ? await response.json() : await response.text();
-
-  if (!response.ok) {
-    const message =
-      typeof data === "object" && data !== null && "error" in data
-        ? String(data.error)
-        : `Request failed with status ${response.status}`;
-
-    throw new Error(message);
-  }
-
-  return data as T;
+  return apiTransport.request<T>(path, options);
 }

@@ -39,6 +39,7 @@ from backend.models import (
     DeckVersion,
     Match,
 )
+from migrations.legacy_v1 import FROZEN_SCHEMA as BASELINE_SCHEMA
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -56,10 +57,18 @@ def saved_rows(path):
             "SELECT name FROM sqlite_master WHERE type='table' "
             "AND name NOT LIKE 'sqlite_%' AND name!='alembic_version' ORDER BY name"
         )]
-        return {
-            table: [dict(row) for row in connection.execute(f'SELECT * FROM "{table}" ORDER BY id')]
-            for table in tables
-        }
+        result = {}
+        for table in tables:
+            primary = sorted(
+                (row[5], row[1])
+                for row in connection.execute(f'PRAGMA table_info("{table}")')
+                if row[5]
+            )
+            order = ", ".join('"' + name + '"' for _, name in primary) or "rowid"
+            result[table] = [dict(row) for row in connection.execute(
+                f'SELECT * FROM "{table}" ORDER BY {order}'
+            )]
+        return result
 
 
 @pytest.fixture()
@@ -67,7 +76,14 @@ def unversioned_database(tmp_path):
     """An existing workspace made before revision tracking, with all entity types."""
     database = tmp_path / "existing workspace.db"
     engine = create_engine(f"sqlite:///{database.as_posix()}")
-    db.metadata.create_all(engine)
+    # Model metadata now includes identity tables. This fixture represents the
+    # released v1 workspace and must remain independent of later application DDL.
+    with engine.begin() as connection:
+        for name in BASELINE_SCHEMA["table_order"]:
+            table = BASELINE_SCHEMA["tables"][name]
+            connection.exec_driver_sql(table["create_sql"])
+            for index in table["indexes"]:
+                connection.exec_driver_sql(index["create_sql"])
     full = BytesIO()
     Image.new("RGB", (16, 24), "navy").save(full, format="PNG")
     thumbnail = BytesIO()
@@ -198,7 +214,7 @@ def test_fresh_initialization_creates_the_frozen_head_and_is_idempotent(tmp_path
     before = file_digest(database)
     migrate_database(database, app_check=False)
     assert file_digest(database) == before
-    assert set(saved_rows(database)) == {
+    assert {name for name in saved_rows(database) if not name.startswith("auth_")} == {
         "deck", "match", "card", "card_set", "card_image", "card_printing",
         "deck_version", "deck_card", "acquisition_plan", "acquisition_plan_item",
     }
@@ -221,7 +237,9 @@ def test_baseline_preserves_current_workspace_and_its_recovery_snapshot(unversio
         unversioned_database, baseline=True, backup_dir=tmp_path / "backups", app_check=False
     )
     assert inspect_database(unversioned_database, require_current=True)["revision"] == HEAD_REVISION
-    assert saved_rows(unversioned_database) == before
+    after = saved_rows(unversioned_database)
+    assert {name: after[name] for name in before} == before
+    assert all(not rows for name, rows in after.items() if name.startswith("auth_"))
     backups = list((tmp_path / "backups").glob("*.sqlite3"))
     assert len(backups) == 1
     assert database_summary(backups[0]) == fingerprint
@@ -517,3 +535,32 @@ def test_migration_module_import_does_not_import_or_initialize_application(tmp_p
     assert process.returncode == 0, process.stderr
     assert process.stdout.strip() == "False"
     assert not database.exists()
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_migration_backup_uses_shared_default_or_explicit_override(
+    unversioned_database, monkeypatch, tmp_path, explicit
+):
+    destination = tmp_path / ("explicit recovery" if explicit else "configured recovery")
+    monkeypatch.setenv("CARDFIGHT_BACKUP_DIR", "invalid/relative" if explicit else str(destination))
+    result = migrate_database(
+        unversioned_database, baseline=True,
+        backup_dir=destination if explicit else None, app_check=False,
+    )
+    assert result["changed"] is True
+    assert Path(result["backup"]).parent == destination.resolve()
+    assert inspect_database(unversioned_database, require_current=True)["status"] == "current"
+    restored = tmp_path / "recovered-original.db"
+    restore_backup(result["backup"], restored)
+    assert inspect_database(restored)["status"] == "unversioned"
+
+
+def test_invalid_backup_configuration_prevents_migration_without_fallback(
+    unversioned_database, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("CARDFIGHT_BACKUP_DIR", "invalid/relative")
+    before = file_digest(unversioned_database)
+    with pytest.raises(MigrationError, match="CARDFIGHT_BACKUP_DIR"):
+        migrate_database(unversioned_database, baseline=True, app_check=False)
+    assert file_digest(unversioned_database) == before
+    assert not list(tmp_path.rglob("*.sqlite3"))

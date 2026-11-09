@@ -19,12 +19,13 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from backend.backup import (
     BackupError, PROJECT_ROOT, _check_new_destination, _hash_value, _quote, _read_connection,
-    create_backup, default_source, restore_backup, verify_backup,
+    create_backup, default_backup_dir, default_source, restore_backup, verify_backup,
 )
-from migrations.legacy_v1 import SchemaError, validate_schema
+from migrations.legacy_v1 import SchemaError, validate_schema as validate_v1
+from migrations.identity_v2 import validate_schema
 
 
-HEAD_REVISION = "0001_baseline"
+HEAD_REVISION = "0002_identity"
 
 
 class MigrationError(Exception):
@@ -93,12 +94,18 @@ def _inspect_connection(connection):
     _integrity(connection)
     revision = _revision(connection)
     if revision is None:
-        validate_schema(connection, legacy=True)
+        validate_v1(connection, legacy=True)
         status = "unversioned"
     elif revision == HEAD_REVISION:
         validate_schema(connection)
         status = "current"
     else:
+        # A recognized revision still needs its constraints checked before we
+        # attempt a rehearsal. A stamp alone cannot establish compatibility.
+        if revision == "0001_baseline":
+            validate_v1(connection)
+        else:
+            validate_schema(connection)
         status = "pending"
     return {"status": status, "revision": revision, "head": HEAD_REVISION}
 
@@ -277,7 +284,8 @@ def migrate_database(path, *, baseline=False, backup_dir=None, app_check=True):
         report = {"database": str(path), "previous_revision": state["revision"]}
         expected = None
         if state["status"] not in {"empty", "missing"}:
-            backup = create_backup(path, backup_dir or PROJECT_ROOT / "instance" / "backups")
+            destination = backup_dir if backup_dir is not None else default_backup_dir()
+            backup = create_backup(path, destination)
             report["backup"] = str(backup)
             # Untouched legacy checkpoints fail the new startup guard by design.
             # Verify raw recovery here; app compatibility is checked AFTER the

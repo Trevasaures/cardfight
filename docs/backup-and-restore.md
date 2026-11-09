@@ -30,19 +30,32 @@ python -m backend.backup create
 ```
 
 The command loads the root `.env` without importing `backend.app` or running its
-startup schema upgrades. It uses the configured absolute SQLite file path, or
+startup schema validation. It uses the configured absolute SQLite file path, or
 `instance/cardfight.db` when `DATABASE_URL` is not configured. This utility backs
 up file-backed SQLite databases; it is not a backup command for other database
 engines. Explicit paths override the configured source and backup directory:
 
 ```sh
-python -m backend.backup create --source "instance/cardfight.db" --backup-dir "instance/backups"
+python -m backend.backup create --source "instance/cardfight.db" --backup-dir "C:/path/to/your/backups"
 ```
 
-The default destination, `instance/backups/`, is ignored by Git. If you select
-another directory, keep both the database and manifest out of source control.
-Use the resulting backup path printed by the command in subsequent commands.
-In the examples below, replace `BACKUP.sqlite3` with that actual filename.
+Configure the external destination in the ignored root `.env`:
+
+```dotenv
+CARDFIGHT_BACKUP_DIR=C:/Users/you/OneDrive/Personal_projects/Vanguard/Backup_DBs
+```
+
+Manual backups and migration checkpoints use the same setting. An explicit
+`--backup-dir` takes precedence. Without configuration, use
+`%LOCALAPPDATA%/Cardfight/backups` on Windows, or
+`$XDG_STATE_HOME/cardfight/backups` / `~/.local/state/cardfight/backups` elsewhere.
+The default resolver rejects project-local destinations and invalid configured
+paths instead of silently recreating `instance/backups`.
+
+Keep the database and manifest outside source control. Use the full backup path
+printed by the command in subsequent commands; replace the example path and
+`BACKUP.sqlite3` below with that actual path. OneDrive sync status is managed by
+OneDrive; successful local verification does not confirm remote upload.
 
 The source is opened read-only and copied with SQLite's online backup API. This
 captures committed data, including committed data in a WAL file, while the app
@@ -54,7 +67,7 @@ a raw copy of a running database file for this command.
 ## Verify before relying on a backup
 
 ```sh
-python -m backend.backup verify "instance/backups/BACKUP.sqlite3" --app-check
+python -m backend.backup verify "C:/path/to/your/backups/BACKUP.sqlite3" --app-check
 ```
 
 Verification checks the manifest and database checksum, SQLite integrity and
@@ -102,7 +115,7 @@ enabled by these commands; configure any external backup service separately.
 ## Restore to a new path
 
 ```sh
-python -m backend.backup restore "instance/backups/BACKUP.sqlite3" --destination "instance/recovered/cardfight-restored.db"
+python -m backend.backup restore "C:/path/to/your/backups/BACKUP.sqlite3" --destination "C:/path/to/recovery/cardfight-restored.db"
 ```
 
 Choose a new destination filename each time. Restore validates the backup and
@@ -116,10 +129,10 @@ Use the existing environment settings or edit the local `.env`; for example:
 
 ```dotenv
 # Windows: replace the example with your recovered file's absolute path.
-DATABASE_URL=sqlite:///C:/Users/you/cardfight/instance/recovered/cardfight-restored.db
+DATABASE_URL=sqlite:///C:/Users/you/AppData/Local/Cardfight/recovery/cardfight-restored.db
 
 # Unix: use four slashes before an absolute filesystem path.
-# DATABASE_URL=sqlite:////home/you/cardfight/instance/recovered/cardfight-restored.db
+# DATABASE_URL=sqlite:////home/you/.local/state/cardfight/recovery/cardfight-restored.db
 ```
 
 Restart the matching application version and check the dashboard, saved decks
@@ -163,9 +176,12 @@ BLOBs. The restored copy passed 1,397 read-only API requests, including full pix
 decoding of stored full-size images and thumbnails. The original database's
 SHA-256 and complete logical summary were identical before and after the rehearsal.
 
-The detailed report, counts, hashes, and local artifact paths are retained under
-ignored `instance/recovery-rehearsals/`; the backup pair is under
-`instance/backups/`, and the retained restored database is under
-`instance/restores/`. This verifies local recovery with this code version. It does
+The reports, backup pairs and retained restored databases were subsequently
+archived outside the checkout under the configured backup folder, in a dated
+`cardfight-project-archive-*` directory. Its `archive-manifest.json` maps the
+original project-relative paths to verified copies. Historical reports retain
+their original path descriptions. New rehearsals use disposable temporary
+directories and do not retain project-local copies. This verifies local recovery
+with this code version. It does
 not establish an off-device backup, scheduled retention, or compatibility with a
 future migration. Repeat the rehearsal for each pre-upgrade checkpoint.

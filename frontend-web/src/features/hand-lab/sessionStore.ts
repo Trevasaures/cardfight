@@ -453,7 +453,11 @@ export function createPlaytestStore(
     return backedUp;
   }
 
-  return { restore, save };
+  return {
+    restore, save,
+    /** Forget loaded private state without claiming or deleting the local-only save. */
+    resetMemory() { cached = undefined; loaded = false; backedUp = false; },
+  };
 }
 
 export const playtestStore = createPlaytestStore(() =>
