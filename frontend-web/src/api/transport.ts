@@ -96,7 +96,10 @@ export function createApiTransport({ baseUrl = "", origin, fetcher = fetch }: Tr
           typeof body.code === "string" ? body.code : "request_failed",
           retryAfterSeconds(response.headers.get("retry-after")),
         );
-        const identityFailure = error.status === 401 || (error.status === 403 && ["account_unavailable", "admission_hold"].includes(error.code));
+        const identityFailure = identity.mode === "oidc" && (
+          error.status === 401 ||
+          (error.status === 403 && ["account_unavailable", "admission_hold"].includes(error.code))
+        );
         if (!path.startsWith("/api/auth/") && identityFailure && notifiedGeneration !== started) {
           notifiedGeneration = started;
           for (const listener of listeners) listener(error);

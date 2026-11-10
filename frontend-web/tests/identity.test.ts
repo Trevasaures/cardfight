@@ -89,6 +89,21 @@ test("malformed proxy error JSON cannot mask an expired session", async () => {
   assert.equal(failures.length, 1);
 });
 
+test("local card analysis reports provider authentication errors without rechecking sign-in", async () => {
+  const message = "OpenAI authentication failed. Check OPENAI_API_KEY in your .env file.";
+  const transport = createApiTransport({
+    fetcher: (async () => json({ error: message }, 401)) as typeof fetch,
+  });
+  transport.setIdentity({ mode: "local", accountId: null, serverGeneration: null, csrfToken: null });
+  const failures: ApiError[] = [];
+  transport.subscribe(error => failures.push(error));
+
+  await assert.rejects(transport.request("/api/cards/analyze-image", { method: "POST" }), {
+    name: "ApiError", message, status: 401, code: "request_failed",
+  });
+  assert.deepEqual(failures, []);
+});
+
 test("API failures preserve status/code/retry guidance, without replaying writes", async () => {
   let calls = 0;
   const transport = createApiTransport({ fetcher: (async () => { calls++; return json({ error: "Wait before trying again.", code: "rate_limited" }, 429, { "Retry-After": "37" }); }) as typeof fetch });
@@ -111,7 +126,12 @@ test("record denial does not trigger reauthentication; session failure is coales
   response = json({ error: "Sign in", code: "session_expired" }, 401);
   await assert.rejects(transport.request("/api/decks/1"));
   await assert.rejects(transport.request("/api/decks/2"));
-  assert.equal(failures.length, 1);
+  assert.deepEqual(failures.map(error => error.code), ["session_expired"]);
+
+  transport.setIdentity({ ...identity, serverGeneration: "generation-b" });
+  response = json({ error: "Access paused", code: "admission_hold" }, 403);
+  await assert.rejects(transport.request("/api/decks/1"));
+  assert.deepEqual(failures.map(error => error.code), ["session_expired", "admission_hold"]);
 });
 
 test("account change aborts outstanding requests and rejects even uncancellable late data", async () => {
