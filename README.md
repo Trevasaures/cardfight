@@ -196,6 +196,7 @@ Available launcher options:
 
 ```powershell
 .\start.ps1                 # Backend and React frontend
+.\start.ps1 -Fresh          # Restart the local lab and rebuild the Vite cache
 .\start.ps1 -Seed           # Seed, then start both
 .\start.ps1 -ApiOnly        # Flask only
 .\start.ps1 -FrontendOnly   # React frontend only
@@ -208,9 +209,14 @@ The launcher uses `.venv` when present, starts hidden background processes, and 
 Development API and artwork requests go through Vite's same-origin proxies. The
 launcher no longer points the browser directly at port 5000. For `oidc-dev`, use
 the exact configured `CARDFIGHT_AUTH_PUBLIC_ORIGIN`; local mode prints
-`http://127.0.0.1:5173`. Stop the previous services before rerunning the launcher.
-It does not migrate or seed a database unless you explicitly run those commands
-or supply `-Seed`.
+`http://127.0.0.1:5173`. Regular startup checks the schema and leaves
+migrations to the migration command.
+
+`-Fresh` restarts the API and frontend in local mode without sign-in. It uses
+the existing `instance/cardfight.db` and asks Vite to rebuild its dependency
+cache. Your saved data and browser storage stay in place. The launcher only
+stops existing services it can verify belong to this checkout. If another
+process occupies a port, it reports the PID and exits.
 
 ## Setup on macOS or Linux
 
