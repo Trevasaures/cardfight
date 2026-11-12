@@ -2,17 +2,18 @@ import { useEffect, useId, useRef } from "react";
 import { ArrowRight, Trophy, X } from "lucide-react";
 import { Link } from "react-router-dom";
 
+import type { WorkspaceLink } from "../../features/auth/workspaceNavigation";
 import type { SpotlightMatch } from "../../types/api";
 import { formatDateTime } from "../../utils/format";
 
 type SpotlightMatchDialogProps = {
   match: SpotlightMatch;
   deckName: string;
-  historyUrl: string;
+  historyLink: WorkspaceLink;
   onClose: () => void;
 };
 
-export function SpotlightMatchDialog({ match, deckName, historyUrl, onClose }: SpotlightMatchDialogProps) {
+export function SpotlightMatchDialog({ match, deckName, historyLink, onClose }: SpotlightMatchDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -107,7 +108,7 @@ export function SpotlightMatchDialog({ match, deckName, historyUrl, onClose }: S
         </div>
 
         <div className="mt-5 border-t border-white/10 pt-4">
-          <Link to={historyUrl} className="inline-flex items-center gap-2 rounded-lg text-sm font-bold text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-cyan-300">
+          <Link {...historyLink} className="inline-flex items-center gap-2 rounded-lg text-sm font-bold text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-cyan-300">
             Open {deckName} match history <ArrowRight className="h-4 w-4 shrink-0" />
           </Link>
         </div>

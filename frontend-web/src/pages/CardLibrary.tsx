@@ -58,7 +58,7 @@ import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
 import { WorkspaceSectionHeader } from "../components/layout/WorkspaceSectionHeader";
 import { usePersistentState } from "../hooks/usePersistentState";
-import { readScrollPosition, writeScrollPosition } from "../utils/viewState";
+import { useWorkspace } from "../features/auth/workspaceContext";
 import type {
   Card,
   CardFormOptions,
@@ -141,6 +141,7 @@ function printingCount(card: Card) {
 }
 
 export function CardLibrary() {
+  const { storage, canManageCatalog } = useWorkspace();
   const parentRef = useRef<HTMLDivElement | null>(null);
   const loadRequestRef = useRef(0);
   const loadControllerRef = useRef<AbortController | null>(null);
@@ -224,7 +225,7 @@ export function CardLibrary() {
   useLayoutEffect(() => {
     if (!loading && !loadFailed && !preservingResults) {
       rowVirtualizer.scrollToOffset(
-        initialLoadRef.current ? readScrollPosition(scrollKey) : 0,
+        initialLoadRef.current ? storage.readScroll(scrollKey) : 0,
       );
       initialLoadRef.current = false;
     }
@@ -235,15 +236,16 @@ export function CardLibrary() {
     preservingResults,
     rowVirtualizer,
     scrollKey,
+    storage,
   ]);
 
   useEffect(() => {
     const element = parentRef.current;
     if (!element || showLoading) return;
-    const save = () => writeScrollPosition(scrollKey, element.scrollTop);
+    const save = () => storage.writeScroll(scrollKey, element.scrollTop);
     element.addEventListener("scroll", save, { passive: true });
     return () => element.removeEventListener("scroll", save);
-  }, [scrollKey, showLoading]);
+  }, [scrollKey, showLoading, storage]);
 
   const firstItem = pagination.total_items
     ? (pagination.page - 1) * pagination.page_size + 1
@@ -414,6 +416,7 @@ export function CardLibrary() {
   }
 
   async function handleAnalyzeCardImage(file: File) {
+    if (!canManageCatalog || !storage.isActive()) return;
     setAnalyzingImage(true);
     setCardAnalysis(null);
     setError(null);
@@ -440,6 +443,7 @@ export function CardLibrary() {
   }
 
   async function createCatalogCard() {
+    if (!canManageCatalog || !storage.isActive()) return;
     if (!createFormIsComplete) {
       setError("Complete the required fields before creating this card.");
       return;
@@ -489,6 +493,7 @@ export function CardLibrary() {
   }
 
   function startEditingCard(card: Card) {
+    if (!canManageCatalog || !storage.isActive()) return;
     if (!canReplaceEditor(card.id, "edit")) return;
     if (editingCard?.id !== card.id) setEditForm(cardToManualForm(card));
     setPrintingCard(null);
@@ -512,6 +517,7 @@ export function CardLibrary() {
   }
 
   function startPrintingEditor(card: Card, printing?: CardPrinting) {
+    if (!canManageCatalog || !storage.isActive()) return;
     const printingId = printing?.id ?? null;
     if (!canReplaceEditor(card.id, "printing", printingId)) return;
     if (printingCard?.id !== card.id || editingPrintingId !== printingId) {
@@ -598,6 +604,7 @@ export function CardLibrary() {
   }
 
   async function savePrinting() {
+    if (!canManageCatalog || !storage.isActive()) return;
     if (!printingCard || savingPrinting) return;
 
     setSavingPrinting(true);
@@ -629,6 +636,7 @@ export function CardLibrary() {
   }
 
   async function saveEditingCard() {
+    if (!canManageCatalog || !storage.isActive()) return;
     if (!editingCard) return;
 
     if (!editFormIsComplete) {
@@ -669,7 +677,7 @@ export function CardLibrary() {
     <div className="min-w-0">
       <PageHeader title="Card Library" />
 
-      <details data-anime="motion-panel" className="workspace-panel group mb-4">
+      {canManageCatalog && <details data-anime="motion-panel" className="workspace-panel group mb-4">
         <summary className="cursor-pointer list-none select-none [&::-webkit-details-marker]:hidden">
           <WorkspaceSectionHeader
             title="Add cards"
@@ -698,7 +706,7 @@ export function CardLibrary() {
             onSetDeleted={handleSetDeleted}
           />
         </div>
-      </details>
+      </details>}
 
       <section data-anime="motion-panel" className="workspace-panel min-w-0">
         <WorkspaceSectionHeader
@@ -706,7 +714,7 @@ export function CardLibrary() {
           description={`${resultSummary}${activeFilterCount ? ` · ${activeFilterCount} active filter${activeFilterCount === 1 ? "" : "s"}` : ""}`}
           actions={
             <div className="flex gap-2">
-              {(editingCard || printingCard) && (
+              {canManageCatalog && (editingCard || printingCard) && (
                 <button
                   type="button"
                   className="workspace-button"
@@ -973,7 +981,7 @@ export function CardLibrary() {
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap items-start gap-2 border-t border-white/5 pt-2 lg:border-0 lg:pt-0">
+                        {canManageCatalog && <div className="flex flex-wrap items-start gap-2 border-t border-white/5 pt-2 lg:border-0 lg:pt-0">
                           <button
                             type="button"
                             onClick={() => startAddingPrinting(card)}
@@ -995,7 +1003,7 @@ export function CardLibrary() {
                             <Pencil className="h-3.5 w-3.5" />
                             Edit card
                           </button>
-                        </div>
+                        </div>}
                       </div>
                     </div>
                   </article>
@@ -1065,12 +1073,12 @@ export function CardLibrary() {
             (editorOpen && (!printingCard || editingPrintingId === null))
           }
           onEditPrinting={
-            !editorOpen
+            canManageCatalog && !editorOpen
               ? (printing) => startPrintingEditor(inspectorCard, printing)
               : undefined
           }
           footer={
-            !editorOpen ? (
+            canManageCatalog && !editorOpen ? (
               <>
                 <button
                   type="button"
@@ -1098,7 +1106,7 @@ export function CardLibrary() {
               {error}
             </p>
           )}
-          {editorOpen && editingCard && (
+          {canManageCatalog && editorOpen && editingCard && (
             <>
               {recoveredPrintingChanges && (
                 <p className="mb-3 text-xs text-amber-200" role="status">
@@ -1120,7 +1128,7 @@ export function CardLibrary() {
               />
             </>
           )}
-          {editorOpen && printingCard && (
+          {canManageCatalog && editorOpen && printingCard && (
             <CardPrintingForm
               key={`${printingCard.id}:${editingPrintingId ?? "new"}`}
               mode={editingPrintingId === null ? "create" : "edit"}

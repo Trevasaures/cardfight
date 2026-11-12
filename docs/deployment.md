@@ -6,11 +6,9 @@ Google/email sign-in, invitation-only application accounts and server sessions.
 Follow the [authentication setup](authentication-setup.md) to configure Auth0.
 CORS is a browser policy, not a replacement for access control.
 
-The [identity design](adr/0001-identity-and-access.md) describes the security
-boundary for #54. Authenticated accounts currently see a holding screen: the
-private workspace API is closed in OIDC modes until #55's per-account data
-isolation is implemented and verified. There is no configuration switch that
-opens the global legacy queries to hosted accounts.
+The hosted API scopes private records to the verified account. Admission hold
+keeps workspace access closed while an operator reviews membership or verifies
+staging. See the [identity design](adr/0001-identity-and-access.md).
 
 ## Local API
 
@@ -35,6 +33,12 @@ CARDFIGHT_AUTH_MODE=oidc waitress-serve --host=127.0.0.1 --port=5000 backend.hos
 ```
 
 `backend.hosted:app` requires `CARDFIGHT_AUTH_MODE=oidc` before serving requests.
+
+Hosted SQLite startup rejects custom triggers and requires custom unique indexes
+on private tables to include the account owner, owning parent, or row ID in the
+index key with `BINARY` collation. The startup check also applies to `oidc-dev`.
+Review reported custom schema objects on a separate restored copy. Local startup
+and the migration tools retain supported custom objects.
 Startup also validates the HTTPS origin and complete OIDC settings. Keep the
 upstream listener reachable only by the HTTPS reverse proxy.
 

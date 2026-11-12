@@ -185,6 +185,8 @@ def analyze_card_image_route():
         result = analyze_card_image(request.files.get("image"))
     except AuthenticationError:
         current_app.logger.exception("Card image analysis authentication failed")
+        if current_app.config["AUTH_MODE"] != "local":
+            return error_response("Card image analysis provider is unavailable.", 502)
         return error_response(
             "OpenAI authentication failed. Check OPENAI_API_KEY in your .env file.",
             401,

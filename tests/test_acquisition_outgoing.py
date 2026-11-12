@@ -13,27 +13,6 @@ from backend.models import (
     DeckCard,
     DeckVersion,
 )
-from migrations.legacy_v1 import upgrade_schema
-
-
-def explicit_legacy_upgrade():
-    """Exercise the frozen legacy conversion in its caller-owned transaction."""
-    db.session.commit()
-    with db.engine.connect() as connection:
-        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
-        connection.commit()
-        connection.exec_driver_sql("BEGIN IMMEDIATE")
-        try:
-            upgrade_schema(connection)
-            assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
-            connection.commit()
-            db.session.expire_all()
-        except BaseException:
-            connection.rollback()
-            raise
-        finally:
-            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
-            connection.commit()
 
 
 def _upgrade_plan(client):
@@ -315,7 +294,7 @@ def test_invalid_quantity_update_rolls_back_removal_confirmation(client):
     assert _snapshot(client, plan_id)["items"] == before
 
 
-def test_legacy_removal_upgrade_is_additive_and_idempotent(client):
+def test_legacy_removal_upgrade_is_additive_and_idempotent(client, explicit_legacy_upgrade):
     _, item_id, _ = _upgrade_plan(client)
     _edit(
         client,

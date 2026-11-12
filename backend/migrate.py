@@ -22,10 +22,11 @@ from backend.backup import (
     create_backup, default_backup_dir, default_source, restore_backup, verify_backup,
 )
 from migrations.legacy_v1 import SchemaError, validate_schema as validate_v1
-from migrations.identity_v2 import validate_schema
+from migrations.identity_v2 import validate_schema as validate_v2
+from migrations.ownership_v3 import validate_schema
 
 
-HEAD_REVISION = "0002_identity"
+HEAD_REVISION = "0003_ownership"
 
 
 class MigrationError(Exception):
@@ -96,17 +97,11 @@ def _inspect_connection(connection):
     if revision is None:
         validate_v1(connection, legacy=True)
         status = "unversioned"
-    elif revision == HEAD_REVISION:
-        validate_schema(connection)
-        status = "current"
     else:
-        # A recognized revision still needs its constraints checked before we
-        # attempt a rehearsal. A stamp alone cannot establish compatibility.
-        if revision == "0001_baseline":
-            validate_v1(connection)
-        else:
-            validate_schema(connection)
-        status = "pending"
+        # A known revision stamp still needs its own schema checked before use.
+        validators = {"0001_baseline": validate_v1, "0002_identity": validate_v2}
+        validators.get(revision, validate_schema)(connection)
+        status = "current" if revision == HEAD_REVISION else "pending"
     return {"status": status, "revision": revision, "head": HEAD_REVISION}
 
 

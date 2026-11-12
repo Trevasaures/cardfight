@@ -12,11 +12,11 @@ or infer provider aliases. This reservation can reject a conflicting signup; it
 never establishes identity or links accounts. Exact issuer and subject remain
 the identity key.
 
-This release implements identity, not multi-user data ownership. In both OIDC
-modes an admitted account sees a holding screen and every private workspace API
-remains closed. This is a code boundary until #55 supplies ownership checks and
-two-account tests. Creating an account or an administrator does not assign your
-existing decks, matches, purchases, or artwork to that account.
+With admission open, the hosted workspace scopes decks, matches, and acquisition
+data to the verified account. Admitted accounts share the catalog and artwork.
+Catalog edits and maintenance recount require the administrator role and
+provider-verified MFA within the last 15 minutes. Legacy records require
+explicit owner assignment.
 
 No tenant or credentials are included. Automated tests use a controlled provider
 adapter and signed test tokens. Real Google authorization, email delivery, tenant
@@ -39,7 +39,7 @@ For initial identity testing, restore to a **new** filename and point the local
 server at that copy using an absolute `DATABASE_URL`:
 
 ```powershell
-python -m backend.backup restore "C:/path/to/your/backups/BACKUP.sqlite3" --destination "C:/Users/you/AppData/Local/Cardfight/auth-test/cardfight.db"
+python -m backend.backup restore "C:/path/to/your/backups/BACKUP.sqlite3" --destination "C:/Users/you/AppData/Local/Cardfight/auth-test/cardfight.db" --for-ownership
 ```
 
 Use `python -m backend.migrate status` after selecting that file. If it reports
@@ -47,7 +47,11 @@ Use `python -m backend.migrate status` after selecting that file. If it reports
 `python -m backend.migrate upgrade`. Existing files receive another verified
 checkpoint and rehearsal before upgrading. Never seed as part of migration or
 recovery. Revision `0002_identity` creates seven empty identity tables and leaves
-all legacy workspace values and IDs unchanged.
+all legacy workspace values and IDs unchanged. Revision `0003_ownership`
+adds the owner references. On Windows, use `-DatabasePath` with the migrated
+copy to start the API and frontend against that file. Add `-Fresh` for a local
+restart without sign-in. Use regular startup with the OIDC development
+settings below to test account access.
 
 ## Create a development identity provider
 
@@ -63,9 +67,11 @@ all legacy workspace values and IDs unchanged.
    delivery and test a real code; Cardfight's email button redirects to that
    connection rather than collecting a code itself. Provider configuration and
    feature availability must be checked in the actual tenant.
-5. Use RS256 ID tokens and authorization-code flow. Keep the confidential client
-   secret on the server. Disable unneeded grants and automatic account-linking
-   rules. Cardfight requests only `openid profile email`, uses PKCE S256 and
+5. Use RS256 ID tokens and authorization-code flow. In the application's
+   Credentials tab, select Client Secret Basic for token endpoint
+   authentication. Keep the client secret on the server. Disable unneeded
+   grants and automatic account-linking rules. Cardfight requests only
+   `openid profile email`, uses PKCE S256 and
    validates issuer, audience, signature, nonce and authentication age.
 
 Follow Auth0's current [Flask application setup](https://developer.auth0.com/resources/guides/web-app/flask/basic-authentication),
@@ -82,18 +88,13 @@ put the client secret, encryption key, cookies or invite URLs in chat, Git,
 screenshots, frontend code, or a `VITE_` variable.
 
 ```dotenv
-DATABASE_URL=sqlite:///C:/Users/you/AppData/Local/Cardfight/auth-test/cardfight.db
-CARDFIGHT_AUTH_MODE=oidc-dev
-CARDFIGHT_AUTH_PUBLIC_ORIGIN=http://127.0.0.1:5173
 CARDFIGHT_AUTH_ISSUER=https://YOUR-TENANT.auth0.com/
 CARDFIGHT_AUTH_CLIENT_ID=YOUR_REGULAR_WEB_APPLICATION_CLIENT_ID
 CARDFIGHT_AUTH_CLIENT_SECRET=YOUR_SERVER_CLIENT_SECRET
 CARDFIGHT_AUTH_TRANSACTION_KEY=YOUR_FERNET_KEY
 CARDFIGHT_AUTH_RESTORE_EPOCH=YOUR_RANDOM_EXTERNAL_GENERATION
-CARDFIGHT_AUTH_ADMISSION_HOLD=true
 CARDFIGHT_AUTH_GOOGLE_CONNECTION=google-oauth2
 CARDFIGHT_AUTH_EMAIL_CONNECTION=email
-CARDFIGHT_CORS_ORIGINS=
 ```
 
 Generate the encryption key and restore generation separately on your machine:
@@ -107,6 +108,9 @@ Save these in deployment secret storage, outside database backups. Keep the
 issuer exactly equal to the tenant's discovery issuer, including its trailing
 slash. Changing issuer/custom domain later is an identity migration, not an
 email-based account merge.
+
+Set the database URL, sign-in mode, and admission hold in the test terminal
+using the PowerShell example below.
 
 Modes are explicit:
 
@@ -148,9 +152,58 @@ successful, browser-bound login with the invited verified email can accept it.
 
 After reviewing all initial admission records, set
 `CARDFIGHT_AUTH_ADMISSION_HOLD=false` and restart the server for sign-in testing.
-This opens authentication/admission only. The #55 private-data gate stays closed.
+On a test copy, admitted accounts can now open their own workspaces.
 
-Run the server on loopback and start the frontend in another terminal:
+### Assign your existing workspace on the test copy
+
+Keep the provider settings in the ignored `.env` file and use a dedicated
+PowerShell terminal for the test database and sign-in mode. Run these commands
+from the Cardfight checkout after restoring and upgrading the test copy.
+
+```powershell
+$copy = Join-Path $env:LOCALAPPDATA "Cardfight\auth-test\cardfight.db"
+$python = ".\.venv\Scripts\python.exe"
+$env:DATABASE_URL = "sqlite:///" + $copy.Replace('\', '/')
+$env:CARDFIGHT_AUTH_MODE = "oidc-dev"
+$env:CARDFIGHT_AUTH_PUBLIC_ORIGIN = "http://127.0.0.1:5173"
+$env:CARDFIGHT_AUTH_ADMISSION_HOLD = "false"
+
+& $python -m backend.migrate status --database $copy --require-current
+if ($LASTEXITCODE -ne 0) { throw "The test copy is not ready." }
+& $python -m backend.auth_admin invite --email "your-verified-email@example.com"
+if ($LASTEXITCODE -ne 0) { throw "Cardfight could not create the invitation." }
+.\start.ps1 -DatabasePath $copy
+```
+
+Stop any prior Cardfight services using ports 5000 or 5173 before launching.
+Regular startup uses the sign-in settings above. `-Fresh` selects the local lab
+without sign-in.
+
+Open the private invitation URL printed by the command and sign in with the
+matching email. Use the same sign-in method on later visits. Before creating
+any new decks, matches, or acquisition plans, open
+`http://127.0.0.1:5173/api/auth/session` in the same browser and copy
+`account.id`. That value is the Cardfight account UUID.
+
+```powershell
+$account = "<account.id from the session page>"
+$backupDir = Join-Path (Split-Path -Parent $copy) "backups"
+& $python -m backend.ownership assign-copy --database $copy --account $account --backup-dir $backupDir
+```
+
+The assignment checkpoints the test database, rehearses against a restored
+copy, and assigns the unowned decks, matches, and acquisition plans in one
+transaction. Keep the `.ownership-restore.json` receipt generated by
+`restore --for-ownership` beside that database. The receipt identifies the
+original restored file through upgrades and sign-ins. For a test copy without
+a receipt, checkpoint it and restore that backup to a new path with the flag.
+The selected copy must contain only unowned workspace records. The result
+reports the assigned counts and backup path. Reload Deck Library while signed
+in to see the imported decks.
+
+### Run the API and frontend in separate terminals
+
+Use the same test settings in the API terminal.
 
 ```powershell
 waitress-serve --host=127.0.0.1 --port=5000 backend.app:app
@@ -241,8 +294,13 @@ Verify the actual provider flows with two browsers/accounts:
   replaying a copied old cookie fails even if the provider is unavailable.
 - Suspension, role/version changes and external generation changes take effect
   on the next request. Another tab and browser back/forward cache recheck state.
-- Both admitted members and administrators see the holding screen. Direct
-  deck, history, catalog, artwork, purchase and maintenance APIs stay denied.
+- Both admitted members and administrators can open their own decks, history,
+  and acquisition plans. Check that foreign record IDs and writes fail in
+  both directions, counts are isolated, and both accounts can read catalog
+  data and artwork. Try an administrator write with and without recent MFA.
+- Replace the browser session in another tab and confirm stale requests cannot
+  read the new account's records. Check that private browser state resets when
+  the account changes.
 - The local legacy lab remains usable with unchanged data and preserved drafts.
 
 Local tests cannot establish email delivery, provider policy or proxy behavior.

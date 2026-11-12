@@ -110,6 +110,27 @@ never point at the personal database or production tenant.
 
 ## Ownership and release coordination
 
+### Account-owned workspace data
+
+The beta shares the catalog and gives each account a private workspace.
+This policy guides the hosted API and browser changes for #55.
+
+| Records | Ownership |
+| --- | --- |
+| Decks, matches, and acquisition plans | Each root belongs to one account in hosted mode. Deck names are unique within that account. |
+| Deck versions, deck entries, and acquisition items | Each child inherits its parent workspace's ownership. Requests that reference a deck, version, match participant, or acquisition item must stay within that workspace. |
+| Card catalog, sets, printings, and artwork | Admitted members can read and reference shared catalog data. Hosted catalog writes and maintenance require recent MFA for an administrator. Hosted cards keep their grade and type so an edit cannot expose or invalidate private deck composition. Hosted responses use no-store caching. |
+| Match history, analytics, and totals | Each account sees results derived from its own records. Administrative access does not grant visibility into other accounts' workspaces. |
+| Browser drafts and practice recovery | Partition hosted state by the verified account ID. Keep legacy drafts in the local workspace until the user explicitly claims them. |
+
+The SQLite ownership revision adds owner references without assigning them.
+A missing owner marks records in the local workspace. A new account or
+successful sign-in cannot claim those records. The assignment rehearsal
+requires an explicit admitted account UUID and uses a verified backup.
+The hosted API checks ownership on related records and uses the tab's verified
+session generation before reading private records. A stale tab with a replaced
+cookie must verify the current session before it can reopen the workspace.
+
 - #54 owns application identity, sign-in UI, sessions, admission/roles and the
   server account-context contract.
 - #55 owns private-record relationships, scoped queries/aggregates, related-ID
@@ -124,8 +145,5 @@ never point at the personal database or production tenant.
   These are validation/release relationships, not blockers that prevent
   implementing the first identity slice.
 
-The implemented first slice does not close #54's staging acceptance criteria.
-Real provider and deployment evidence above remains required; private workspace
-ownership and form recovery integration remain #55. No paid infrastructure,
-provider identities, invitation emails, credentials or live database migrations
-were created by implementing this slice.
+Staging verification still covers real Google and email sign-in, administrator
+MFA, proxy cookies, and the two-account journey described above.

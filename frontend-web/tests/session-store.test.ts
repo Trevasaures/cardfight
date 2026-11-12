@@ -23,6 +23,7 @@ import {
   type PlaytestState,
 } from "../src/features/hand-lab/sessionStore.ts";
 import { emptyRules } from "../src/features/hand-lab/rules/types.ts";
+import { createWorkspaceStorage } from "../src/features/auth/workspaceStorage.ts";
 
 const version = {
   id: 7,
@@ -112,6 +113,25 @@ test("account-boundary memory reset does not claim or delete the local-only save
   createPlaytestStore(() => storage).save(source, replacement);
   store.resetMemory();
   assert.deepEqual(store.restore(source, copies).state, replacement);
+});
+
+test("Hand Lab restores only its workspace and ignores callbacks from a revoked table", () => {
+  const tab = fakeStorage();
+  const scope = (id: string | null) => createWorkspaceStorage(id, () => tab, () => tab);
+  const legacy = scope(null);
+  const legacyGame = opening();
+  assert.equal(legacy.playtest.save(source, legacyGame), true);
+  const legacyBytes = tab.getItem(PLAYTEST_STORAGE_KEY);
+  const accountA = scope("account-a");
+  assert.equal(accountA.playtest.restore(source, copies).state, null);
+  const gameA = activeGame();
+  assert.equal(accountA.playtest.save(source, gameA), true);
+  assert.deepEqual(scope("account-a").playtest.restore(source, copies).state, gameA);
+  accountA.revoke();
+  assert.equal(accountA.playtest.restore(source, copies).state, null);
+  assert.equal(accountA.playtest.save(source, opening(true)), false);
+  assert.equal(scope("account-b").playtest.restore(source, copies).state, null);
+  assert.equal(tab.getItem(PLAYTEST_STORAGE_KEY), legacyBytes);
 });
 
 test("route remount and page refresh recover exact zones, deck order, resources, pending check, and undo", () => {

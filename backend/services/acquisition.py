@@ -9,11 +9,11 @@ from backend.models import (
     AcquisitionPlanItem,
     Card,
     CardPrinting,
-    Deck,
     DeckCard,
-    DeckVersion,
     now_central,
 )
+from backend.services.deck_builder import get_deck_or_raise, get_deck_version_or_raise
+from backend.workspace import owned_get, owned_query, owner_id
 
 ALLOWED_PLAN_TYPES = {"new_build", "existing_deck"}
 ALLOWED_LIST_SOURCES = {"empty", "deck_version"}
@@ -58,24 +58,6 @@ def _choice(value, field_name, allowed, default=None):
     return cleaned
 
 
-def _get_deck_or_raise(deck_id):
-    deck = db.session.get(Deck, deck_id)
-
-    if not deck:
-        raise NotFoundError("Deck not found")
-
-    return deck
-
-
-def _get_version_or_raise(version_id):
-    version = db.session.get(DeckVersion, version_id)
-
-    if not version:
-        raise NotFoundError("Deck version not found")
-
-    return version
-
-
 def _get_card_or_raise(card_id):
     card = db.session.get(Card, card_id)
 
@@ -102,7 +84,7 @@ def _get_printing_or_raise(printing_id, card_id):
 
 
 def get_acquisition_plan_or_raise(plan_id):
-    plan = db.session.get(AcquisitionPlan, plan_id)
+    plan = owned_get(AcquisitionPlan, plan_id)
 
     if not plan:
         raise NotFoundError("Acquisition plan not found")
@@ -111,7 +93,7 @@ def get_acquisition_plan_or_raise(plan_id):
 
 
 def get_acquisition_item_or_raise(item_id):
-    item = db.session.get(AcquisitionPlanItem, item_id)
+    item = owned_get(AcquisitionPlanItem, item_id)
 
     if not item:
         raise NotFoundError("Acquisition plan item not found")
@@ -125,7 +107,7 @@ def _require_active_plan(plan):
 
 
 def _item_for_printing(plan_id, card_id, printing_id):
-    return AcquisitionPlanItem.query.filter_by(
+    return owned_query(AcquisitionPlanItem).filter_by(
         plan_id=plan_id,
         card_id=card_id,
         printing_id=printing_id,
@@ -184,7 +166,7 @@ def restore_acquisition_plan(plan_id):
 
 
 def list_acquisition_plans():
-    return AcquisitionPlan.query.order_by(
+    return owned_query(AcquisitionPlan).order_by(
         AcquisitionPlan.updated_at.desc(),
         AcquisitionPlan.id.desc(),
     ).all()
@@ -262,7 +244,7 @@ def create_acquisition_plan(payload):
                 "deck_version_id is required for an existing deck plan"
             )
 
-        target_version = _get_version_or_raise(target_version_id)
+        target_version = get_deck_version_or_raise(target_version_id)
         target_deck = target_version.deck
 
         if list_source == "deck_version" and source_version_id is None:
@@ -274,7 +256,7 @@ def create_acquisition_plan(payload):
                 "source_deck_version_id is required when copying a deck version"
             )
 
-        source_version = _get_version_or_raise(source_version_id)
+        source_version = get_deck_version_or_raise(source_version_id)
     elif source_version_id is not None:
         raise ValidationError(
             "source_deck_version_id can only be used with a deck_version list source"
@@ -282,7 +264,7 @@ def create_acquisition_plan(payload):
 
     requested_deck_id = _int_value(payload.get("deck_id"), "deck_id")
     if requested_deck_id is not None:
-        requested_deck = _get_deck_or_raise(requested_deck_id)
+        requested_deck = get_deck_or_raise(requested_deck_id)
 
         if plan_type != "existing_deck":
             raise ValidationError("deck_id can only be used for an existing deck plan")
@@ -304,6 +286,7 @@ def create_acquisition_plan(payload):
         raise ValidationError("deck_type must be Standard or Stride")
 
     plan = AcquisitionPlan(
+        owner_account_id=owner_id(),
         name=name,
         plan_type=plan_type,
         list_source=list_source,
@@ -690,11 +673,13 @@ def batch_acquisition_items(plan_id, payload):
     if len(set(item_ids)) != len(item_ids):
         raise ValidationError("Select each card line only once")
 
-    items = AcquisitionPlanItem.query.filter(
+    items = owned_query(AcquisitionPlanItem).filter(
         AcquisitionPlanItem.plan_id == plan.id,
         AcquisitionPlanItem.id.in_(item_ids),
     ).all()
     if len(items) != len(item_ids):
+        if owner_id() is not None:
+            raise NotFoundError("One or more acquisition plan items were not found.")
         raise ValidationError(
             "Every selected card line must belong to this purchase plan"
         )

@@ -2,6 +2,7 @@
 
 from base64 import urlsafe_b64encode
 from copy import deepcopy
+from dataclasses import replace
 from datetime import timedelta
 from hashlib import sha256
 from http.cookies import SimpleCookie
@@ -27,7 +28,15 @@ from backend.auth_models import (
     utcnow,
 )
 from backend.database import db
-from backend.models import Deck
+from backend.models import (
+    AcquisitionPlan,
+    AcquisitionPlanItem,
+    Card,
+    Deck,
+    DeckCard,
+    DeckVersion,
+    Match,
+)
 
 ORIGIN = "http://localhost"
 ISSUER = "https://identity.example/"
@@ -588,8 +597,7 @@ def test_join_get_only_captures_context_then_explicit_callback_accepts_once(auth
     current = session_state(client)
     assert current["authenticated"] is True
     assert current["account"]["role"] == "member"
-    assert current["access"]["workspace"] is False
-    assert current["access"]["reason"] == "ownership_pending"
+    assert current["access"] == {"workspace": True, "reason": None}
     db.session.refresh(invitation)
     assert invitation.consumed_at is not None
     assert invitation.account_id == current["account"]["id"]
@@ -739,18 +747,208 @@ def test_logout_rejects_csrf_mismatch_without_revoking_valid_session(auth_setup)
     "path",
     ["/api/decks", "/api/dashboard", "/api/stats/table", "/api/card-images/x/full"],
 )
-@pytest.mark.parametrize("auth_setup", [{"AUTH_OWNERSHIP_READY": True}], indirect=True)
-def test_ownership_holding_gate_denies_global_data_even_to_admins(
-    auth_setup, role, path
-):
+def test_admission_hold_still_blocks_workspace_after_sign_in(auth_setup, role, path):
     application, client, _protocol = auth_setup
     _account, current, _callback = sign_in_existing(auth_setup, role=role)
-    application.config["OWNERSHIP_READY"] = True
-    assert current["access"] == {"workspace": False, "reason": "ownership_pending"}
-    response = client.get(path, base_url=ORIGIN)
+    auth = application.extensions["cardfight_auth"]
+    auth["settings"] = replace(auth["settings"], admission_hold=True)
+    assert session_state(client)["access"] == {
+        "workspace": False,
+        "reason": "admission_hold",
+    }
+    response = client.get(
+        path, base_url=ORIGIN, headers={"X-Cardfight-Session": current["generation"]}
+    )
     assert response.status_code == 403
-    assert response.is_json
+    assert response.json["code"] == "admission_hold"
     assert response.headers["Cache-Control"] == "no-store"
+
+
+def workspace_headers(session):
+    return {
+        "Origin": ORIGIN,
+        "X-CSRF-Token": session["csrf_token"],
+        "X-Cardfight-Session": session["generation"],
+    }
+
+
+def test_replaced_cookie_cannot_return_the_new_workspace_to_a_stale_tab(auth_setup):
+    application, client, protocol = auth_setup
+    first, previous, _ = sign_in_existing(auth_setup)
+    protocol.claims.update(
+        sub="google-oauth2|second-player", email="second@example.test"
+    )
+    second, current, _ = sign_in_existing((application, client, protocol))
+    db.session.add_all(
+        [
+            Deck(name="First private deck", type="Standard", owner_account_id=first.id),
+            Deck(
+                name="Second private deck", type="Standard", owner_account_id=second.id
+            ),
+            Deck(name="Local legacy deck", type="Standard"),
+        ]
+    )
+    db.session.commit()
+
+    for stale in ({}, workspace_headers(previous)):
+        response = client.get("/api/decks", base_url=ORIGIN, headers=stale)
+        assert response.status_code == 401
+        assert response.json["code"] == "session_changed"
+        assert response.headers["Cache-Control"] == "no-store"
+    response = client.get(
+        "/api/decks", base_url=ORIGIN, headers=workspace_headers(current)
+    )
+    assert response.status_code == 200
+    assert [row["name"] for row in response.json] == ["Second private deck"]
+
+
+@pytest.mark.parametrize(
+    "role, methods, auth_age, expected_code",
+    [
+        ("member", ["mfa"], 0, "admin_required"),
+        ("admin", ["pwd"], 0, "fresh_mfa_required"),
+        ("admin", ["mfa"], 3600, "fresh_mfa_required"),
+        ("admin", ["mfa"], 0, None),
+    ],
+)
+def test_hosted_catalog_writes_require_recent_admin_mfa(
+    auth_setup, role, methods, auth_age, expected_code
+):
+    _application, client, protocol = auth_setup
+    protocol.claims.update(amr=methods, auth_time=int(time()) - auth_age)
+    _, session, _ = sign_in_existing(auth_setup, role=role)
+    headers = workspace_headers(session)
+    assert (
+        client.get("/api/cards/library", base_url=ORIGIN, headers=headers).status_code
+        == 200
+    )
+    response = client.post(
+        "/api/cards",
+        base_url=ORIGIN,
+        headers=headers,
+        json={"name": "Shared card", "grade": 2, "card_type": "Normal Unit"},
+    )
+    if expected_code:
+        assert response.status_code == 403 and response.json["code"] == expected_code
+    else:
+        assert response.status_code == 201
+        path = f"/api/cards/{response.json['id']}"
+        assert (
+            client.patch(
+                path,
+                base_url=ORIGIN,
+                headers=headers,
+                json={"skill_text": "Catalog correction"},
+            ).status_code
+            == 200
+        )
+        assert (
+            client.patch(
+                path,
+                base_url=ORIGIN,
+                headers=headers,
+                json={"grade": 3},
+            ).status_code
+            == 409
+        )
+
+
+def test_two_accounts_cannot_read_modify_or_reference_each_others_records(auth_setup):
+    application, first_client, protocol = auth_setup
+    first, first_session, _ = sign_in_existing(auth_setup, role="admin")
+    second_client = application.test_client()
+    protocol.claims.update(
+        sub="google-oauth2|second-player", email="second@example.test"
+    )
+    second, second_session, _ = sign_in_existing((application, second_client, protocol))
+
+    deck = Deck(name="Same deck name", type="Standard", owner_account_id=first.id)
+    opponent = Deck(name="First opponent", type="Standard", owner_account_id=first.id)
+    card = Card(name="Shared test card", grade=2, card_type="Normal Unit")
+    db.session.add_all((deck, opponent, card))
+    db.session.flush()
+    version = DeckVersion(deck_id=deck.id)
+    plan = AcquisitionPlan(
+        name="First order", deck_id=deck.id, owner_account_id=first.id
+    )
+    db.session.add_all((version, plan))
+    db.session.flush()
+    entry = DeckCard(deck_version_id=version.id, card_id=card.id)
+    item = AcquisitionPlanItem(plan_id=plan.id, card_id=card.id)
+    match = Match(deck1_id=deck.id, deck2_id=opponent.id, owner_account_id=first.id)
+    db.session.add_all((entry, item, match))
+    db.session.commit()
+
+    first_headers = workspace_headers(first_session)
+    second_headers = workspace_headers(second_session)
+    for path in (
+        f"/api/decks/{deck.id}",
+        f"/api/decks/{deck.id}/versions",
+        f"/api/deck-versions/{version.id}",
+        f"/api/matches/{match.id}",
+        f"/api/acquisition-plans/{plan.id}",
+    ):
+        assert (
+            first_client.get(path, base_url=ORIGIN, headers=first_headers).status_code
+            == 200
+        )
+        assert (
+            second_client.get(path, base_url=ORIGIN, headers=second_headers).status_code
+            == 404
+        )
+
+    for method, path, body in (
+        ("PATCH", f"/api/decks/{deck.id}", {"name": "Foreign edit"}),
+        ("DELETE", f"/api/deck-versions/{version.id}", {}),
+        ("PATCH", f"/api/deck-cards/{entry.id}", {"quantity": 4}),
+        ("DELETE", f"/api/matches/{match.id}", {}),
+        ("POST", f"/api/acquisition-plans/{plan.id}/archive", {}),
+        ("DELETE", f"/api/acquisition-plans/items/{item.id}", {}),
+        (
+            "POST",
+            "/api/acquisition-plans",
+            {
+                "name": "Cross-account plan",
+                "plan_type": "existing_deck",
+                "deck_version_id": version.id,
+            },
+        ),
+    ):
+        response = second_client.open(
+            path, method=method, base_url=ORIGIN, headers=second_headers, json=body
+        )
+        assert response.status_code == 404, response.json
+
+    response = second_client.post(
+        "/api/decks",
+        base_url=ORIGIN,
+        headers=second_headers,
+        json={"name": deck.name, "type": deck.type, "owner_account_id": first.id},
+    )
+    assert response.status_code == 201
+    second_deck_id = response.json["id"]
+    assert db.session.get(Deck, second_deck_id).owner_account_id == second.id
+    assert (
+        first_client.get(
+            f"/api/decks/{second_deck_id}", base_url=ORIGIN, headers=first_headers
+        ).status_code
+        == 404
+    )
+    assert (
+        second_client.post(
+            "/api/matches",
+            base_url=ORIGIN,
+            headers=second_headers,
+            json={"deck1_id": second_deck_id, "deck2_id": deck.id},
+        ).status_code
+        == 404
+    )
+    assert (
+        second_client.get(
+            f"/api/cards/{card.id}", base_url=ORIGIN, headers=second_headers
+        ).status_code
+        == 200
+    )
 
 
 def test_valid_application_session_does_not_contact_provider_for_bootstrap(auth_setup):

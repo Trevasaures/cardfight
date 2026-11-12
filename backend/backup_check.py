@@ -49,17 +49,31 @@ def check_application(database):
             for path in ("/api/health", "/api/decks", "/api/matches",
                          "/api/acquisition-plans", "/api/cards/sets"):
                 get_json(client, path)
-            for table, route in (("deck", "/api/decks/"),
-                                 ("match", "/api/matches/"),
-                                 ("deck_version", "/api/deck-versions/"),
-                                 ("acquisition_plan", "/api/acquisition-plans/"),
-                                 ("card", "/api/cards/")):
+            for table, route, local_scope in (
+                ("deck", "/api/decks/", "WHERE owner_account_id IS NULL"),
+                ("match", "/api/matches/", "WHERE owner_account_id IS NULL"),
+                (
+                    "deck_version",
+                    "/api/deck-versions/",
+                    "WHERE deck_id IN (SELECT id FROM deck WHERE owner_account_id IS NULL)",
+                ),
+                (
+                    "acquisition_plan",
+                    "/api/acquisition-plans/",
+                    "WHERE owner_account_id IS NULL",
+                ),
+                ("card", "/api/cards/", ""),
+            ):
                 count = 0
-                for row in connection.execute(f'SELECT id FROM "{table}" ORDER BY id'):
+                for row in connection.execute(
+                    f'SELECT id FROM "{table}" {local_scope} ORDER BY id'
+                ):
                     saved_id = row["id"]
                     data = get_json(client, route + str(saved_id))
-                    require(isinstance(data, dict) and data.get("id") == saved_id,
-                            f"Restored {table} detail did not return its saved ID.")
+                    require(
+                        isinstance(data, dict) and data.get("id") == saved_id,
+                        f"Restored {table} detail did not return its saved ID.",
+                    )
                     if table == "deck":
                         versions = get_json(client, f"/api/decks/{saved_id}/versions")
                         expected = [item[0] for item in connection.execute(
@@ -112,7 +126,12 @@ def check_application(database):
             db.session.remove()
             db.engine.dispose()
     require(database_summary(database) == before, "Application reads changed restored data.")
-    return {"read_only": True, "requests_checked": requests, "records_checked": counts}
+    return {
+        "read_only": True,
+        "workspace_scope": "local",
+        "requests_checked": requests,
+        "records_checked": counts,
+    }
 
 
 def main():

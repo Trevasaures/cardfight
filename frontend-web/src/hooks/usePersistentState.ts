@@ -4,7 +4,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import { readLocalState, writeLocalState } from "../utils/localState";
+import { useWorkspace } from "../features/auth/workspaceContext";
 
 type InitialState<T> = T | (() => T);
 
@@ -18,15 +18,16 @@ export function usePersistentState<T>(
   storageKey: string,
   initialState: InitialState<T>,
 ): [T, Dispatch<SetStateAction<T>>] {
+  const { storage } = useWorkspace();
   const [value, setValue] = useState<T>(() => {
     const fallback = resolveInitialState(initialState);
 
-    return readLocalState(storageKey, fallback);
+    return storage.read(storageKey, fallback);
   });
 
   useEffect(() => {
-    writeLocalState(storageKey, value);
-  }, [storageKey, value]);
+    storage.write(storageKey, value);
+  }, [storage, storageKey, value]);
 
   return [value, setValue];
 }

@@ -1,13 +1,14 @@
 import { useLayoutEffect, type RefObject } from "react";
-import { readScrollPosition, writeScrollPosition } from "../utils/viewState";
+import { useWorkspace } from "../features/auth/workspaceContext";
 
 export function useRouteScrollRestoration(
   pathname: string,
   rootRef: RefObject<HTMLElement | null>,
 ) {
+  const { storage } = useWorkspace();
   useLayoutEffect(() => {
     const key = `cardfight.scroll.route:${pathname}`;
-    const target = readScrollPosition(key);
+    const target = storage.readScroll(key);
     let position = target;
     let restoring = true;
     let frame = 0;
@@ -38,7 +39,7 @@ export function useRouteScrollRestoration(
     window.addEventListener("touchstart", stopRestoring, { passive: true });
     window.addEventListener("pointerdown", stopRestoring);
     return () => {
-      writeScrollPosition(key, position);
+      storage.writeScroll(key, position);
       clearTimeout(timeout);
       cancelAnimationFrame(frame);
       observer.disconnect();
@@ -47,5 +48,5 @@ export function useRouteScrollRestoration(
       window.removeEventListener("touchstart", stopRestoring);
       window.removeEventListener("pointerdown", stopRestoring);
     };
-  }, [pathname, rootRef]);
+  }, [pathname, rootRef, storage]);
 }

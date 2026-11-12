@@ -1,8 +1,8 @@
 # Versioned SQLite database migrations
 
 Persistent database changes are explicit commands backed by Alembic revisions.
-The current revision is `0002_identity`, following `0001_baseline`. The API only validates schema/revision
-at startup: it no longer creates tables or runs the old compatibility helpers.
+The current revision is `0003_ownership`, following `0001_baseline` and
+`0002_identity`. At startup, the API validates the schema and revision.
 Install `requirements.txt` before using these commands and run them from the
 repository root with the project's Python environment active.
 
@@ -25,6 +25,12 @@ bytes were preserved; the restored application passed 1,398 read-only API/artwor
 checks. The original file checksum and logical data summary stayed identical.
 The private report is retained in the external project archive described below.
 This is rehearsal evidence only: the live database was not migrated.
+
+Revision `0003_ownership` adds account references to decks, matches, and
+acquisition plans. Existing records stay in the local workspace until an
+explicit owner assignment. Deck names are unique within each account and
+within the unassigned local workspace. See the
+[ownership policy](identity-delivery-plan.md#account-owned-workspace-data).
 
 ## Schema history and the PostgreSQL transfer
 
@@ -77,6 +83,44 @@ python -m backend.seed
 Use this only for a new/empty database. The optional seed adds starter decks; it
 does not recover saved data. The frozen baseline creates all required tables,
 constraints, indexes, and the Alembic revision marker in one transaction.
+
+## Rehearse assigning a local workspace to an account
+
+Use a verified SQLite backup containing the legacy workspace and the
+designated admitted account. Use the account UUID from the operator's account
+record. For a rehearsal before account setup, restore the backup to a disposable
+file, create a test account there, then checkpoint that file.
+
+```sh
+python -m backend.ownership rehearse "/path/to/backup.sqlite3" --account "<account-uuid>"
+```
+
+The rehearsal restores a temporary copy, upgrades it, and verifies that all
+local decks, matches, and acquisition plans can be assigned together. It checks
+foreign keys and compares saved values, including artwork bytes. The result
+reports the assigned counts. The backup stays available for repeat runs.
+
+To keep the assignment on a test database after signing in, follow the
+[account setup and assignment steps](authentication-setup.md#assign-your-existing-workspace-on-the-test-copy).
+
+The November 10, 2026 rehearsal verified a copy of the existing workspace.
+The upgraded copy passed 1,398 read-only API and artwork checks. A separate
+copy assigned its 19 decks, 142 matches, and 9 acquisition plans to a test
+account and preserved the saved values, relationships, and artwork bytes.
+
+For a local Windows smoke test, restore to a new path, upgrade that file, and
+select it explicitly when restarting.
+
+```powershell
+$copy = Join-Path $env:LOCALAPPDATA "Cardfight\auth-test\cardfight.db"
+python -m backend.backup restore "C:/path/to/backup.sqlite3" --destination $copy --for-ownership
+python -m backend.migrate upgrade --database $copy
+.\start.ps1 -Fresh -DatabasePath $copy
+```
+
+The application check in the backup workflow uses the local workspace and
+shared catalog. Raw backup verification covers the complete database. Test
+account-owned API access on a separate copy with authenticated test accounts.
 
 ## Adopt existing unversioned data once
 

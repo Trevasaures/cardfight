@@ -5,9 +5,9 @@ with a clear route back to the deck or form the player was using. Authentication
 is a short provider-hosted step; Cardfight owns the invitation, return journey,
 account menu, and understandable recovery states. This is the product contract
 for [identity design](adr/0001-identity-and-access.md). The first #54 runtime
-implements the welcome, provider handoff, account menu and holding screen.
-Private workspace recovery remains gated on #55; the [setup guide](authentication-setup.md)
-records what still needs a real tenant and staging verification.
+implements the welcome, provider handoff, account menu and admission hold screen.
+The [setup guide](authentication-setup.md) describes staging verification for
+sign-in and account-scoped workspaces.
 
 ## Visual direction
 
@@ -133,8 +133,9 @@ The authenticated app boundary must:
   state and locks itself; restored bfcache pages must recheck authentication.
 - Persist harmless global choices such as theme separately from private data.
 
-Account-boundary mechanics belong to the #54/#55 integration gate. New users
-must not enter the current global-query workspace while that gate is incomplete.
+A browser tab sends the generation from its last verified session with private
+API requests. A stale tab must verify the current session before reading the
+workspace again.
 
 ## Recovery and choice of sign-in method
 

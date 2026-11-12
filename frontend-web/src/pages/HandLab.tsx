@@ -7,7 +7,8 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { HandTable } from "../features/hand-lab/HandTable";
 import { mainDeckCopies } from "../features/hand-lab/engine";
 import { usePersistentState } from "../hooks/usePersistentState";
-import { writeLocalState } from "../utils/localState";
+import { useWorkspace } from "../features/auth/workspaceContext";
+import { HAND_LAB_SOURCE_KEY, type HandLabSource } from "../features/auth/workspaceNavigation";
 import type { Deck, DeckVersion, DeckVersionSummary } from "../types/api";
 import "../features/hand-lab/hand-lab.css";
 
@@ -45,11 +46,9 @@ function HandWorkspace({ version }: { version: DeckVersion }) {
 }
 
 export function HandLab() {
+  const { account, storage } = useWorkspace();
   const [params, setParams] = useSearchParams();
-  const [source, setSource] = usePersistentState<{
-    deckId: number;
-    versionId: number;
-  }>("cardfight.hand-lab.source", { deckId: 0, versionId: 0 });
+  const [source, setSource] = usePersistentState<HandLabSource>(HAND_LAB_SOURCE_KEY, { deckId: 0, versionId: 0 });
   const [reload, setReload] = useState(0);
   const [decks, setDecks] = useState<{
     items: Deck[];
@@ -67,8 +66,10 @@ export function HandLab() {
     value: DeckVersion | null;
     error: string | null;
   }>({ id: 0, value: null, error: null });
-  // Builder links take priority over the last locally remembered deck/version.
-  const requestedDeckId = Number(params.get("deck") || source?.deckId);
+  // Only the local lab accepts a deck or version from its URL.
+  const linkedDeck = account ? null : params.get("deck");
+  const linkedVersion = account ? null : params.get("version");
+  const requestedDeckId = Number(linkedDeck || source?.deckId);
   const deck =
     decks.items.find((item) => item.id === requestedDeckId) ??
     decks.items.find((item) => item.active) ??
@@ -77,7 +78,7 @@ export function HandLab() {
   // Ignore results belonging to the previous selection while its replacement loads.
   const versionRows = versions.deckId === deckId ? versions.items : [];
   const requestedVersionId = Number(
-    params.get("version") || (source?.deckId === deckId ? source.versionId : 0),
+    linkedVersion || (source?.deckId === deckId ? source.versionId : 0),
   );
   const selectedVersion =
     versionRows.find((item) => item.id === requestedVersionId) ??
@@ -181,17 +182,17 @@ export function HandLab() {
 
   function chooseDeck(id: number) {
     setSource({ deckId: id, versionId: 0 });
-    setParams({ deck: String(id) });
+    if (!account) setParams({ deck: String(id) });
   }
   function chooseVersion(id: number) {
     setSource({ deckId, versionId: id });
-    setParams({ deck: String(deckId), version: String(id) });
+    if (!account) setParams({ deck: String(deckId), version: String(id) });
   }
   function prepareBuilder() {
     if (deckId)
-      writeLocalState("cardfight.deck-builder.selected-deck", String(deckId));
+      storage.write("cardfight.deck-builder.selected-deck", String(deckId));
     if (versionId)
-      writeLocalState("cardfight.deck-builder.selected-version", String(versionId));
+      storage.write("cardfight.deck-builder.selected-version", String(versionId));
   }
 
   return (

@@ -14,6 +14,7 @@ from backend.database import db
 from backend.errors import NotFoundError, ValidationError
 from backend.models import Deck, DeckVersion, Match
 from backend.services.serializers import serialize_match
+from backend.workspace import owned_get, owned_query, owner_id
 
 CT = ZoneInfo("America/Chicago")
 VALID_MATCH_FORMATS = {None, "Standard", "Stride", "Any"}
@@ -40,6 +41,7 @@ def create_match(payload: dict) -> dict:
     deck2_version_id = _match_version_id(payload, "deck2_version_id", deck2_id)
 
     match = Match(
+        owner_account_id=owner_id(),
         deck1_id=deck1_id,
         deck2_id=deck2_id,
         deck1_version_id=deck1_version_id,
@@ -69,8 +71,10 @@ def _match_version_id(payload: dict, field_name: str, deck_id: int) -> int | Non
         if version_id is None:
             return None
 
-        version = db.session.get(DeckVersion, version_id)
+        version = owned_get(DeckVersion, version_id)
         if not version:
+            if owner_id() is not None:
+                raise NotFoundError("Deck version not found")
             raise ValidationError(
                 f"{field_name} does not reference an existing deck version."
             )
@@ -79,7 +83,7 @@ def _match_version_id(payload: dict, field_name: str, deck_id: int) -> int | Non
         return version.id
 
     active_version = (
-        DeckVersion.query.filter_by(deck_id=deck_id, is_active=True)
+        owned_query(DeckVersion).filter_by(deck_id=deck_id, is_active=True)
         .order_by(DeckVersion.updated_at.desc(), DeckVersion.id.desc())
         .first()
     )
@@ -97,7 +101,7 @@ def list_matches(
     page: int | None = None,
     page_size: int | None = None,
 ):
-    query = Match.query
+    query = owned_query(Match)
     normalized_result = str(result or "").strip().lower()
 
     if fmt in ("Standard", "Stride", "Any"):
@@ -195,13 +199,19 @@ def list_matches(
     return [serialize_match(match) for match in query.all()]
 
 
+def _get_match_or_raise(match_id: int) -> Match:
+    match = owned_get(Match, match_id)
+    if match is None:
+        raise NotFoundError("Match not found")
+    return match
+
+
 def get_match(match_id: int) -> dict:
-    match = db.get_or_404(Match, match_id)
-    return serialize_match(match)
+    return serialize_match(_get_match_or_raise(match_id))
 
 
 def update_match(match_id: int, payload: dict) -> dict:
-    match = db.get_or_404(Match, match_id)
+    match = _get_match_or_raise(match_id)
 
     new_deck1_id = (
         _optional_int(payload.get("deck1_id"), "deck1_id")
@@ -292,7 +302,7 @@ def update_match(match_id: int, payload: dict) -> dict:
 
 
 def delete_match(match_id: int):
-    match = db.get_or_404(Match, match_id)
+    match = _get_match_or_raise(match_id)
 
     _revert_winner_counter(match.deck1_id, match.deck2_id, match.winner_id)
 
@@ -367,8 +377,8 @@ def _validate_participants(deck1_id: int, deck2_id: int):
     if deck1_id == deck2_id:
         raise ValidationError("deck1_id and deck2_id must be different.")
 
-    deck1_exists = db.session.get(Deck, deck1_id) is not None
-    deck2_exists = db.session.get(Deck, deck2_id) is not None
+    deck1_exists = owned_get(Deck, deck1_id) is not None
+    deck2_exists = owned_get(Deck, deck2_id) is not None
 
     if not deck1_exists or not deck2_exists:
         raise NotFoundError("One or both deck IDs do not exist.")
@@ -381,6 +391,8 @@ def _validate_optional_participant(
         return
 
     if value not in (deck1_id, deck2_id):
+        if owner_id() is not None and owned_get(Deck, value) is None:
+            raise NotFoundError("Deck not found")
         raise ValidationError(f"{field_name} must be either deck1_id or deck2_id.")
 
 
@@ -388,8 +400,8 @@ def _apply_winner_counter(deck1_id: int, deck2_id: int, winner_id: int | None):
     if winner_id is None:
         return
 
-    deck1 = db.session.get(Deck, deck1_id)
-    deck2 = db.session.get(Deck, deck2_id)
+    deck1 = owned_get(Deck, deck1_id)
+    deck2 = owned_get(Deck, deck2_id)
 
     if not deck1 or not deck2:
         return
@@ -406,8 +418,8 @@ def _revert_winner_counter(deck1_id: int, deck2_id: int, winner_id: int | None):
     if winner_id is None:
         return
 
-    deck1 = db.session.get(Deck, deck1_id)
-    deck2 = db.session.get(Deck, deck2_id)
+    deck1 = owned_get(Deck, deck1_id)
+    deck2 = owned_get(Deck, deck2_id)
 
     if not deck1 or not deck2:
         return

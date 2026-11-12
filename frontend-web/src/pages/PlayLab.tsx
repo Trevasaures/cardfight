@@ -1,3 +1,4 @@
+import { useWorkspace } from "../features/auth/workspaceContext";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { CheckCircle2, Dices, RefreshCcw, Save, Shuffle, Swords } from "lucide-react";
 
@@ -99,6 +100,7 @@ function MatchupDeckPanel({
 }
 
 export function PlayLab() {
+  const { storage } = useWorkspace();
   const [decks, setDecks] = useState<Deck[]>([]);
   const [mode, setMode] = usePersistentState<MatchupMode>(
     "cardfight.play-lab.mode",
@@ -259,6 +261,7 @@ export function PlayLab() {
   }
 
   async function saveMatch() {
+    if (!storage.isActive()) return;
     if (!matchup) return;
 
     setError(null);

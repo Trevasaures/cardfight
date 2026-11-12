@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 
 from backend.models import Deck
 from backend.services.serializers import serialize_deck
+from backend.workspace import owned_query
 
 
 bp_play = Blueprint("play", __name__, url_prefix="/api/play")
@@ -19,7 +20,7 @@ def random_matchup():
     """
     fmt = request.args.get("format", "Any")
 
-    query = Deck.query.filter_by(active=True)
+    query = owned_query(Deck).filter_by(active=True)
 
     if fmt in ("Standard", "Stride"):
         query = query.filter(Deck.type == fmt)

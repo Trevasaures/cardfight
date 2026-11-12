@@ -21,6 +21,11 @@ TABLES = FROZEN_SCHEMA["tables"]
 def validate_schema(connection):
     """Validate both the preserved workspace and security-critical constraints."""
     validate_v1(connection)
+    validate_identity_tables(connection)
+
+
+def validate_identity_tables(connection):
+    """Validate the frozen identity tables independently of workspace revisions."""
     existing = set(inspect(connection).get_table_names())
     if not set(TABLES).issubset(existing):
         raise SchemaError(

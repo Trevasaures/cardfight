@@ -7,6 +7,8 @@ import { MatchCard } from "../components/cards/MatchCard";
 import { useToast } from "../components/feedback/useToast";
 import { PageHeader } from "../components/layout/PageHeader";
 import { MatchEditDialog } from "../components/matches/MatchEditDialog";
+import { useWorkspace } from "../features/auth/workspaceContext";
+import { MATCH_HISTORY_SEARCH_KEY } from "../features/auth/workspaceNavigation";
 import { usePersistentState } from "../hooks/usePersistentState";
 import type { Match, MatchFormat } from "../types/api";
 
@@ -24,6 +26,7 @@ type PaginationState = {
 const PAGE_SIZE_OPTIONS = [6, 12, 24, 48];
 
 export function MatchHistory() {
+  const { account, storage } = useWorkspace();
   const [matches, setMatches] = useState<Match[]>([]);
   const [pagination, setPagination] = useState<PaginationState>({
     page: 1,
@@ -36,10 +39,10 @@ export function MatchHistory() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [rememberedSearch, setRememberedSearch] = usePersistentState(
-    "cardfight.match-history.search",
+    MATCH_HISTORY_SEARCH_KEY,
     "",
   );
-  const linkedSearch = searchParams.get("q");
+  const linkedSearch = account ? null : searchParams.get("q");
   const search = linkedSearch ?? rememberedSearch;
 
   useEffect(() => {
@@ -49,6 +52,7 @@ export function MatchHistory() {
 
   function setSearch(value: string) {
     setRememberedSearch(value);
+    if (account) return;
     setSearchParams(
       (current) => {
         const next = new URLSearchParams(current);
@@ -159,6 +163,7 @@ export function MatchHistory() {
   }, [format, loadMatches, pageSize, result, search, selectedPage]);
 
   async function handleDelete(matchId: number) {
+    if (!storage.isActive()) return;
     const confirmed = window.confirm(
       "Delete this match? This will also update stored deck counters.",
     );

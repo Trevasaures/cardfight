@@ -1,3 +1,4 @@
+import { useWorkspace } from "../../features/auth/workspaceContext";
 import { BookmarkPlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -24,6 +25,7 @@ export function CardSetFields({
   onChange,
   onSetSaved,
 }: CardSetFieldsProps) {
+  const { storage } = useWorkspace();
   const [savingSet, setSavingSet] = useState(false);
   const toast = useToast();
   const mounted = useRef(false);
@@ -74,6 +76,7 @@ export function CardSetFields({
   }
 
   async function handleSaveSet() {
+    if (!storage.isActive()) return;
     if (!customSetIsComplete || savingSet) return;
 
     const requestedCode = value.set_code.trim();

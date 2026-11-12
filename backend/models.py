@@ -17,7 +17,11 @@ class Deck(db.Model):
     __tablename__ = "deck"
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), unique=True, nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    owner_account_id = db.Column(
+        db.String(36),
+        db.ForeignKey("auth_account.id", name="fk_deck_owner", ondelete="RESTRICT"),
+    )
     type = db.Column(db.String(20), nullable=False)
 
     nation = db.Column(db.String(50), nullable=True)
@@ -52,6 +56,15 @@ class Deck(db.Model):
     __table_args__ = (
         db.CheckConstraint("type IN ('Standard','Stride')", name="ck_deck_type"),
         db.Index("ix_deck_name", "name"),
+        db.Index("ix_deck_owner", "owner_account_id"),
+        db.UniqueConstraint("owner_account_id", "name", name="uq_deck_owner_name"),
+        db.Index(
+            "uq_deck_local_name",
+            "name",
+            unique=True,
+            sqlite_where=owner_account_id.is_(None),
+            postgresql_where=owner_account_id.is_(None),
+        ),
     )
 
     def to_dict(self):
@@ -82,6 +95,10 @@ class Match(db.Model):
     __tablename__ = "match"
 
     id = db.Column(db.Integer, primary_key=True)
+    owner_account_id = db.Column(
+        db.String(36),
+        db.ForeignKey("auth_account.id", name="fk_match_owner", ondelete="RESTRICT"),
+    )
 
     deck1_id = db.Column(db.Integer, db.ForeignKey("deck.id"), nullable=False)
     deck2_id = db.Column(db.Integer, db.ForeignKey("deck.id"), nullable=False)
@@ -118,6 +135,7 @@ class Match(db.Model):
 
     __table_args__ = (
         db.CheckConstraint("deck1_id <> deck2_id", name="ck_match_two_distinct_decks"),
+        db.Index("ix_match_owner", "owner_account_id"),
         db.Index("ix_match_date", "date_played"),
         db.Index("ix_match_d1", "deck1_id"),
         db.Index("ix_match_d2", "deck2_id"),
@@ -396,6 +414,12 @@ class AcquisitionPlan(db.Model):
     __tablename__ = "acquisition_plan"
 
     id = db.Column(db.Integer, primary_key=True)
+    owner_account_id = db.Column(
+        db.String(36),
+        db.ForeignKey(
+            "auth_account.id", name="fk_acquisition_plan_owner", ondelete="RESTRICT"
+        ),
+    )
 
     name = db.Column(db.String(160), nullable=False)
     plan_type = db.Column(db.String(40), default="new_build", nullable=False)
@@ -468,6 +492,7 @@ class AcquisitionPlan(db.Model):
             name="ck_acquisition_plan_build_mode",
         ),
         db.Index("ix_acquisition_plan_status", "status"),
+        db.Index("ix_acquisition_plan_owner", "owner_account_id"),
         db.Index("ix_acquisition_plan_deck", "deck_id"),
         db.Index("ix_acquisition_plan_version", "deck_version_id"),
         db.Index("ix_acquisition_plan_source_version", "source_deck_version_id"),

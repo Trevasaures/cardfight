@@ -1,3 +1,4 @@
+import { useWorkspace } from "../features/auth/workspaceContext";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Save, Search } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
@@ -40,6 +41,7 @@ function getNationPreviewIcon(
 }
 
 export function DeckLibrary() {
+  const { storage } = useWorkspace();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedNation = searchParams.get("nation") ?? "";
   const [decks, setDecks] = useState<Deck[]>([]);
@@ -166,6 +168,7 @@ export function DeckLibrary() {
   }
 
   async function saveDeck() {
+    if (!storage.isActive()) return;
     if (!editingDeck || saving) return;
 
     const name = editingDeck.name.trim();

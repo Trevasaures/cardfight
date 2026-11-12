@@ -5,12 +5,22 @@ Functions in this module handle the creation, updating, and deletion of decks, d
 They also provide validation and normalization of input data to ensure consistency and integrity in the database.
 """
 
-from sqlalchemy import or_
+from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 
 from backend.database import db
 from backend.errors import ConflictError, NotFoundError, ValidationError
-from backend.models import Card, CardPrinting, Deck, DeckCard, DeckVersion, Match
+from backend.models import (
+    AcquisitionPlan,
+    Card,
+    CardPrinting,
+    Deck,
+    DeckCard,
+    DeckVersion,
+    Match,
+)
 from backend.services.card_types import CREST_CARD_TYPES
+from backend.workspace import owned_filter, owned_get, owned_query, owner_id
 
 
 ALLOWED_ZONES = {"main", "ride", "g", "token", "other", "crest"}
@@ -57,8 +67,8 @@ def _bool_value(value, default=False):
     return bool(value)
 
 
-def _get_deck_or_raise(deck_id):
-    deck = db.session.get(Deck, deck_id)
+def get_deck_or_raise(deck_id):
+    deck = owned_get(Deck, deck_id)
 
     if not deck:
         raise NotFoundError("Deck not found")
@@ -67,7 +77,7 @@ def _get_deck_or_raise(deck_id):
 
 
 def get_deck_version_or_raise(version_id):
-    version = db.session.get(DeckVersion, version_id)
+    version = owned_get(DeckVersion, version_id)
 
     if not version:
         raise NotFoundError("Deck version not found")
@@ -76,7 +86,7 @@ def get_deck_version_or_raise(version_id):
 
 
 def get_deck_card_or_raise(deck_card_id):
-    entry = db.session.get(DeckCard, deck_card_id)
+    entry = owned_get(DeckCard, deck_card_id)
 
     if not entry:
         raise NotFoundError("Deck card entry not found")
@@ -123,6 +133,7 @@ def _zone_total(version_id, zone, exclude_entry_id=None):
     query = db.session.query(
         db.func.coalesce(db.func.sum(DeckCard.quantity), 0)
     ).filter(
+        owned_filter(DeckCard),
         DeckCard.deck_version_id == version_id,
         DeckCard.zone == zone,
     )
@@ -147,7 +158,7 @@ def _validate_deck_card_rules(
             )
         if quantity != 1:
             raise ValidationError("A crest must have a quantity of exactly 1")
-        existing_crests = DeckCard.query.join(Card).filter(
+        existing_crests = owned_query(DeckCard).join(Card).filter(
             DeckCard.deck_version_id == version.id,
             DeckCard.zone == "crest",
         )
@@ -182,7 +193,7 @@ def _validate_deck_card_rules(
     if card.grade not in RIDE_DECK_GRADES:
         raise ValidationError("Ride deck cards must be grade 0, 1, 2, or 3")
 
-    same_grade_query = DeckCard.query.join(Card).filter(
+    same_grade_query = owned_query(DeckCard).join(Card).filter(
         DeckCard.deck_version_id == version.id,
         DeckCard.zone == "ride",
         Card.grade == card.grade,
@@ -199,7 +210,7 @@ def _validate_deck_card_rules(
 
 
 def _deactivate_other_versions(deck_id, except_version_id=None):
-    query = DeckVersion.query.filter(
+    query = owned_query(DeckVersion).filter(
         DeckVersion.deck_id == deck_id,
         DeckVersion.is_active.is_(True),
     )
@@ -212,7 +223,7 @@ def _deactivate_other_versions(deck_id, except_version_id=None):
 
 
 def list_deck_versions(deck_id):
-    deck = _get_deck_or_raise(deck_id)
+    deck = get_deck_or_raise(deck_id)
 
     return deck.versions.order_by(
         DeckVersion.is_active.desc(),
@@ -224,7 +235,7 @@ def create_deck_version(deck_id, payload):
     if not isinstance(payload, dict):
         raise ValidationError("Request body must be a JSON object")
 
-    deck = _get_deck_or_raise(deck_id)
+    deck = get_deck_or_raise(deck_id)
 
     source_version = None
     source_version_id = _int_value(
@@ -300,6 +311,31 @@ def update_deck_version(version_id, payload):
     return version
 
 
+def guard_foreign_acquisition_references(*, deck_id=None, version_id=None):
+    """Block a delete that would null an acquisition link in another workspace."""
+    if deck_id is not None:
+        versions = select(DeckVersion.id).where(DeckVersion.deck_id == deck_id)
+        linked = or_(
+            AcquisitionPlan.deck_id == deck_id,
+            AcquisitionPlan.deck_version_id.in_(versions),
+            AcquisitionPlan.source_deck_version_id.in_(versions),
+        )
+    else:
+        linked = or_(
+            AcquisitionPlan.deck_version_id == version_id,
+            AcquisitionPlan.source_deck_version_id == version_id,
+        )
+    foreign_link = (
+        db.session.query(AcquisitionPlan.id)
+        .filter(AcquisitionPlan.owner_account_id.is_distinct_from(owner_id()), linked)
+        .first()
+    )
+    if foreign_link is not None:
+        raise ConflictError(
+            "Cannot delete this record because an acquisition link is inconsistent."
+        )
+
+
 def delete_deck_version(version_id):
     version = get_deck_version_or_raise(version_id)
 
@@ -310,7 +346,7 @@ def delete_deck_version(version_id):
 
     # Check either participant before deleting the version and its card entries.
     match_reference = (
-        db.session.query(Match.id)
+        owned_query(Match).with_entities(Match.id)
         .filter(
             or_(
                 Match.deck1_version_id == version.id,
@@ -325,8 +361,14 @@ def delete_deck_version(version_id):
             "Retain this historical version to preserve saved matches."
         )
 
+    guard_foreign_acquisition_references(version_id=version.id)
     db.session.delete(version)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError as exc:
+        raise ConflictError(
+            "This deck version is referenced by another saved record."
+        ) from exc
 
 
 def add_card_to_deck_version(version_id, payload):
@@ -351,7 +393,7 @@ def add_card_to_deck_version(version_id, payload):
     zone = _normalize_zone(payload.get("zone"))
     sort_order = _int_value(payload.get("sort_order"), "sort_order", default=0)
 
-    existing = DeckCard.query.filter_by(
+    existing = owned_query(DeckCard).filter_by(
         deck_version_id=version.id,
         card_id=card.id,
         printing_id=printing.id if printing else None,

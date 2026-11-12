@@ -7,6 +7,7 @@ protection. Routes should stay thin and call into this service layer.
 
 from itertools import combinations
 
+from flask import current_app
 from sqlalchemy import or_
 
 from backend.database import db
@@ -646,6 +647,13 @@ def update_card(card_id, payload):
     if next_is_crest:
         for field_name in ("grade", "power", "shield", "critical", "trigger_type"):
             next_values[field_name] = None
+    local = current_app.config["AUTH_MODE"] == "local"
+    if not local and (
+        next_type != card.card_type or next_values.get("grade", card.grade) != card.grade
+    ):
+        # A hosted response must not reveal how a shared card is used in private
+        # decks or invalidate those decks by changing its rules.
+        raise ConflictError("A hosted catalog card keeps its original grade and card type.")
     if next_type != card.card_type:
         invalid_entries = card.deck_entries.filter(
             DeckCard.zone != "crest" if next_is_crest else DeckCard.zone == "crest"
@@ -671,7 +679,7 @@ def update_card(card_id, payload):
                         "A deck can include only one Ride Deck Crest; remove the other crest first"
                     )
 
-    if "grade" in next_values:
+    if local and "grade" in next_values:
         _validate_grade_change_for_ride_decks(card, next_values["grade"])
 
     printings = CardPrinting.query.filter_by(card_id=card.id).all()

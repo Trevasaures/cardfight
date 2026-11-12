@@ -36,6 +36,15 @@ def manifest_path(backup):
     return backup.with_name(backup.name + ".manifest.json")
 
 
+def ownership_restore_receipt(path):
+    return path.with_name(path.name + ".ownership-restore.json")
+
+
+def file_identity(stat):
+    # A creation time, where available, also detects reuse of a file ID.
+    return [stat.st_dev, stat.st_ino, getattr(stat, "st_birthtime_ns", None)]
+
+
 def _file_hash(path):
     with Path(path).open("rb") as stream:
         return hashlib_stream(stream)
@@ -220,14 +229,15 @@ def check_backup(backup):
     return manifest
 
 
-def restore_backup(backup, destination):
+def restore_backup(backup, destination, *, for_ownership=False):
     """Restore only to a new path and verify before reporting success; no overwrite mode."""
     backup = Path(backup).expanduser().resolve()
     manifest = check_backup(backup)
     destination = _check_new_destination(destination)
     if destination == Path(manifest["source_database"]).resolve() or destination == backup:
         raise BackupError("Restore into a separate new path, never the original source or backup.")
-    created = False
+    receipt = ownership_restore_receipt(destination) if for_ownership else None
+    created = receipt_created = False
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)
         # The backup is a closed standalone snapshot, so a byte copy is safe.
@@ -237,13 +247,27 @@ def restore_backup(backup, destination):
                 shutil.copyfileobj(reader, writer, length=1024 * 1024)
             writer.flush()
             os.fsync(writer.fileno())
+            if receipt is not None:
+                identity = file_identity(os.fstat(writer.fileno()))
         if _file_hash(destination) != manifest["sha256"]:
             raise BackupError("Restored file checksum mismatch.")
         summary = database_summary(destination)
         if summary != manifest["database"]:
             raise BackupError("Restored schema or saved content differs from the snapshot.")
-        return {"destination": str(destination), "database": summary}
+        result = {"destination": str(destination), "database": summary}
+        if receipt is not None:
+            if not identity[1] or file_identity(destination.stat()) != identity:
+                raise BackupError("Could not identify the newly restored file for ownership assignment.")
+            with receipt.open("x", encoding="utf-8") as stream:
+                receipt_created = True
+                json.dump({"destination": str(destination), "identity": identity}, stream)
+                stream.flush()
+                os.fsync(stream.fileno())
+            result["ownership_restore_receipt"] = str(receipt)
+        return result
     except BaseException:
+        if receipt_created:
+            receipt.unlink(missing_ok=True)
         if created:
             destination.unlink(missing_ok=True)
         raise
@@ -359,6 +383,8 @@ def main(argv=None):
     restore = commands.add_parser("restore", help="Restore only to a new database file")
     restore.add_argument("backup", type=Path)
     restore.add_argument("--destination", type=Path, required=True)
+    restore.add_argument("--for-ownership", action="store_true",
+                         help="Record this newly restored file for ownership assignment")
     arguments = parser.parse_args(argv)
     try:
         if arguments.command == "create":
@@ -369,7 +395,9 @@ def main(argv=None):
         elif arguments.command == "verify":
             result = verify_backup(arguments.backup, app_check=arguments.app_check)
         else:
-            result = restore_backup(arguments.backup, arguments.destination)
+            result = restore_backup(
+                arguments.backup, arguments.destination, for_ownership=arguments.for_ownership
+            )
         print(json.dumps({"status": "ok", "operation": arguments.command, **result}, indent=2))
         return 0
     except (BackupError, OSError, sqlite3.Error, ValueError) as exc:

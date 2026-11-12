@@ -11,6 +11,7 @@ import {
   History,
   Home,
   LibraryBig,
+  LogOut,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
@@ -23,6 +24,8 @@ import {
 } from "lucide-react";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { useRouteScrollRestoration } from "../../hooks/useRouteScrollRestoration";
+import { useWorkspace } from "../../features/auth/workspaceContext";
+import { signInMethodLabel } from "../../features/auth/session";
 import { RouteContent } from "./RouteContent";
 import "./app-sidebar.css";
 
@@ -57,6 +60,7 @@ const navGroups = [
 const destinations = navGroups.flatMap((group) => group.items);
 
 export function AppShell() {
+  const { account, signOut, signingOut, signOutError } = useWorkspace();
   const location = useLocation();
   const pageRef = useRef<HTMLElement | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -151,10 +155,10 @@ export function AppShell() {
             </div>
           ))}
         </nav>
-        <div className="sidebar-footer" title="Your personal lab">
+        <div className="sidebar-footer" title={account?.display_name ?? "Your personal lab"}>
           <span className="workspace-avatar">CF</span>
           <div>
-            <strong>Your personal lab</strong>
+            <strong>{account?.display_name ?? "Your personal lab"}</strong>
           </div>
         </div>
       </aside>
@@ -209,6 +213,26 @@ export function AppShell() {
             <span>Start a match</span>
             <ArrowUpRight size={14} />
           </Link>
+          {account && (
+            <details className="workspace-account" onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.currentTarget.open = false;
+                event.currentTarget.querySelector("summary")?.focus();
+              }
+            }}>
+              <summary className="workspace-account-toggle" aria-label={`Account for ${account.display_name}`}>
+                <span className="workspace-avatar" aria-hidden="true">{account.display_name.slice(0, 2).toUpperCase()}</span>
+                <span className="workspace-account-name">{account.display_name}</span>
+              </summary>
+              <div className="workspace-account-actions">
+                <p>Signed in with {signInMethodLabel(account.sign_in_method)}</p>
+                <button className="workspace-button" type="button" onClick={signOut} disabled={signingOut}>
+                  <LogOut size={16} aria-hidden="true" />{signingOut ? "Signing out…" : "Sign out of Cardfight"}
+                </button>
+                {signOutError && <p role="alert">{signOutError}</p>}
+              </div>
+            </details>
+          )}
         </header>
         <main
           id="main-content"

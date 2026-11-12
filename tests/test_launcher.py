@@ -44,7 +44,7 @@ if ($probeSource -match 'print\(json.dumps') {
 HARNESS = r"""
 param([string]$ProjectRoot, [string]$Scenario, [switch]$UnsetParentApiUrl,
       [string]$PythonExecutable, [switch]$FrontendOnly, [switch]$Fresh,
-      [switch]$ApiOnly, [switch]$Seed)
+      [switch]$ApiOnly, [switch]$Seed, [string]$DatabasePath)
 $ErrorActionPreference = 'Stop'
 $global:LauncherTestScenario = $Scenario
 $global:LauncherTestEvents = [System.Collections.Generic.List[string]]::new()
@@ -209,7 +209,9 @@ function global:Write-Host {
 $succeeded = $true
 $failure = $null
 try {
-  & (Join-Path $ProjectRoot 'start.ps1') -FrontendOnly:$FrontendOnly -Fresh:$Fresh -ApiOnly:$ApiOnly -Seed:$Seed
+  $launchOptions = @{ FrontendOnly = $FrontendOnly; Fresh = $Fresh; ApiOnly = $ApiOnly; Seed = $Seed }
+  if ($DatabasePath) { $launchOptions.DatabasePath = $DatabasePath }
+  & (Join-Path $ProjectRoot 'start.ps1') @launchOptions
 } catch {
   $succeeded = $false
   $failure = $_.Exception.Message
@@ -248,7 +250,7 @@ def run_launcher(tmp_path):
     def run(
         scenario="Success", *, unset_parent=False, native_legacy=False,
         fresh=False, frontend_only=False, api_only=False, unset_fresh_env=False,
-        seed=False,
+        seed=False, database_path=None,
     ):
         shell = WINDOWS_POWERSHELL if native_legacy else POWERSHELL
         environment = {
@@ -281,6 +283,8 @@ def run_launcher(tmp_path):
             command.append("-ApiOnly")
         if seed:
             command.append("-Seed")
+        if database_path is not None:
+            command.extend(["-DatabasePath", str(database_path)])
         if unset_fresh_env:
             for key in ("DATABASE_URL", "CARDFIGHT_AUTH_MODE", "CARDFIGHT_AUTH_PUBLIC_ORIGIN"):
                 environment.pop(key)
@@ -464,6 +468,21 @@ def test_fresh_restarts_owned_services_with_existing_local_database(run_launcher
     assert "--host 127.0.0.1" in frontend_command
     assert "--force" in frontend_command
     assert any(event.startswith("message:Frontend ready: http://127.0.0.1:5173") for event in events)
+
+
+@pytest.mark.parametrize("fresh", [False, True])
+def test_database_path_selects_existing_copy_and_restores_environment(
+    run_launcher, tmp_path, fresh
+):
+    copy = tmp_path / "restored workspace.db"
+    copy.write_bytes(b"disposable workspace")
+    result = run_launcher(fresh=fresh, api_only=True, database_path=copy)
+    assert result["ok"] is True
+    expected = "sqlite:///" + copy.as_posix()
+    assert result["preflight_environment"]["database_url"] == expected
+    assert result["starts"][0]["environment"]["database_url"] == expected
+    assert result["environment_after"] == result["environment_before"]
+    assert copy.read_bytes() == b"disposable workspace"
 
 
 def test_fresh_api_only_restores_initially_unset_environment(run_launcher):
