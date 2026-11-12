@@ -1,22 +1,36 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ArrowRight, BookmarkCheck, Check, ChevronDown, CloudOff, LockKeyhole, LogOut, Mail, RefreshCw, ShieldCheck, Swords } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { apiRequest, apiTransport } from "../../api/client";
 import { ApiError } from "../../api/transport";
-import { playtestStore } from "../hand-lab/sessionStore";
+import { ToastProvider } from "../../components/feedback/ToastProvider";
 import { clearDraftRecovery, readDraftRecovery, recoveryAccess, type RecoveryEnvelope } from "./draftRecovery";
 import { authErrorCopy, callbackErrorFromSearch, canMountWorkspace, parseAuthSession, safeReturnPath, signInMethodLabel, type AuthSession, type SignInMethod } from "./session";
 import { clearReturnRoute, readReturnRoute, saveReturnRoute } from "./returnRoute";
+import { WorkspaceContext } from "./workspaceContext";
+import { cleanWorkspaceSearch } from "./workspaceNavigation";
+import { clearHostedAccount, createWorkspaceStorage, selectHostedAccount, type WorkspaceStorage } from "./workspaceStorage";
 import "./identity.css";
 
 type Model = { phase: "checking" | "ready" | "expired" | "error"; session: AuthSession | null; error: string; retryUntil: number };
+type ActiveWorkspace = { key: string; storage: WorkspaceStorage };
+type BoundaryEvent = { type?: string; nonce?: string; generation?: string };
 const EVENT_KEY = "cardfight.auth.boundary-event";
+
+function workspaceKey(session: AuthSession): string | null {
+  if (!canMountWorkspace(session)) return null;
+  return session.mode === "local" ? "local" : `account:${session.account?.id}:${session.generation}`;
+}
 
 function pendingDraft(): RecoveryEnvelope | null {
   try { return readDraftRecovery(window.sessionStorage); } catch { return null; }
 }
 
 export function AuthGate({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [model, setModel] = useState<Model>({ phase: "checking", session: null, error: "", retryUntil: 0 });
+  const [workspace, setWorkspace] = useState<ActiveWorkspace | null>(null);
   const [callbackError, setCallbackError] = useState(() => callbackErrorFromSearch(window.location.search));
   const [recovery, setRecovery] = useState(pendingDraft);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -27,40 +41,71 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [actionError, setActionError] = useState("");
   const [now, setNow] = useState(Date.now);
   const [priorAccountId, setPriorAccountId] = useState<string | null>(null);
-  const [returnTo] = useState(() => {
+  const [returnTo, setReturnTo] = useState(() => {
     try { if (window.location.pathname === "/sign-in") return readReturnRoute(window.sessionStorage) ?? "/"; } catch { /* Use a neutral route when tab storage is unavailable. */ }
     return safeReturnPath(window.location.pathname + window.location.search);
   });
   const headingRef = useRef<HTMLHeadingElement>(null);
   const accountButtonRef = useRef<HTMLButtonElement>(null);
   const sessionRef = useRef<AuthSession | null>(null);
+  const workspaceRef = useRef<ActiveWorkspace | null>(null);
   const requestRef = useRef<AbortController | null>(null);
   const sequenceRef = useRef(0);
   const channelRef = useRef<BroadcastChannel | null>(null);
 
+  const notifyBoundary = useCallback((preserveRecovery: boolean, generation?: string) => {
+    const event = { type: preserveRecovery ? "session-changed" : "signed-out", nonce: `${Date.now()}:${Math.random()}`, generation };
+    channelRef.current?.postMessage(event);
+    try { window.localStorage.setItem(EVENT_KEY, JSON.stringify(event)); } catch { /* Optional cross-tab fallback. */ }
+  }, []);
+
+  const lockWorkspace = useCallback(() => {
+    workspaceRef.current?.storage.revoke();
+    workspaceRef.current = null;
+    setWorkspace(null);
+  }, []);
+
   const applySession = useCallback((session: AuthSession) => {
     const previous = sessionRef.current;
+    const key = workspaceKey(session);
+    if (workspaceRef.current?.key !== key) {
+      lockWorkspace();
+    }
     if (session.account) {
       setPriorAccountId(session.account.id);
-      try { clearReturnRoute(window.sessionStorage); } catch { /* Route context is optional. */ }
+      try {
+        selectHostedAccount(window.sessionStorage, session.account.id);
+        clearReturnRoute(window.sessionStorage);
+      } catch { /* Blocked storage cannot enable another account's keys. */ }
     }
     if (session.mode === "oidc" && (previous?.account?.id !== session.account?.id || previous?.generation !== session.generation)) {
-      // Hosted pages are closed in #54. Do not claim/delete the local lab's save.
-      playtestStore.resetMemory();
       setMenuOpen(false);
     }
     apiTransport.setIdentity({ mode: session.mode, accountId: session.account?.id ?? null, serverGeneration: session.generation, csrfToken: session.csrf_token });
     sessionRef.current = session;
-  }, []);
+    if (key && !workspaceRef.current) {
+      const next = { key, storage: createWorkspaceStorage(session.account?.id ?? null) };
+      workspaceRef.current = next;
+      setWorkspace(next);
+    }
+    // A provider callback opens a new document. Notify tabs already open there.
+    if (!previous && session.account && session.generation) notifyBoundary(true, session.generation);
+  }, [lockWorkspace, notifyBoundary]);
 
   const refresh = useCallback(async (reason: "initial" | "recheck" | "expired" = "recheck") => {
     if (reason === "recheck" && requestRef.current && !requestRef.current.signal.aborted) return;
     const sequence = ++sequenceRef.current;
     requestRef.current?.abort();
+    if (reason === "expired") {
+      lockWorkspace();
+      apiTransport.invalidate();
+      if (window.location.pathname !== "/sign-in") setReturnTo(safeReturnPath(window.location.pathname));
+    }
     const controller = new AbortController();
     requestRef.current = controller;
     const previous = sessionRef.current;
-    if (previous?.mode !== "local" || reason !== "recheck") setModel(current => ({ ...current, phase: "checking", error: "" }));
+    const background = reason === "recheck" && workspaceRef.current !== null;
+    if (!background) setModel(current => ({ ...current, phase: "checking", error: "" }));
     try {
       const session = parseAuthSession(await apiRequest<unknown>("/api/auth/session", { signal: controller.signal, cache: "no-store" }));
       if (sequence !== sequenceRef.current) return;
@@ -70,14 +115,18 @@ export function AuthGate({ children }: { children: ReactNode }) {
     } catch (error) {
       if (sequence !== sequenceRef.current || controller.signal.aborted) return;
       const temporaryFailure = error instanceof TypeError || (error instanceof ApiError && error.status >= 500);
-      // A background network outage must not discard edits in the local lab.
-      if (reason === "recheck" && previous?.mode === "local" && temporaryFailure) return;
+      const stillValid = previous?.mode === "local" || (previous?.session && Date.now() < Math.min(
+        Date.parse(previous.session.idle_expires_at), Date.parse(previous.session.absolute_expires_at),
+      ));
+      // Preserve active edits during an ordinary background connectivity failure.
+      if (background && stillValid && temporaryFailure) return;
+      lockWorkspace();
       apiTransport.invalidate();
       setModel({ phase: "error", session: null, error: error instanceof Error ? error.message : "Cardfight could not check sign-in.", retryUntil: error instanceof ApiError && error.retryAfter ? Date.now() + error.retryAfter * 1000 : 0 });
     } finally {
       if (sequence === sequenceRef.current) requestRef.current = null;
     }
-  }, [applySession]);
+  }, [applySession, lockWorkspace]);
 
   const cancelSessionCheck = useCallback(() => {
     sequenceRef.current++;
@@ -87,53 +136,63 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refresh("initial");
-    return cancelSessionCheck;
+    return () => {
+      cancelSessionCheck();
+      workspaceRef.current?.storage.revoke();
+      workspaceRef.current = null;
+    };
   }, [refresh, cancelSessionCheck]);
 
+  const hosted = model.session?.mode === "oidc";
   useEffect(() => {
-    const url = new URL(window.location.href);
-    if (url.searchParams.has("auth_error")) {
-      url.searchParams.delete("auth_error");
-      window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
-    }
-  }, []);
+    const { pathname, search, hash, state } = location;
+    const cleaned = cleanWorkspaceSearch(pathname, search, hosted);
+    if (cleaned !== search) void navigate({ pathname, search: cleaned, hash }, { replace: true, state });
+  }, [hosted, location, navigate]);
 
   useEffect(() => apiTransport.subscribe((error) => {
-    apiTransport.invalidate();
     setActionError("");
     setCallbackError(error.code === "account_unavailable" ? "account_unavailable" : "");
     void refresh("expired");
   }), [refresh]);
 
   useEffect(() => {
+    let lastNotice: string | undefined;
     const recheck = () => {
       if (document.visibilityState !== "hidden") void refresh("recheck");
     };
-    const restoredPage = (event: PageTransitionEvent) => { if (event.persisted) { setHandoff(false); cancelSessionCheck(); apiTransport.invalidate(); recheck(); } };
-    const receivedBoundary = (signedOut = false) => {
+    const restoredPage = (event: PageTransitionEvent) => {
+      if (event.persisted) { setHandoff(false); receivedBoundary(); }
+    };
+    const receivedBoundary = (notice?: BoundaryEvent) => {
+      if (notice?.nonce && notice.nonce === lastNotice) return;
+      lastNotice = notice?.nonce;
+      const signedOut = notice?.type === "signed-out";
+      if (!signedOut && notice?.generation && notice.generation === sessionRef.current?.generation) return;
       cancelSessionCheck();
       apiTransport.invalidate();
+      if (sessionRef.current?.mode === "oidc") {
+        lockWorkspace();
+        setModel(current => ({ ...current, phase: "checking" }));
+      }
       if (signedOut) {
         try {
+          clearHostedAccount(window.sessionStorage);
           clearReturnRoute(window.sessionStorage);
           if (clearDraftRecovery(window.sessionStorage)) setRecovery(null);
           else setActionError("Your session ended in another tab, but this tab could not clear its recovery draft. Close it on a shared device.");
         } catch { setActionError("Your session ended in another tab. Close this tab on a shared device."); }
       }
-      if (sessionRef.current?.mode === "oidc") {
-        playtestStore.resetMemory();
-        setModel(current => ({ ...current, phase: "checking" }));
-      }
       recheck();
     };
     const storageEvent = (event: StorageEvent) => {
       if (event.key !== EVENT_KEY) return;
-      try { receivedBoundary(JSON.parse(event.newValue ?? "{}").type === "signed-out"); }
+      try { receivedBoundary(JSON.parse(event.newValue ?? "{}")); }
       catch { receivedBoundary(); }
     };
     if (typeof BroadcastChannel !== "undefined") {
       channelRef.current = new BroadcastChannel("cardfight-auth-boundary");
-      channelRef.current.onmessage = (event: MessageEvent) => receivedBoundary(event.data?.type === "signed-out");
+      channelRef.current.onmessage = (event: MessageEvent<BoundaryEvent>) => receivedBoundary(event.data);
     }
     window.addEventListener("focus", recheck);
     document.addEventListener("visibilitychange", recheck);
@@ -146,7 +205,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       window.removeEventListener("pageshow", restoredPage);
       window.removeEventListener("storage", storageEvent);
     };
-  }, [refresh, cancelSessionCheck]);
+  }, [refresh, cancelSessionCheck, lockWorkspace]);
 
   useEffect(() => {
     if (model.retryUntil <= Date.now()) return;
@@ -168,12 +227,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
     if (model.session?.mode !== "local") headingRef.current?.focus({ preventScroll: true });
   }, [model.phase, callbackError, confirmLogout, signedOut, handoff, model.session?.mode]);
 
-  function notifyBoundary(preserveRecovery: boolean) {
-    const event = { type: preserveRecovery ? "session-changed" : "signed-out", nonce: `${Date.now()}:${Math.random()}` };
-    channelRef.current?.postMessage(event);
-    try { window.localStorage.setItem(EVENT_KEY, JSON.stringify(event)); } catch { /* A denied preference store cannot prevent server logout. */ }
-  }
-
   function clearRecovery(): boolean {
     try {
       if (!clearDraftRecovery(window.sessionStorage)) return false;
@@ -188,9 +241,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
     try {
       const session = parseAuthSession(await apiRequest<unknown>("/api/auth/logout", { method: "POST", body: "{}" }));
       cancelSessionCheck();
+      lockWorkspace();
       apiTransport.invalidate();
       applySession(session);
-      playtestStore.resetMemory();
+      try { clearHostedAccount(window.sessionStorage); } catch { setActionError("Your session ended, but this tab could not clear its saved workspace. Close it on a shared device."); }
       try { clearReturnRoute(window.sessionStorage); } catch { /* Route context is optional. */ }
       if (!preserveRecovery && !clearRecovery()) setActionError("Your Cardfight session ended, but this tab could not clear its recovery draft. Close this tab on a shared device.");
       setMenuOpen(false); setConfirmLogout(false); setCallbackError("");
@@ -218,7 +272,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
 
   const session = model.session;
-  if (session && model.phase === "ready" && canMountWorkspace(session)) return children;
 
   const waiting = Math.max(0, Math.ceil((model.retryUntil - now) / 1000));
   const account = session?.account ?? null;
@@ -226,6 +279,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const ownDraft = recovery && recovery.accountId === (account?.id ?? priorAccountId);
   const unavailable = session?.mode === "oidc" && !session.configured;
   const callbackCopy = callbackError ? authErrorCopy(callbackError) : null;
+  if (workspace && session && model.phase === "ready" && workspace.key === workspaceKey(session)
+      && !mismatch && !callbackCopy && !handoff && !confirmLogout && !signedOut) {
+    return <WorkspaceContext.Provider key={workspace.key} value={{
+      account, storage: workspace.storage, signingOut, signOutError: actionError,
+      canManageCatalog: session.mode === "local" || account?.role === "admin",
+      signOut: () => { if (workspace.storage.isActive()) void logout(); },
+    }}><ToastProvider>{children}</ToastProvider></WorkspaceContext.Provider>;
+  }
 
   function methods() {
     return <div className="identity-actions">{session?.methods.map((method: SignInMethod) => <form key={method} action="/auth/start" method="post" onSubmit={startSignIn}>

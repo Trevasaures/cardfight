@@ -10,6 +10,7 @@ from sqlalchemy.orm import joinedload
 from backend.database import db
 from backend.models import AcquisitionPlanItem, Card, CardPrinting, Deck, DeckCard
 from backend.services.card_images import image_urls
+from backend.workspace import owned_filter, owned_get
 
 
 def _deck_rule_summary(cards, totals_by_zone):
@@ -111,13 +112,16 @@ def serialize_deck_version_summary(version):
 
 
 def serialize_match(match):
-    deck1 = serialize_deck(match.deck1) if match.deck1 else None
-    deck2 = serialize_deck(match.deck2) if match.deck2 else None
-
-    winner = db.session.get(Deck, match.winner_id) if match.winner_id else None
-    first_player = (
-        db.session.get(Deck, match.first_player_id) if match.first_player_id else None
-    )
+    deck1_row, deck2_row = match.deck1, match.deck2
+    deck1, deck2 = serialize_deck(deck1_row), serialize_deck(deck2_row)
+    participants = {deck.id: deck for deck in (deck1_row, deck2_row) if deck}
+    winner = participants.get(match.winner_id)
+    first_player = participants.get(match.first_player_id)
+    # A historical record can point to a third deck in the same workspace.
+    if winner is None and match.winner_id is not None:
+        winner = owned_get(Deck, match.winner_id)
+    if first_player is None and match.first_player_id is not None:
+        first_player = owned_get(Deck, match.first_player_id)
 
     is_undecided = match.winner_id is None
     is_valid_winner = match.winner_id in {match.deck1_id, match.deck2_id}
@@ -329,7 +333,7 @@ def deck_version_counts(version_id):
             DeckCard.zone, DeckCard.quantity, Card.id, Card.grade, Card.nation
         )
         .outerjoin(Card, DeckCard.card_id == Card.id)
-        .filter(DeckCard.deck_version_id == version_id)
+        .filter(owned_filter(DeckCard), DeckCard.deck_version_id == version_id)
         .order_by(DeckCard.zone.asc(), DeckCard.sort_order.asc(), DeckCard.id.asc())
         .all()
     )

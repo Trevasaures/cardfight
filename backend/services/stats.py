@@ -12,11 +12,11 @@ from __future__ import annotations
 
 from sqlalchemy import or_, case, func
 
-from backend.database import db
 from backend.errors import NotFoundError
 from backend.models import Deck, DeckVersion, Match
 from backend.services.deck_records import calculate_deck_records
 from backend.services.serializers import serialize_deck, serialize_deck_version_summary
+from backend.workspace import owned_get, owned_query
 
 
 def _record_payload(matches, deck_id: int) -> dict:
@@ -127,8 +127,8 @@ def _insight(
 
 
 def stats_table() -> list[dict]:
-    decks = Deck.query.order_by(Deck.name).all()
-    matches = Match.query.all()
+    decks = owned_query(Deck).order_by(Deck.name).all()
+    matches = owned_query(Match).all()
 
     rows = []
 
@@ -160,12 +160,12 @@ def stats_table() -> list[dict]:
 
 
 def performance_spotlight(deck_id: int) -> dict:
-    deck = db.session.get(Deck, deck_id)
+    deck = owned_get(Deck, deck_id)
     if not deck:
         raise NotFoundError("Deck not found")
 
     matches = (
-        Match.query.filter(
+        owned_query(Match).filter(
             or_(
                 Match.deck1_id == deck_id,
                 Match.deck2_id == deck_id,
@@ -476,9 +476,9 @@ def performance_spotlight(deck_id: int) -> dict:
 
 
 def versus_for(deck_id: int):
-    subject = Deck.query.get_or_404(deck_id)
+    subject = owned_query(Deck).filter_by(id=deck_id).first_or_404()
 
-    base_query = Match.query.filter(
+    base_query = owned_query(Match).filter(
         or_(
             Match.deck1_id == deck_id,
             Match.deck2_id == deck_id,
@@ -509,18 +509,12 @@ def versus_for(deck_id: int):
     ).label("undecided")
 
     rows = (
-        db.session.query(
+        base_query.with_entities(
             opponent_id,
             func.count().label("logged_games"),
             func.sum(subject_win).label("wins"),
             func.sum(subject_loss).label("losses"),
             func.sum(undecided).label("undecided"),
-        )
-        .filter(
-            or_(
-                Match.deck1_id == deck_id,
-                Match.deck2_id == deck_id,
-            )
         )
         .group_by(opponent_id)
         .all()
@@ -528,12 +522,14 @@ def versus_for(deck_id: int):
 
     versus = []
     type_totals = {}
+    opponents = {}
 
     for row in rows:
-        opponent = Deck.query.get(row.opponent_id)
+        opponent = owned_get(Deck, row.opponent_id)
 
         if not opponent:
             continue
+        opponents[opponent.id] = opponent
 
         wins = int(row.wins or 0)
         losses = int(row.losses or 0)
@@ -604,7 +600,11 @@ def versus_for(deck_id: int):
         opponent_id_value = (
             match.deck2_id if match.deck1_id == deck_id else match.deck1_id
         )
-        opponent = Deck.query.get(opponent_id_value)
+        opponent = opponents.get(opponent_id_value) or owned_get(
+            Deck, opponent_id_value
+        )
+        if not opponent:
+            continue
 
         if match.winner_id == deck_id:
             result = "W"
@@ -620,9 +620,9 @@ def versus_for(deck_id: int):
                 "date_played": (
                     match.date_played.isoformat() if match.date_played else None
                 ),
-                "opponent_id": opponent.id if opponent else opponent_id_value,
-                "opponent_name": opponent.name if opponent else f"#{opponent_id_value}",
-                "opponent_type": opponent.type if opponent else "",
+                "opponent_id": opponent.id,
+                "opponent_name": opponent.name,
+                "opponent_type": opponent.type,
                 "winner_id": match.winner_id,
                 "result": result,
                 "notes": match.notes or "",
@@ -641,11 +641,11 @@ def versus_for(deck_id: int):
 
 
 def matrix():
-    decks = Deck.query.order_by(Deck.id).all()
+    decks = owned_query(Deck).order_by(Deck.id).all()
     deck_ids = [deck.id for deck in decks]
     deck_by_id = {deck.id: deck for deck in decks}
 
-    all_matches = Match.query.all()
+    all_matches = owned_query(Match).all()
 
     wins = {
         (deck_a, deck_b): 0

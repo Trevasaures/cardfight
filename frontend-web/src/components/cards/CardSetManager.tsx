@@ -1,3 +1,4 @@
+import { useWorkspace } from "../../features/auth/workspaceContext";
 import { PencilLine, Settings2, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -21,6 +22,7 @@ export function CardSetManager({
   onSetUpdated,
   onSetDeleted,
 }: CardSetManagerProps) {
+  const { storage } = useWorkspace();
   const [sets, setSets] = useState<ManagedCardSet[]>([]);
   const [selectedCode, setSelectedCode] = useState("");
   const [setCode, setSetCode] = useState("");
@@ -67,6 +69,7 @@ export function CardSetManager({
   }
 
   async function handleUpdate() {
+    if (!storage.isActive()) return;
     if (!selectedSet || !setCode.trim() || !setName.trim() || saving) return;
 
     const nextCode = setCode.trim().toUpperCase();
@@ -117,6 +120,7 @@ export function CardSetManager({
   }
 
   async function handleDelete() {
+    if (!storage.isActive()) return;
     if (!selectedSet || selectedSet.usage_count > 0 || saving) return;
     if (
       !window.confirm(

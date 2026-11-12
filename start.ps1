@@ -2,6 +2,7 @@
 Starts the local Flask application with Waitress and the React development server.
 Use -DevDebug explicitly for Flask's debugger/reloader in local mode only.
 Use -Fresh to restart the local lab with a rebuilt Vite cache and the usual SQLite database.
+Use -DatabasePath to select an existing SQLite file, such as a restored test copy.
 Logs go to instance/, and both services stay in hidden background processes.
 #>
 param(
@@ -9,7 +10,8 @@ param(
   [switch]$ApiOnly,
   [switch]$FrontendOnly,
   [switch]$DevDebug,
-  [switch]$Fresh
+  [switch]$Fresh,
+  [string]$DatabasePath
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,6 +23,9 @@ if ($Fresh -and $FrontendOnly) {
 }
 if ($Fresh -and $Seed) {
   throw "-Fresh keeps the database as-is. Run -Seed separately if you want starter data."
+}
+if ($DatabasePath -and $FrontendOnly) {
+  throw "-DatabasePath needs the API. Remove -FrontendOnly to select a database."
 }
 
 $projectPython = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
@@ -134,22 +139,24 @@ foreach ($port in $ports) {
   }
 }
 
-$previousFreshEnvironment = @{}
+$previousLaunchEnvironment = @{}
 try {
+  $launchEnvironment = @{}
+  if ($Fresh -or $DatabasePath) {
+    if (-not $DatabasePath) { $DatabasePath = Join-Path $logDirectory "cardfight.db" }
+    if (-not (Test-Path -LiteralPath $DatabasePath -PathType Leaf)) {
+      throw "The SQLite database was not found at $DatabasePath. No services were restarted."
+    }
+    $selectedDatabase = (Resolve-Path -LiteralPath $DatabasePath).ProviderPath
+    $launchEnvironment.DATABASE_URL = "sqlite:///" + $selectedDatabase.Replace('\', '/')
+  }
   if ($Fresh) {
-    $localDatabase = Join-Path $logDirectory "cardfight.db"
-    if (-not (Test-Path -LiteralPath $localDatabase -PathType Leaf)) {
-      throw "The existing local database was not found at $localDatabase. No services were restarted."
-    }
-    $freshEnvironment = @{
-      DATABASE_URL = "sqlite:///" + $localDatabase.Replace('\', '/')
-      CARDFIGHT_AUTH_MODE = $launchSettings.mode
-      CARDFIGHT_AUTH_PUBLIC_ORIGIN = $launchSettings.origin
-    }
-    foreach ($name in $freshEnvironment.Keys) {
-      $previousFreshEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
-      [Environment]::SetEnvironmentVariable($name, $freshEnvironment[$name], "Process")
-    }
+    $launchEnvironment.CARDFIGHT_AUTH_MODE = $launchSettings.mode
+    $launchEnvironment.CARDFIGHT_AUTH_PUBLIC_ORIGIN = $launchSettings.origin
+  }
+  foreach ($name in $launchEnvironment.Keys) {
+    $previousLaunchEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+    [Environment]::SetEnvironmentVariable($name, $launchEnvironment[$name], "Process")
   }
   New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
 
@@ -160,7 +167,7 @@ try {
       if (-not $FrontendOnly) {
         & $pythonExecutable -c "import backend.app"
         if ($LASTEXITCODE -ne 0) {
-          throw "API readiness check failed. No services were started. Follow the reported schema/configuration instructions."
+          throw "API readiness check failed before startup or restart. To test a migrated copy, use -DatabasePath."
         }
       }
       if ($Seed) {
@@ -205,11 +212,11 @@ try {
     Write-Host "API ready: http://127.0.0.1:5000 (PID $($backendProcess.Id))"
   }
 } finally {
-  foreach ($name in $previousFreshEnvironment.Keys) {
-    if ($null -eq $previousFreshEnvironment[$name]) {
+  foreach ($name in $previousLaunchEnvironment.Keys) {
+    if ($null -eq $previousLaunchEnvironment[$name]) {
       Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
     } else {
-      [Environment]::SetEnvironmentVariable($name, $previousFreshEnvironment[$name], "Process")
+      [Environment]::SetEnvironmentVariable($name, $previousLaunchEnvironment[$name], "Process")
     }
   }
 }

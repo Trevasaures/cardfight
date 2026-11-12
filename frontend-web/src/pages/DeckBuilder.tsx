@@ -41,6 +41,7 @@ import { DeckBuilderSetup } from "../components/deck-builder/DeckBuilderSetup";
 import { DeckVersionComparison } from "../components/deck-builder/DeckVersionComparison";
 import { DeckVersionContents } from "../components/deck-builder/DeckVersionContents";
 import { useToast } from "../components/feedback/useToast";
+import { useWorkspace } from "../features/auth/workspaceContext";
 import {
   DEFAULT_CARD_FORM_OPTIONS,
   EMPTY_MANUAL_CARD_FORM,
@@ -81,6 +82,7 @@ const ZONES: { value: DeckCardZone; label: string }[] = [
 ];
 
 export function DeckBuilder() {
+  const { storage, canManageCatalog } = useWorkspace();
   const builderRef = useRef<HTMLDivElement | null>(null);
 
   const [decks, setDecks] = useState<Deck[]>([]);
@@ -587,6 +589,7 @@ export function DeckBuilder() {
   }
 
   function startCardEdit(card: Card) {
+    if (!canManageCatalog || !storage.isActive()) return;
     if (editingCardSnapshot?.id === card.id && cardFormMode === "edit") {
       setInspectedCard({ card: editingCardSnapshot });
       return;
@@ -616,6 +619,7 @@ export function DeckBuilder() {
   }
 
   async function handleCreateVersion() {
+    if (!storage.isActive()) return;
     const versionName = newVersionName.trim();
     if (!selectedDeck || !versionName) return;
 
@@ -662,6 +666,7 @@ export function DeckBuilder() {
   }
 
   async function handleSaveVersionDetails() {
+    if (!storage.isActive()) return;
     if (!currentVersion || !editVersionName.trim()) return;
 
     setSaving(true);
@@ -687,6 +692,7 @@ export function DeckBuilder() {
   }
 
   async function handleActivateVersion() {
+    if (!storage.isActive()) return;
     if (!currentVersion || currentVersion.is_active) return;
 
     setSaving(true);
@@ -709,6 +715,7 @@ export function DeckBuilder() {
   }
 
   async function handleDeleteVersion() {
+    if (!storage.isActive()) return;
     if (!currentVersion || currentVersion.is_active) return;
 
     const deletedName = currentVersion.version_name;
@@ -733,6 +740,7 @@ export function DeckBuilder() {
   }
 
   async function handleSaveCardForm() {
+    if (!canManageCatalog || !storage.isActive()) return;
     if (cardFormMode === "edit" && !editingCardSnapshot) {
       setError("Open the card you want to edit first.");
       return;
@@ -816,6 +824,7 @@ export function DeckBuilder() {
   }
 
   async function handleAddCardToVersion() {
+    if (!storage.isActive()) return;
     if (!currentVersion || !selectedCard) return;
     const destination = suggestedDeckCardZone(selectedCard, addZone);
     const quantity = isCrestCard(selectedCard) ? 1 : addQuantity;
@@ -861,6 +870,7 @@ export function DeckBuilder() {
     entry: DeckCardEntry,
     nextQuantity: number,
   ) {
+    if (!storage.isActive()) return;
     if (nextQuantity <= 0) return;
 
     setSaving(true);
@@ -885,6 +895,7 @@ export function DeckBuilder() {
     entry: DeckCardEntry,
     nextPrintingId: string,
   ) {
+    if (!storage.isActive()) return;
     setSaving(true);
     setError(null);
 
@@ -907,6 +918,7 @@ export function DeckBuilder() {
   }
 
   async function handleRemoveCard(entry: DeckCardEntry) {
+    if (!storage.isActive()) return;
     setSaving(true);
     setError(null);
 
@@ -929,6 +941,7 @@ export function DeckBuilder() {
   }
 
   async function undoCardRemoval(entry: DeckCardEntry) {
+    if (!storage.isActive()) return;
     setSaving(true);
     try {
       await addCardToDeckVersion(entry.deck_version_id, {
@@ -937,6 +950,7 @@ export function DeckBuilder() {
         quantity: entry.quantity,
         zone: entry.zone,
       });
+      if (!storage.isActive()) return;
       // Global toasts can outlive this page. Notify whichever builder is now mounted.
       window.dispatchEvent(
         new CustomEvent("cardfight:deck-version-restored", {
@@ -1100,8 +1114,8 @@ export function DeckBuilder() {
             if (!saving) setInspectedCard(null);
           }}
           footer={
-            cardFormMode !== "edit" ||
-            editingCardSnapshot?.id !== inspectedCard.card.id ? (
+            canManageCatalog && (cardFormMode !== "edit" ||
+            editingCardSnapshot?.id !== inspectedCard.card.id) ? (
               <button
                 type="button"
                 className="workspace-button"
@@ -1120,7 +1134,7 @@ export function DeckBuilder() {
               {error}
             </p>
           )}
-          {cardFormMode === "edit" &&
+          {canManageCatalog && cardFormMode === "edit" &&
             editingCardSnapshot?.id === inspectedCard.card.id && (
               <>
                 {recoveredPrintingChanges && (

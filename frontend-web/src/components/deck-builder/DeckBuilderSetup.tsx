@@ -15,6 +15,8 @@ import {
 
 import { FormatBadge } from "../badges/FormatBadge";
 import { FormSelect, FormTextInput } from "../forms/HelpfulField";
+import { useWorkspace } from "../../features/auth/workspaceContext";
+import { handLabLink } from "../../features/auth/workspaceNavigation";
 import type { Deck, DeckVersion, DeckVersionSummary } from "../../types/api";
 
 const NATION_ICON_FILES: Record<string, string> = {
@@ -106,6 +108,7 @@ export function DeckBuilderSetup({
   onActivateVersion,
   onDeleteVersion,
 }: DeckBuilderSetupProps) {
+  const { account, storage } = useWorkspace();
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const rideLineNations = currentVersion?.deck_rules.ride_nations.length
@@ -118,6 +121,9 @@ export function DeckBuilderSetup({
   const nationLabel = rideLineNations.join(" / ") || "No ride line nation";
   const createVersionIsVisible =
     showCreateVersion || (!loadingVersions && versions.length === 0);
+  const handLab = currentVersion
+    ? handLabLink({ deckId: currentVersion.deck_id, versionId: currentVersion.id }, account && storage)
+    : null;
 
   useEffect(() => {
     setShowDeleteConfirmation(false);
@@ -181,9 +187,9 @@ export function DeckBuilderSetup({
           >
             <Copy /> New version
           </button>
-          {currentVersion && (
+          {handLab && (
             <Link
-              to={`/hand-lab?deck=${currentVersion.deck_id}&version=${currentVersion.id}`}
+              {...handLab}
               className="collection-button primary"
             >
               <Shuffle /> Hand Lab

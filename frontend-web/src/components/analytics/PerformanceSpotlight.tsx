@@ -28,7 +28,8 @@ import type {
   SpotlightMatchup,
 } from "../../types/api";
 import { formatPercent, formatRecord } from "../../utils/format";
-import { writeLocalState } from "../../utils/localState";
+import { useWorkspace } from "../../features/auth/workspaceContext";
+import { matchHistoryLink } from "../../features/auth/workspaceNavigation";
 
 type PerformanceSpotlightProps = {
   spotlight: PerformanceSpotlightResponse;
@@ -314,10 +315,11 @@ const INSIGHT_TONES: Record<SpotlightInsight["tone"], string> = {
 };
 
 export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
+  const { account, storage } = useWorkspace();
   const rootRef = useRef<HTMLElement | null>(null);
   const [selectedMatch, setSelectedMatch] = useState<SpotlightMatch | null>(null);
   const { deck, overview, recent_form: recent, turn_order: turnOrder } = spotlight;
-  const historyUrl = `/matches?${new URLSearchParams({ q: deck.name })}`;
+  const historyLink = matchHistoryLink(deck.name, account && storage);
   const theme = NATION_THEMES[deck.nation ?? ""] ?? DEFAULT_THEME;
   const style: SpotlightStyle = {
     "--spotlight-primary": theme.primary,
@@ -330,12 +332,12 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
   usePerformanceSpotlightMotion(rootRef, deck.id, overview.win_pct * 100);
 
   function prepareDeckBuilder() {
-    writeLocalState(
+    storage.write(
       "cardfight.deck-builder.selected-deck",
       String(deck.id),
     );
     if (activeVersion) {
-      writeLocalState(
+      storage.write(
         "cardfight.deck-builder.selected-version",
         String(activeVersion.id),
       );
@@ -343,15 +345,15 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
   }
 
   function preparePlayLab() {
-    writeLocalState("cardfight.play-lab.mode", "custom");
-    writeLocalState("cardfight.play-lab.format", deck.type);
-    writeLocalState(
+    storage.write("cardfight.play-lab.mode", "custom");
+    storage.write("cardfight.play-lab.format", deck.type);
+    storage.write(
       "cardfight.play-lab.custom-deck-one",
       deck.id,
     );
-    writeLocalState("cardfight.play-lab.matchup", null);
-    writeLocalState("cardfight.play-lab.winner", null);
-    writeLocalState("cardfight.play-lab.first-player", null);
+    storage.write("cardfight.play-lab.matchup", null);
+    storage.write("cardfight.play-lab.winner", null);
+    storage.write("cardfight.play-lab.first-player", null);
   }
 
   return (
@@ -510,7 +512,7 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
               Plan purchases
             </Link>
             <Link
-              to={historyUrl}
+              {...historyLink}
               className="ml-auto inline-flex items-center gap-2 px-2 py-2 text-sm font-bold text-slate-400 transition hover:text-white"
             >
               Open match history
@@ -590,7 +592,7 @@ export function PerformanceSpotlight({ spotlight }: PerformanceSpotlightProps) {
         <SpotlightMatchDialog
           match={selectedMatch}
           deckName={deck.name}
-          historyUrl={historyUrl}
+          historyLink={historyLink}
           onClose={() => setSelectedMatch(null)}
         />
       ) : null}

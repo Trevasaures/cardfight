@@ -18,6 +18,7 @@ backend/instance/
 *.db
 *.sqlite
 *.sqlite3
+*.ownership-restore.json
 
 # Editor / OS files
 .vscode/

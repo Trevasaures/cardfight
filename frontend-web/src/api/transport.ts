@@ -42,7 +42,7 @@ export function createApiTransport({ baseUrl = "", origin, fetcher = fetch }: Tr
 
   function invalidate() {
     generation++;
-    identity = { ...identity, csrfToken: null };
+    identity = { ...identity, serverGeneration: null, csrfToken: null };
     for (const controller of pending) controller.abort();
     pending.clear();
   }
@@ -63,6 +63,10 @@ export function createApiTransport({ baseUrl = "", origin, fetcher = fetch }: Tr
     const method = (options.method ?? "GET").toUpperCase();
     const mutation = !["GET", "HEAD", "OPTIONS"].includes(method);
     const headers = new Headers(options.headers);
+    headers.delete("X-Cardfight-Session");
+    if (identity.mode === "oidc" && identity.serverGeneration) {
+      headers.set("X-Cardfight-Session", identity.serverGeneration);
+    }
     if (!headers.has("Accept")) headers.set("Accept", "application/json");
     if (options.body !== undefined && options.body !== null && !(typeof FormData !== "undefined" && options.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
     if (mutation && identity.mode !== "local") {
@@ -77,7 +81,13 @@ export function createApiTransport({ baseUrl = "", origin, fetcher = fetch }: Tr
     else options.signal?.addEventListener("abort", onCancel, { once: true });
     pending.add(controller);
     try {
-      const response = await fetcher(url, { ...options, headers, credentials: "same-origin", signal: controller.signal });
+      const response = await fetcher(url, {
+        ...options,
+        headers,
+        credentials: "same-origin",
+        redirect: identity.mode === "oidc" ? "error" : options.redirect,
+        signal: controller.signal,
+      });
       if (started !== generation) throw new ApiError("The account changed before this request finished.", 0, "stale_account_response");
       let data: unknown;
       try {

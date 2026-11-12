@@ -4,6 +4,8 @@ import { ApiError, createApiTransport, retryAfterSeconds } from "../src/api/tran
 import { authErrorCopy, callbackErrorFromSearch, canMountWorkspace, parseAuthSession, safeReturnPath } from "../src/features/auth/session.ts";
 import { clearDraftRecovery, readDraftRecovery, recoveryAccess, RECOVERY_KEY, RECOVERY_LIFETIME, saveDraftRecovery, type RecoveryEnvelope } from "../src/features/auth/draftRecovery.ts";
 import { clearReturnRoute, readReturnRoute, RETURN_ROUTE_KEY, RETURN_ROUTE_LIFETIME, saveReturnRoute } from "../src/features/auth/returnRoute.ts";
+import { cleanWorkspaceSearch, handLabLink, HAND_LAB_SOURCE_KEY, matchHistoryLink, MATCH_HISTORY_SEARCH_KEY, type WorkspaceLink } from "../src/features/auth/workspaceNavigation.ts";
+import { clearHostedAccount, createWorkspaceStorage, selectHostedAccount } from "../src/features/auth/workspaceStorage.ts";
 
 const anonymous = {
   mode: "oidc", configured: true, authenticated: false, csrf_token: "anonymous-csrf",
@@ -23,11 +25,13 @@ function json(data: unknown, status = 200, headers: Record<string, string> = {})
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...headers } });
 }
 
-test("identity bootstrap fails closed and #54 never opens hosted global data", () => {
+test("workspace access requires a verified account and an explicit server capability", () => {
   assert.equal(canMountWorkspace(parseAuthSession(local)), true);
   assert.equal(canMountWorkspace(parseAuthSession(anonymous)), false);
   assert.equal(canMountWorkspace(parseAuthSession(member)), false);
-  assert.equal(canMountWorkspace(parseAuthSession({ ...member, access: { workspace: true, reason: null } })), false);
+  assert.equal(canMountWorkspace(parseAuthSession({ ...member, access: { workspace: true, reason: null } })), true);
+  assert.equal(canMountWorkspace(parseAuthSession({ ...anonymous, access: { workspace: true, reason: null } })), false);
+  assert.equal(canMountWorkspace(parseAuthSession({ ...member, access: { workspace: true, reason: "admission_hold" } })), false);
   for (const bad of [{}, { ...local, mode: "unknown" }, { ...local, account: member.account }, { ...member, account: null }, { ...member, generation: 1 }, { ...member, generation: null }, { ...member, session: null }, { ...member, session: { idle_expires_at: "invalid", absolute_expires_at: "invalid" } }, { ...anonymous, csrf_token: {} }]) {
     assert.throws(() => parseAuthSession(bad));
   }
@@ -58,11 +62,37 @@ test("requests keep credentials same-origin and attach memory-only CSRF to mutat
   await transport.request("/api/auth/logout", { method: "POST", body: "{}", credentials: "include", headers: new Headers({ "X-Custom": "preserved" }) });
   const headers = new Headers(calls[0].options.headers);
   assert.equal(calls[0].options.credentials, "same-origin");
+  assert.equal(calls[0].options.redirect, "error");
+  assert.equal(headers.get("X-Cardfight-Session"), "generation-a");
   assert.equal(headers.get("X-CSRF-Token"), "csrf-a");
   assert.equal(headers.get("X-Custom"), "preserved");
   assert.equal(headers.get("Content-Type"), "application/json");
   await transport.request("/api/auth/session");
   assert.equal(new Headers(calls[1].options.headers).has("X-CSRF-Token"), false);
+});
+
+test("a shared-cookie account change rejects a stale tab's read before showing another account's data", async () => {
+  let cookieGeneration = "generation-a";
+  const observedGenerations: (string | null)[] = [];
+  const transport = createApiTransport({ fetcher: (async (_url, options) => {
+    const expected = new Headers(options?.headers).get("X-Cardfight-Session");
+    observedGenerations.push(expected);
+    return expected === cookieGeneration
+      ? json({ deck: cookieGeneration === "generation-a" ? "Deck A" : "Deck B" })
+      : json({ error: "Session changed", code: "session_changed" }, 401);
+  }) as typeof fetch });
+  const boundaries: string[] = [];
+  transport.subscribe(error => boundaries.push(error.code));
+  transport.setIdentity(identity);
+  assert.deepEqual(await transport.request("/api/decks"), { deck: "Deck A" });
+  cookieGeneration = "generation-b";
+  await assert.rejects(transport.request("/api/decks", { headers: { "X-Cardfight-Session": "generation-b" } }), {
+    code: "session_changed", status: 401,
+  });
+  assert.deepEqual(boundaries, ["session_changed"]);
+  transport.setIdentity({ ...identity, accountId: "account-b", serverGeneration: cookieGeneration });
+  assert.deepEqual(await transport.request("/api/decks"), { deck: "Deck B" });
+  assert.deepEqual(observedGenerations, ["generation-a", "generation-a", "generation-b"]);
 });
 
 test("local mutations retain compatibility while unidentified/foreign hosted writes are refused", async () => {
@@ -162,10 +192,129 @@ test("an account change during response decoding also rejects prior private data
   await assert.rejects(pending, (error: unknown) => error instanceof ApiError && error.code === "stale_account_response");
 });
 
-function memoryStorage() {
+function memoryStorage(reorderOnRemove = false) {
   const values = new Map<string, string>([["cardfight.play-lab.notes", "Legacy local notes"], ["cardfight.hand-lab.session", "Legacy local playtest"]]);
-  return { values, getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
+  return {
+    values,
+    get length() { return values.size; },
+    key: (index: number) => [...values.keys()][index] ?? null,
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); },
+    removeItem: (key: string) => {
+      values.delete(key);
+      if (reorderOnRemove) {
+        const entries = [...values].reverse();
+        values.clear();
+        for (const [name, value] of entries) values.set(name, value);
+      }
+    },
+  };
 }
+
+test("workspace writes and scroll recovery stay in the verified tab and account", () => {
+  const localStorage = memoryStorage();
+  const tab = memoryStorage(true);
+  const scope = (id: string | null) => createWorkspaceStorage(id, () => localStorage, () => tab);
+  const notes = "cardfight.play-lab.notes";
+  const scroll = "cardfight.scroll.route:/play";
+  const legacy = scope(null);
+  legacy.write(notes, "My local lab");
+  legacy.writeScroll(scroll, 88);
+  tab.setItem("cardfight.hosted.v1.account", "old-marker");
+  scope("orphan").write(notes, "Prior hosted draft");
+
+  selectHostedAccount(tab, "account-a");
+  assert.equal(tab.getItem("cardfight.hosted.v1.account"), null);
+  assert.equal(scope("orphan").read(notes, ""), "");
+  const accountA = scope("account-a");
+  assert.equal(accountA.read(notes, ""), "");
+  assert.equal(accountA.readScroll(scroll), 0);
+  assert.equal(accountA.write(notes, "Private A draft"), true);
+  accountA.writeScroll(scroll, 145);
+  accountA.revoke();
+  assert.equal(accountA.write(notes, "Stale A callback"), false);
+  assert.equal(accountA.remove(notes), false);
+  assert.equal(accountA.read(notes, ""), "");
+
+  selectHostedAccount(tab, "account-a");
+  const resumed = scope("account-a");
+  assert.equal(resumed.read(notes, ""), "Private A draft");
+  assert.equal(resumed.readScroll(scroll), 145);
+  resumed.revoke();
+  selectHostedAccount(tab, "account-b");
+  const accountB = scope("account-b");
+  assert.equal(accountB.read(notes, ""), "");
+  assert.equal(accountB.readScroll(scroll), 0);
+  assert.equal(scope("account-a").read(notes, ""), "");
+  assert.equal(accountB.write(notes, "Private B draft"), true);
+  accountB.writeScroll(scroll, 250);
+  scope("orphan").write(notes, "Another markerless draft");
+  accountB.revoke();
+  clearHostedAccount(tab);
+  assert.equal(scope("account-b").read(notes, ""), "");
+  assert.equal(scope("account-b").readScroll(scroll), 0);
+  assert.equal(scope("orphan").read(notes, ""), "");
+  assert.ok([...tab.values.keys()].every(key => !key.startsWith("cardfight.hosted.v1.")));
+  assert.equal(legacy.read(notes, ""), "My local lab");
+  assert.equal(legacy.readScroll(scroll), 88);
+  assert.equal(tab.getItem("cardfight.hand-lab.session"), "Legacy local playtest");
+});
+
+test("hosted links hand off private selections only in the active account's tab", () => {
+  const tab = memoryStorage();
+  const scope = (id: string) => createWorkspaceStorage(id, () => memoryStorage(), () => tab);
+  const accountA = scope("account-a");
+  const search = "Private A deck";
+  const source = { deckId: 41, versionId: 97 };
+  const history = matchHistoryLink(search, accountA);
+  const handLab = handLabLink(source, accountA);
+  const click = {
+    button: 0, defaultPrevented: false, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false,
+  } as Parameters<NonNullable<WorkspaceLink["onClick"]>>[0];
+
+  assert.equal(history.to, "/matches");
+  assert.equal(handLab.to, "/hand-lab");
+  history.onClick?.({ ...click, ctrlKey: true });
+  handLab.onClick?.({ ...click, defaultPrevented: true });
+  assert.equal(accountA.read(MATCH_HISTORY_SEARCH_KEY, ""), "");
+  assert.equal(accountA.read(HAND_LAB_SOURCE_KEY, null), null);
+  history.onClick?.(click);
+  handLab.onClick?.(click);
+  assert.equal(accountA.read(MATCH_HISTORY_SEARCH_KEY, ""), search);
+  assert.deepEqual(accountA.read(HAND_LAB_SOURCE_KEY, null), source);
+
+  accountA.revoke();
+  selectHostedAccount(tab, "account-b");
+  const accountB = scope("account-b");
+  accountB.write(MATCH_HISTORY_SEARCH_KEY, "Private B deck");
+  history.onClick?.(click);
+  handLab.onClick?.(click);
+  assert.equal(accountB.read(MATCH_HISTORY_SEARCH_KEY, ""), "Private B deck");
+  assert.equal(accountB.read(HAND_LAB_SOURCE_KEY, null), null);
+  assert.equal(scope("account-a").read(MATCH_HISTORY_SEARCH_KEY, ""), "");
+  assert.equal(scope("account-a").read(HAND_LAB_SOURCE_KEY, null), null);
+});
+
+test("local links retain their searchable URLs and do not write a handoff", () => {
+  assert.deepEqual(matchHistoryLink("Private deck & notes", null), { to: "/matches?q=Private+deck+%26+notes" });
+  assert.deepEqual(handLabLink({ deckId: 41, versionId: 97 }, null), { to: "/hand-lab?deck=41&version=97" });
+});
+
+test("each hosted history entry drops legacy private query fields and keeps unrelated fields", () => {
+  for (const [path, search, cleaned] of [
+    ["/matches", "?q=Private+deck&q=Private+notes&view=compact", "?view=compact"],
+    ["/MATCHES/", "?%71=Previous+search", ""],
+    ["/hand-lab", "?deck=41&version=97", ""],
+    ["/%68and-lab/", "?version=97&deck=41&view=compact", "?view=compact"],
+    ["/decks", "?nation=Dark%20States", "?nation=Dark%20States"],
+  ]) {
+    assert.equal(cleanWorkspaceSearch(path, search, true), cleaned);
+    assert.equal(cleanWorkspaceSearch(path, cleaned, true), cleaned);
+    assert.equal(cleanWorkspaceSearch(path, search, false), search);
+  }
+  assert.equal(cleanWorkspaceSearch("/sign-in", "?auth_error=invalid_auth", false), "");
+  assert.equal(cleanWorkspaceSearch("/matches", "?auth_error=invalid_auth&q=Private+deck", true), "");
+});
 
 test("provider-error retries retain only a bounded approved route and clear it separately", () => {
   const storage = memoryStorage();

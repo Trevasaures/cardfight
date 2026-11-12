@@ -24,9 +24,8 @@ React, browser storage, or the normal Flask signed-cookie session payload.
 
 This starts with an invite-only beta. Authentication and application admission
 are distinct from permission to a particular deck or purchase plan. Hosted
-player access remains closed until #55's ownership rules and two-account tests
-are complete. An administrator account does not automatically own the existing
-personal dataset.
+player access uses the #55 ownership rules and admission policy. Assigning the
+existing personal dataset requires an explicit operator decision.
 
 Auth0 documents hosted social/passwordless authentication, and Authlib provides
 the Flask OIDC integration. Feature availability, production email delivery,
@@ -273,10 +272,9 @@ tenant or credentials are provisioned, and no legacy owner is assigned.
 
 Implementation introduces explicit local and hosted modes. Existing local use
 retains a loopback-only, single-user boundary with no implicit claim of hosted
-security. Hosted startup requires complete identity configuration. This slice
-supports account admission and a holding screen while the workspace remains
-closed behind a code capability until the ownership release; an invalid mode or
-missing hosted dependency must not fall back to anonymous local access. A request Host
+security. Hosted startup requires complete identity configuration. Admission hold
+closes the hosted workspace while an operator reviews membership. An invalid
+mode or missing hosted dependency fails closed. A request Host
 header or apparent loopback address behind a reverse proxy cannot establish the
 deployment mode.
 

@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { useRememberedScroll } from "../../hooks/useRememberedScroll";
-import { writeScrollPosition } from "../../utils/viewState";
+import { useWorkspace } from "../../features/auth/workspaceContext";
 import { Check, Eye, Library, Pencil, Search, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { CardArtwork } from "../cards/CardArtwork";
@@ -70,6 +70,7 @@ export function CardCatalogPanel({
   onSetUpdated,
   onSetDeleted,
 }: CardCatalogPanelProps) {
+  const { storage, canManageCatalog } = useWorkspace();
   const [grade, setGrade] = usePersistentState<string>(
     "cardfight.deck-builder.catalog-grade",
     "all",
@@ -81,7 +82,7 @@ export function CardCatalogPanel({
   );
   function resetCatalogScroll() {
     if (catalogRef.current) catalogRef.current.scrollTop = 0;
-    writeScrollPosition(scrollKey, 0);
+    storage.writeScroll(scrollKey, 0);
   }
   const isEditing = cardFormMode === "edit";
   const visibleCards = cardResults.filter(
@@ -234,7 +235,7 @@ export function CardCatalogPanel({
           >
             <Eye /> Details
           </button>
-          {isEditing && (
+          {canManageCatalog && isEditing && (
             <button
               type="button"
               className="collection-button"
@@ -243,16 +244,16 @@ export function CardCatalogPanel({
               Resume edit
             </button>
           )}
-          <button
+          {canManageCatalog && <button
             type="button"
             onClick={onEditSelectedCard}
             disabled={!selectedCard}
             className="collection-button subtle"
           >
             <Pencil /> Edit selected
-          </button>
+          </button>}
         </div>
-        {!isEditing && (
+        {canManageCatalog && !isEditing && (
           <details>
             <summary className="cursor-pointer text-xs font-semibold">
               New card
@@ -271,13 +272,13 @@ export function CardCatalogPanel({
             />
           </details>
         )}
-        <CardSetManager
+        {canManageCatalog && <CardSetManager
           refreshToken={cardFormOptions.sets
             .map((set) => `${set.code}:${set.name}`)
             .join("|")}
           onSetUpdated={onSetUpdated}
           onSetDeleted={onSetDeleted}
-        />
+        />}
       </div>
     </section>
   );

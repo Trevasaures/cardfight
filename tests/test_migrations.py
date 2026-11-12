@@ -14,30 +14,15 @@ import sys
 
 from PIL import Image
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.engine import Connection
-from sqlalchemy.orm import Session
 
 from backend import migrate as migration_module
 from backend.backup import create_backup, database_summary, restore_backup
-from backend.database import db
 from backend.migrate import (
     HEAD_REVISION,
     MigrationError,
     inspect_database,
     migrate_database,
-)
-from backend.models import (
-    AcquisitionPlan,
-    AcquisitionPlanItem,
-    Card,
-    CardImage,
-    CardPrinting,
-    CardSet,
-    Deck,
-    DeckCard,
-    DeckVersion,
-    Match,
 )
 from migrations.legacy_v1 import FROZEN_SCHEMA as BASELINE_SCHEMA
 
@@ -71,68 +56,82 @@ def saved_rows(path):
         return result
 
 
+def assert_saved_values_preserved(before, after):
+    for table, rows in before.items():
+        for old, new in zip(rows, after[table], strict=True):
+            assert {field: new[field] for field in old} == old, table
+
+
 @pytest.fixture()
 def unversioned_database(tmp_path):
     """An existing workspace made before revision tracking, with all entity types."""
     database = tmp_path / "existing workspace.db"
-    engine = create_engine(f"sqlite:///{database.as_posix()}")
-    # Model metadata now includes identity tables. This fixture represents the
-    # released v1 workspace and must remain independent of later application DDL.
-    with engine.begin() as connection:
-        for name in BASELINE_SCHEMA["table_order"]:
-            table = BASELINE_SCHEMA["tables"][name]
-            connection.exec_driver_sql(table["create_sql"])
-            for index in table["indexes"]:
-                connection.exec_driver_sql(index["create_sql"])
     full = BytesIO()
     Image.new("RGB", (16, 24), "navy").save(full, format="PNG")
     thumbnail = BytesIO()
     Image.new("RGB", (8, 12), "navy").save(thumbnail, format="WEBP")
     data, thumb = full.getvalue(), thumbnail.getvalue()
-    with Session(engine) as session:
-        image = CardImage(
-            id=sha256(data).hexdigest(), full_data=data, thumbnail_data=thumb,
-            mimetype="image/png", width=16, height=24,
-            byte_size=len(data), thumbnail_byte_size=len(thumb),
+    image_id = sha256(data).hexdigest()
+    date = "2026-01-01 12:00:00"
+    # Seed frozen v1 columns directly so current ORM metadata can evolve.
+    with closing(sqlite3.connect(database)) as connection:
+        connection.execute("PRAGMA foreign_keys=ON")
+        for name in BASELINE_SCHEMA["table_order"]:
+            table = BASELINE_SCHEMA["tables"][name]
+            connection.execute(table["create_sql"])
+            for index in table["indexes"]:
+                connection.execute(index["create_sql"])
+        connection.execute(
+            "INSERT INTO card_image VALUES (?, ?, ?, 'image/png', 16, 24, ?, ?, ?, ?)",
+            (image_id, data, thumb, len(data), len(thumb), date, date),
         )
-        card = Card(name="Migration artwork unit", grade=3, card_type="Normal Unit")
-        first = Deck(name="Existing player", type="Standard", wins=1)
-        second = Deck(name="Existing opponent", type="Standard", losses=1)
-        session.add_all([image, card, first, second, CardSet(code="KEEP", name="Saved set")])
-        session.flush()
-        version = DeckVersion(deck_id=first.id, version_name="Preserved version")
-        opponent = DeckVersion(deck_id=second.id, version_name="Opponent version")
-        printing = CardPrinting(
-            card_id=card.id, image_id=image.id, rarity="SP", set_code="KEEP",
-            card_number="001", product_url="https://example.com/retained-reference",
+        connection.execute(
+            "INSERT INTO card (id, name, grade, card_type, skill_text, flavor_text, source, created_at, updated_at) "
+            "VALUES (1, 'Migration artwork unit', 3, 'Normal Unit', '', '', 'manual', ?, ?)",
+            (date, date),
         )
-        session.add_all([version, opponent, printing])
-        session.flush()
-        session.add_all([
-            DeckCard(
-                deck_version_id=version.id, card_id=card.id,
-                printing_id=printing.id, quantity=4, zone="main",
-            ),
-            Match(
-                deck1_id=first.id, deck2_id=second.id,
-                deck1_version_id=version.id, deck2_version_id=opponent.id,
-                winner_id=first.id, notes="Preserve history and version references",
-            ),
-        ])
-        plan = AcquisitionPlan(
-            name="Existing purchase", plan_type="existing_deck", list_source="deck_version",
-            deck_id=first.id, deck_version_id=version.id,
-            source_deck_version_id=version.id, notes="Preserve purchase notes",
+        connection.execute("INSERT INTO card_set VALUES (1, 'KEEP', 'Saved set', ?, ?)", (date, date))
+        connection.executemany(
+            "INSERT INTO deck (id, name, type, wins, losses, active, created_at) "
+            "VALUES (?, ?, 'Standard', ?, ?, 1, ?)",
+            [(1, "Existing player", 1, 0, date), (2, "Existing opponent", 0, 1, date)],
         )
-        session.add(plan)
-        session.flush()
-        session.add(AcquisitionPlanItem(
-            plan_id=plan.id, card_id=card.id, printing_id=printing.id,
-            required_quantity=4, source_quantity=0, owned_quantity=0,
-            ordered_quantity=0, unit_price_cents=3025, notes="Original quote",
-        ))
-        session.commit()
-    engine.dispose()
+        connection.executemany(
+            "INSERT INTO deck_version (id, deck_id, version_name, notes, is_active, created_at, updated_at) "
+            "VALUES (?, ?, ?, '', 1, ?, ?)",
+            [(1, 1, "Preserved version", date, date), (2, 2, "Opponent version", date, date)],
+        )
+        connection.execute(
+            "INSERT INTO card_printing (id, card_id, image_id, rarity, set_code, card_number, "
+            "product_url, source, created_at, updated_at) VALUES (1, 1, ?, 'SP', 'KEEP', '001', "
+            "'https://example.com/retained-reference', 'manual', ?, ?)",
+            (image_id, date, date),
+        )
+        connection.execute(
+            "INSERT INTO deck_card (id, deck_version_id, card_id, printing_id, quantity, zone, "
+            "sort_order, created_at, updated_at) VALUES (1, 1, 1, 1, 4, 'main', 0, ?, ?)",
+            (date, date),
+        )
+        connection.execute(
+            'INSERT INTO "match" (id, deck1_id, deck2_id, deck1_version_id, deck2_version_id, '
+            "winner_id, date_played, notes) VALUES (1, 1, 2, 1, 2, 1, ?, 'Preserve history and version references')",
+            (date,),
+        )
+        connection.execute(
+            "INSERT INTO acquisition_plan (id, name, plan_type, list_source, status, build_mode, "
+            "deck_id, deck_version_id, source_deck_version_id, notes, created_at, updated_at) "
+            "VALUES (1, 'Existing purchase', 'existing_deck', 'deck_version', 'planning', 'physical', "
+            "1, 1, 1, 'Preserve purchase notes', ?, ?)",
+            (date, date),
+        )
+        connection.execute(
+            "INSERT INTO acquisition_plan_item (id, plan_id, card_id, printing_id, required_quantity, "
+            "source_quantity, removed_quantity, confirmed_removed_quantity, owned_quantity, ordered_quantity, "
+            "unit_price_cents, notes, created_at, updated_at) "
+            "VALUES (1, 1, 1, 1, 4, 0, 0, 0, 0, 0, 3025, 'Original quote', ?, ?)",
+            (date, date),
+        )
+        connection.commit()
     return database
 
 
@@ -233,12 +232,15 @@ def test_unversioned_workspace_requires_explicit_baseline(unversioned_database, 
 def test_baseline_preserves_current_workspace_and_its_recovery_snapshot(unversioned_database, tmp_path):
     before = saved_rows(unversioned_database)
     fingerprint = database_summary(unversioned_database)
-    migrate_database(
+    result = migrate_database(
         unversioned_database, baseline=True, backup_dir=tmp_path / "backups", app_check=False
     )
+    assert result["rehearsal"]["saved_values_preserved"] is True
     assert inspect_database(unversioned_database, require_current=True)["revision"] == HEAD_REVISION
     after = saved_rows(unversioned_database)
-    assert {name: after[name] for name in before} == before
+    assert_saved_values_preserved(before, after)
+    for table in ("deck", "match", "acquisition_plan"):
+        assert all(row["owner_account_id"] is None for row in after[table])
     assert all(not rows for name, rows in after.items() if name.startswith("auth_"))
     backups = list((tmp_path / "backups").glob("*.sqlite3"))
     assert len(backups) == 1
@@ -259,10 +261,7 @@ def test_supported_legacy_upgrade_preserves_rows_blobs_and_references(legacy_dat
     migrate_database(legacy_database, baseline=True, backup_dir=tmp_path / "backups", app_check=False)
     assert inspect_database(legacy_database, require_current=True)["status"] == "current"
     after = saved_rows(legacy_database)
-    for table, rows in before.items():
-        for old, new in zip(rows, after[table], strict=True):
-            for field, value in old.items():
-                assert new[field] == value, (table, field)
+    assert_saved_values_preserved(before, after)
     assert after["acquisition_plan"][0]["archived_at"] is None
     item = after["acquisition_plan_item"][0]
     assert item["source_quantity"] == 4
@@ -452,8 +451,8 @@ def test_recognized_pending_revision_rehearses_upgrades_and_then_noops(
         PROJECT_ROOT / "migrations", scripts,
         ignore=shutil.ignore_patterns("__pycache__"),
     )
-    pending_head = "0002_pending_probe"
-    (scripts / "versions" / "0002_pending_probe.py").write_text(
+    pending_head = "future_revision_probe"
+    (scripts / "versions" / f"{pending_head}.py").write_text(
         '"""Disposable test revision; never part of the application history."""\n'
         "from alembic import op\n"
         f"revision = {pending_head!r}\n"

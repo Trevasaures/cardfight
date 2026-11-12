@@ -50,7 +50,6 @@ export function playtestSource(version: DeckVersion): SessionSource {
     cards: JSON.stringify(cards),
   };
 }
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -459,7 +458,3 @@ export function createPlaytestStore(
     resetMemory() { cached = undefined; loaded = false; backedUp = false; },
   };
 }
-
-export const playtestStore = createPlaytestStore(() =>
-  typeof window === "undefined" ? undefined : window.sessionStorage,
-);

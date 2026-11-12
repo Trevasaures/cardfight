@@ -14,11 +14,12 @@ from backend.services.serializers import (
     serialize_deck_version_summary,
     serialize_match,
 )
+from backend.workspace import owned_filter, owned_query
 
 
 def get_dashboard_summary() -> dict:
-    decks = Deck.query.order_by(Deck.name).all()
-    matches = Match.query.order_by(Match.date_played.desc()).all()
+    decks = owned_query(Deck).order_by(Deck.name).all()
+    matches = owned_query(Match).order_by(Match.date_played.desc()).all()
 
     total_decks = len(decks)
     active_decks = sum(1 for deck in decks if deck.active)
@@ -35,7 +36,7 @@ def get_dashboard_summary() -> dict:
     ]
     active_versions = _active_versions()
     purchase_plans = (
-        AcquisitionPlan.query.filter(AcquisitionPlan.archived_at.is_(None))
+        owned_query(AcquisitionPlan).filter(AcquisitionPlan.archived_at.is_(None))
         .order_by(AcquisitionPlan.updated_at.desc(), AcquisitionPlan.id.desc())
         .all()
     )
@@ -90,6 +91,7 @@ def _active_versions() -> list[DeckVersion]:
     return (
         DeckVersion.query.join(Deck)
         .filter(
+            owned_filter(Deck),
             DeckVersion.is_active.is_(True),
             Deck.active.is_(True),
         )

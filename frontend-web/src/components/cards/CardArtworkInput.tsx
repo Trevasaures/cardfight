@@ -1,3 +1,4 @@
+import { useWorkspace } from "../../features/auth/workspaceContext";
 import { useEffect, useId, useRef, useState } from "react";
 import { ImagePlus, Loader2, RotateCcw, Upload, X } from "lucide-react";
 import { importCardArtwork, normalizeCrestArtwork } from "../../api/cards";
@@ -22,6 +23,7 @@ export function CardArtworkInput({
   onChange,
   onBusyChange,
 }: Props) {
+  const { storage } = useWorkspace();
   const inputId = useId();
   const fileRef = useRef<HTMLInputElement>(null);
   const requestRef = useRef<AbortController | null>(null);
@@ -37,6 +39,7 @@ export function CardArtworkInput({
   useEffect(() => () => requestRef.current?.abort(), []);
 
   async function prepare(source: File | string | { imageId: string }) {
+    if (!storage.isActive()) return;
     if (source instanceof File && source.size > 8 * 1024 * 1024) {
       setError("Image must be 8 MB or smaller.");
       return;
@@ -52,18 +55,18 @@ export function CardArtworkInput({
         typeof source === "object" && "imageId" in source
           ? await normalizeCrestArtwork(source.imageId, cardType!, controller.signal)
           : await importCardArtwork(source, controller.signal, cardType);
-      if (!controller.signal.aborted) {
+      if (storage.isActive() && !controller.signal.aborted) {
         // Use the latest form callback so typing while importing is never overwritten.
         callbacks.current.onChange(artwork);
         setUrl("");
       }
     } catch (err) {
-      if (!controller.signal.aborted)
+      if (storage.isActive() && !controller.signal.aborted)
         setError(
           err instanceof Error ? err.message : "Could not import artwork.",
         );
     } finally {
-      if (!controller.signal.aborted) {
+      if (storage.isActive() && !controller.signal.aborted) {
         setBusy(false);
         callbacks.current.onBusyChange(false);
       }

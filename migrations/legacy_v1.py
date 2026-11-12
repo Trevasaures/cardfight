@@ -89,9 +89,10 @@ def _fail(table, message):
     raise SchemaError(f"Unsupported schema for {table}: {message}. No automatic inference is safe.")
 
 
-def _check_table(connection, table, *, legacy, check_indexes=True):
+def _check_table(connection, table, *, legacy, check_indexes=True, expected=None):
     inspector = inspect(connection)
-    expected = TABLES[table]
+    if expected is None:
+        expected = TABLES[table]
     columns = {column["name"]: column for column in inspector.get_columns(table)}
     target = {column["name"]: column for column in expected["columns"]}
     absent = set(target) - set(columns)
@@ -186,24 +187,27 @@ def _check_table(connection, table, *, legacy, check_indexes=True):
                 _fail(table, f"index {index['name']} differs")
 
 
-def validate_schema(connection, *, legacy=False):
+def validate_schema(connection, *, legacy=False, expected_tables=None):
     """Read-only validation against fixed v1 semantics and bounded old layouts.
 
     Auxiliary tables, views, indexes and triggers are retained. Existing app
     tables cannot contain unknown columns or unexpected core constraints. The
     historical deck/match-only application is the minimum supported layout.
+    Later revisions can reuse the checks with their own frozen table definitions.
     """
     if connection.dialect.name != "sqlite":
         raise SchemaError("Revision 0001 supports SQLite only.")
     existing = set(inspect(connection).get_table_names())
     if existing.intersection(INCOMPLETE_TABLES) or any(name.startswith(COPY_PREFIX) for name in existing):
         raise SchemaError("An incomplete previous schema replacement is present; restore a verified backup.")
-    required = {"deck", "match"} if legacy else set(TABLES)
+    tables = TABLES if expected_tables is None else expected_tables
+    table_order = TABLE_ORDER if expected_tables is None else tables
+    required = {"deck", "match"} if legacy else set(tables)
     if not required.issubset(existing):
         raise SchemaError("Required Cardfight tables are missing; initialize a new database explicitly.")
-    for table in TABLE_ORDER:
+    for table in table_order:
         if table in existing:
-            _check_table(connection, table, legacy=legacy)
+            _check_table(connection, table, legacy=legacy, expected=tables[table])
 
 
 def _new_value(table, column):

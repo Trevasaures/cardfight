@@ -20,27 +20,6 @@ from backend.services.serializers import (
     serialize_acquisition_plan,
     serialize_deck_version,
 )
-from migrations.legacy_v1 import upgrade_schema
-
-
-def explicit_legacy_upgrade():
-    """Exercise the frozen legacy conversion in its caller-owned transaction."""
-    db.session.commit()
-    with db.engine.connect() as connection:
-        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
-        connection.commit()
-        connection.exec_driver_sql("BEGIN IMMEDIATE")
-        try:
-            upgrade_schema(connection)
-            assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
-            connection.commit()
-            db.session.expire_all()
-        except BaseException:
-            connection.rollback()
-            raise
-        finally:
-            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
-            connection.commit()
 
 
 def _version():
@@ -219,7 +198,7 @@ def test_crest_quantity_identity_and_ride_crest_limits(app_context):
 
 
 def test_legacy_sqlite_zone_upgrade_preserves_entries_and_acquisition_references(
-    app_context,
+    app_context, explicit_legacy_upgrade,
 ):
     version, unit = _version(), _card("Existing card", "Normal Unit", grade=2)
     entry = add_card_to_deck_version(version.id, {"card_id": unit.id, "quantity": 4})
@@ -277,7 +256,7 @@ def test_legacy_sqlite_zone_upgrade_preserves_entries_and_acquisition_references
 
 
 def test_zone_upgrade_rolls_back_table_replacement_if_index_recreation_fails(
-    app_context, monkeypatch
+    app_context, monkeypatch, explicit_legacy_upgrade
 ):
     version, unit = _version(), _card("Rollback card", "Normal Unit", grade=2)
     entry = add_card_to_deck_version(version.id, {"card_id": unit.id})

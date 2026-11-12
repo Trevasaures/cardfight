@@ -30,9 +30,7 @@ from backend.auth_models import (
 from backend.auth.protocol import InvalidIdentity, OidcClient, ProviderUnavailable
 from backend.auth.settings import AuthSettings, loopback
 
-# #55 must replace this capability after scoped queries and ownership tests ship.
-# It is deliberately not an environment/config switch.
-OWNERSHIP_READY = False
+ADMIN_AUTH_MAX_AGE = timedelta(minutes=15)
 
 
 class AuthError(Exception):
@@ -334,7 +332,10 @@ def _session_payload(session=None):
     config = settings()
     account = getattr(g, "auth_account", None) if session else None
     authenticated = account is not None
-    reason = "admission_hold" if config.admission_hold else "ownership_pending"
+    workspace = config.mode == "local" or (authenticated and not config.admission_hold)
+    reason = None
+    if not workspace:
+        reason = "admission_hold" if config.admission_hold else "auth_required"
     return {
         "mode": "local" if config.mode == "local" else "oidc",
         "configured": config.configured if config.mode != "local" else True,
@@ -354,8 +355,8 @@ def _session_payload(session=None):
             else None
         ),
         "access": {
-            "workspace": config.mode == "local",
-            "reason": None if config.mode == "local" else reason,
+            "workspace": workspace,
+            "reason": reason,
         },
         "session": (
             {
@@ -485,9 +486,11 @@ def init_auth(app):
     @app.errorhandler(AuthError)
     def auth_error(error):
         db.session.rollback()
-        response = jsonify(
-            error="Authentication or access could not be completed.", code=error.code
-        )
+        message = {
+            "admin_required": "A Cardfight administrator must make this change.",
+            "fresh_mfa_required": "Sign in again with multifactor authentication to make this change.",
+        }.get(error.code, "Authentication or access could not be completed.")
+        response = jsonify(error=message, code=error.code)
         response.status_code = error.status
         if error.status == 429:
             response.headers["Retry-After"] = "60"
@@ -496,6 +499,7 @@ def init_auth(app):
 
     @app.before_request
     def protect_request():
+        config = settings()
         # A request may reuse an explicit app context in tests/embedded callers;
         # identity memoization must still never cross browser/request boundaries.
         for key in ("auth_session", "auth_account", "auth_invalid", "account_context"):
@@ -536,11 +540,28 @@ def init_auth(app):
                 raise AuthError(code, 401)
             if config.admission_hold:
                 raise AuthError("admission_hold")
-            # No role, environment toggle, header or client owner ID bypasses #55.
-            if not OWNERSHIP_READY:
-                raise AuthError("ownership_pending")
-            if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            safe_method = request.method in {"GET", "HEAD", "OPTIONS"}
+            # Shared images are also requested by native <img> elements.
+            image_read = request.endpoint == "card_images.get_image" and safe_method
+            if (
+                not image_read
+                and request.headers.get("X-Cardfight-Session") != session.public_id
+            ):
+                raise AuthError("session_changed", 401)
+            if not safe_method:
                 _csrf(session)
+                if request.blueprint in {"admin", "cards", "card_images"}:
+                    if current_account().role != "admin":
+                        raise AuthError("admin_required")
+                    recent_mfa = (
+                        session.mfa_verified
+                        and session.provider_auth_time is not None
+                        and -timedelta(seconds=60)
+                        <= utcnow() - session.provider_auth_time
+                        <= ADMIN_AUTH_MAX_AGE
+                    )
+                    if not recent_mfa:
+                        raise AuthError("fresh_mfa_required")
 
     @app.after_request
     def private_caching(response):

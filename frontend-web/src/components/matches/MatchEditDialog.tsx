@@ -1,3 +1,4 @@
+import { useWorkspace } from "../../features/auth/workspaceContext";
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { RefreshCcw, Save } from "lucide-react";
 
@@ -25,6 +26,7 @@ const fieldClass = "grid min-w-0 gap-1.5 text-xs font-semibold text-slate-400";
 const controlClass = "workspace-control w-full min-w-0 text-sm font-normal";
 
 export function MatchEditDialog({ match, onClose, onSaved }: Props) {
+  const { storage } = useWorkspace();
   const formId = useId();
   const [draft, setDraft] = useState(() => createMatchEditDraft(match));
   const [decks, setDecks] = useState<Deck[]>([]);
@@ -107,6 +109,7 @@ export function MatchEditDialog({ match, onClose, onSaved }: Props) {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!storage.isActive()) return;
     if (saving || loadingDecks || loadingVersions || loadError || versionError)
       return;
     const validationError = validateMatchEdit(draft);

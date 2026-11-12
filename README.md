@@ -212,9 +212,9 @@ the exact configured `CARDFIGHT_AUTH_PUBLIC_ORIGIN`; local mode prints
 `http://127.0.0.1:5173`. Regular startup checks the schema and leaves
 migrations to the migration command.
 
-`-Fresh` restarts the API and frontend in local mode without sign-in. It uses
-the existing `instance/cardfight.db` and asks Vite to rebuild its dependency
-cache. Your saved data and browser storage stay in place. The launcher only
+`-Fresh` restarts the API and frontend in local mode without sign-in and asks
+Vite to rebuild its dependency cache. It defaults to `instance/cardfight.db`.
+Use `-DatabasePath` to select an existing upgraded copy. The launcher only
 stops existing services it can verify belong to this checkout. If another
 process occupies a port, it reports the PID and exits.
 
@@ -477,16 +477,16 @@ The backend follows a small route/service/model structure:
 
 The default local mode remains a loopback-only personal workspace. Google and
 email sign-in, invitation-only accounts and server sessions are available through
-the [Auth0 setup guide](docs/authentication-setup.md). In OIDC modes the private
-workspace stays closed until #55 implements per-account data ownership; creating
-an account never claims the existing personal database. See [deployment notes](docs/deployment.md).
+the [Auth0 setup guide](docs/authentication-setup.md). In OIDC modes admitted
+players see their own decks, matches, and acquisition plans alongside the shared
+catalog. Legacy records require explicit owner assignment. See [deployment notes](docs/deployment.md).
 
 The hosted identity design is recorded in the
 [identity and access ADR](docs/adr/0001-identity-and-access.md),
 [sign-in experience](docs/identity-experience.md), and
 [implementation and verification plan](docs/identity-delivery-plan.md).
-The setup guide distinguishes implemented boundaries from provider and staging
-verification still required for #54. Hosted workspace access also requires #55.
+The setup guide covers provider and staging verification for sign-in and
+account isolation.
 
 The major database entities are:
 

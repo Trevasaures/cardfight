@@ -7,27 +7,6 @@ from sqlalchemy.exc import IntegrityError
 
 from backend.database import db
 from backend.models import AcquisitionPlan, AcquisitionPlanItem, Card, CardPrinting
-from migrations.legacy_v1 import upgrade_schema
-
-
-def explicit_legacy_upgrade():
-    """Exercise the frozen legacy conversion in its caller-owned transaction."""
-    db.session.commit()
-    with db.engine.connect() as connection:
-        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
-        connection.commit()
-        connection.exec_driver_sql("BEGIN IMMEDIATE")
-        try:
-            upgrade_schema(connection)
-            assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
-            connection.commit()
-            db.session.expire_all()
-        except BaseException:
-            connection.rollback()
-            raise
-        finally:
-            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
-            connection.commit()
 
 
 @pytest.fixture(autouse=True)
@@ -105,7 +84,9 @@ def _legacy_plan_table():
     return item_id, row, objects
 
 
-def test_legacy_zero_target_upgrade_is_idempotent_and_preserves_rows_indexes_and_trigger():
+def test_legacy_zero_target_upgrade_is_idempotent_and_preserves_rows_indexes_and_trigger(
+    explicit_legacy_upgrade,
+):
     item_id, before, objects = _legacy_plan_table()
     explicit_legacy_upgrade()
     explicit_legacy_upgrade()
@@ -149,7 +130,7 @@ def test_legacy_zero_target_upgrade_is_idempotent_and_preserves_rows_indexes_and
 
 
 def test_zero_target_upgrade_rolls_back_replacement_if_index_recreation_fails(
-    monkeypatch,
+    monkeypatch, explicit_legacy_upgrade,
 ):
     item_id, before, _ = _legacy_plan_table()
     original = Connection.exec_driver_sql

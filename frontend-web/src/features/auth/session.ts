@@ -23,7 +23,7 @@ function record(value: unknown): value is Record<string, unknown> {
 
 /** An invalid/unavailable identity response must never enable the local workspace. */
 export function parseAuthSession(value: unknown): AuthSession {
-  if (!record(value) || !["local", "oidc"].includes(String(value.mode)) || typeof value.configured !== "boolean" || typeof value.authenticated !== "boolean" || !record(value.access) || typeof value.access.workspace !== "boolean" || !Array.isArray(value.methods)) {
+  if (!record(value) || (value.mode !== "local" && value.mode !== "oidc") || typeof value.configured !== "boolean" || typeof value.authenticated !== "boolean" || !record(value.access) || typeof value.access.workspace !== "boolean" || !Array.isArray(value.methods)) {
     throw new Error("Cardfight could not confirm its sign-in configuration.");
   }
   const account = value.account;
@@ -46,9 +46,11 @@ export function parseAuthSession(value: unknown): AuthSession {
   };
 }
 
-/** #54 deliberately does not admit hosted accounts to the unscoped #55 workspace. */
 export function canMountWorkspace(session: AuthSession): boolean {
-  return session.mode === "local" && session.access.workspace;
+  if (!session.access.workspace || session.access.reason !== null) return false;
+  return session.mode === "local" || Boolean(
+    session.configured && session.authenticated && session.account && session.generation && session.csrf_token,
+  );
 }
 
 const RETURN_ROUTES = new Set(["/", "/play", "/hand-lab", "/decks", "/cards", "/deck-builder", "/order-tracker", "/nation-quiz", "/matches", "/analytics", "/rivalries"]);

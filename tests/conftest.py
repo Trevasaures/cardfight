@@ -19,6 +19,8 @@ for auth_setting in (
 
 from backend.app import app  # noqa: E402
 from backend.database import db  # noqa: E402
+from migrations.legacy_v1 import TABLES as BASELINE_TABLES, upgrade_schema as upgrade_legacy  # noqa: E402
+from migrations.ownership_v3 import OWNED_TABLES, WORKSPACE_TABLES, upgrade_schema as upgrade_ownership  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -43,6 +45,73 @@ def app_context():
 @pytest.fixture()
 def client():
     return app.test_client()
+
+
+@pytest.fixture()
+def explicit_legacy_upgrade():
+    """Run frozen v1 against a test schema seeded through the current ORM."""
+
+    def run():
+        assert db.engine.url.database == ":memory:"
+        db.session.commit()
+        with db.engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            connection.commit()
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                for table in OWNED_TABLES:
+                    baseline = BASELINE_TABLES[table]
+                    original = f'"{table}"'
+                    temporary = f'"test_legacy_{table}"'
+                    actual_columns = {
+                        row[1] for row in connection.exec_driver_sql(f"PRAGMA table_info({original})")
+                    }
+                    assert connection.exec_driver_sql(
+                        f"SELECT 1 FROM {original} WHERE owner_account_id IS NOT NULL LIMIT 1"
+                    ).first() is None
+                    baseline_columns = [column["name"] for column in baseline["columns"]]
+                    missing = set(baseline_columns) - actual_columns
+                    # The archive test deliberately removed this column already.
+                    # Keep that old shape until the v1 upgrade itself runs.
+                    assert not missing or (table == "acquisition_plan" and missing == {"archived_at"})
+                    create_sql = "\n".join(
+                        line for line in baseline["create_sql"].splitlines()
+                        if not any(line.strip().startswith(column + " ") for column in missing)
+                    )
+                    columns = ", ".join(
+                        f'"{column}"' for column in baseline_columns if column in actual_columns
+                    )
+                    baseline_indexes = {index["name"] for index in baseline["indexes"]}
+                    owner_indexes = {
+                        index["name"] for index in WORKSPACE_TABLES[table]["indexes"]
+                    } - baseline_indexes
+                    objects = connection.exec_driver_sql(
+                        "SELECT name, sql FROM sqlite_master WHERE tbl_name=? "
+                        "AND type IN ('index','trigger') AND sql IS NOT NULL",
+                        (table,),
+                    ).all()
+                    connection.exec_driver_sql(f"CREATE TEMP TABLE {temporary} AS SELECT {columns} FROM {original}")
+                    connection.exec_driver_sql(f"DROP TABLE {original}")
+                    connection.exec_driver_sql(create_sql)
+                    connection.exec_driver_sql(f"INSERT INTO {original} ({columns}) SELECT {columns} FROM {temporary}")
+                    connection.exec_driver_sql(f"DROP TABLE {temporary}")
+                    for name, statement in objects:
+                        if name not in owner_indexes:
+                            connection.exec_driver_sql(statement)
+                upgrade_legacy(connection)
+                # Restore the current columns before the ORM/API assertions.
+                upgrade_ownership(connection)
+                assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+                connection.commit()
+                db.session.expire_all()
+            except BaseException:
+                connection.rollback()
+                raise
+            finally:
+                connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+                connection.commit()
+
+    return run
 
 
 @pytest.fixture()

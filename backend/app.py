@@ -36,7 +36,9 @@ def create_app(config=None):
         CORS(app, resources={r"/api/*": {"origins": origins}})
 
     with app.app_context():
-        ensure_schema_current(db.engine)
+        ensure_schema_current(
+            db.engine, hosted=app.config["AUTH_MODE"] in {"oidc", "oidc-dev"}
+        )
 
     init_auth(app)
 

@@ -3,10 +3,12 @@
 from contextlib import closing
 import sqlite3
 
+from alembic import command
 import pytest
+from sqlalchemy import create_engine
 
 from backend.backup import database_summary
-from backend.migrate import MigrationError, inspect_database, migrate_database
+from backend.migrate import MigrationError, _config, inspect_database, migrate_database
 from migrations.identity_v2 import TABLES as IDENTITY_TABLES
 from migrations.legacy_v1 import FROZEN_SCHEMA
 
@@ -29,13 +31,22 @@ def baseline_database(path):
         connection.commit()
 
 
-def test_identity_upgrade_rehearses_and_preserves_all_old_values(tmp_path):
+def test_frozen_identity_revision_preserves_all_old_values(tmp_path):
     path = tmp_path / "v1.db"
     baseline_database(path)
     before = database_summary(path)
     assert inspect_database(path)["status"] == "pending"
-    result = migrate_database(path, backup_dir=tmp_path / "backups", app_check=False)
-    assert result["rehearsal"]["saved_values_preserved"] is True
+    # Apply the historical revision in isolation, before any ownership columns.
+    engine = create_engine(f"sqlite:///{path.as_posix()}")
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql("BEGIN")
+            command.upgrade(_config(connection), "0002_identity")
+    finally:
+        engine.dispose()
+    state = inspect_database(path)
+    assert state["revision"] == "0002_identity"
+    assert state["status"] == "pending"
     after = database_summary(path)
     for table in FROZEN_SCHEMA["tables"]:
         assert after["tables"][table] == before["tables"][table]
@@ -44,9 +55,9 @@ def test_identity_upgrade_rehearses_and_preserves_all_old_values(tmp_path):
             assert (
                 connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0] == 0
             )
-        assert "account_id" not in {
-            row[1] for row in connection.execute("PRAGMA table_info(deck)")
-        }
+        for table in ("deck", "match", "acquisition_plan"):
+            columns = {row[1] for row in connection.execute(f'PRAGMA table_info("{table}")')}
+            assert not {"account_id", "owner_account_id"} & columns
 
 
 def test_identity_collision_is_not_adopted_and_rolls_back(tmp_path):

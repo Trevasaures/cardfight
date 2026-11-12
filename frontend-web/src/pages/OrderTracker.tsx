@@ -1,3 +1,4 @@
+import { useWorkspace } from "../features/auth/workspaceContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Archive, PackageOpen, Plus } from "lucide-react";
 
@@ -88,6 +89,7 @@ const ITEM_FILTERS = [
 ] as const;
 
 export function OrderTracker() {
+  const { storage } = useWorkspace();
   const [plans, setPlans] = useState<AcquisitionPlan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<AcquisitionPlan | null>(
     null,
@@ -277,6 +279,7 @@ export function OrderTracker() {
   }
 
   async function handleCreate(payload: CreateAcquisitionPlanPayload) {
+    if (!storage.isActive()) return false;
     setNewPlanError("");
     setCreating(true);
     try {
@@ -302,6 +305,7 @@ export function OrderTracker() {
   }
 
   async function handleSavePlan() {
+    if (!storage.isActive()) return;
     if (!planView) return;
 
     setSavingPlan(true);
@@ -326,6 +330,7 @@ export function OrderTracker() {
   }
 
   async function handleDeletePlan() {
+    if (!storage.isActive()) return;
     if (!selectedPlan) return;
     setSavingPlan(true);
     try {
@@ -380,6 +385,7 @@ export function OrderTracker() {
   }
 
   async function handleArchive() {
+    if (!storage.isActive()) return;
     if (!selectedPlan) return;
     setSavingPlan(true);
     try {
@@ -401,6 +407,7 @@ export function OrderTracker() {
   }
 
   async function handleRestore() {
+    if (!storage.isActive()) return;
     if (!selectedPlan) return;
     setSavingPlan(true);
     try {
@@ -441,6 +448,7 @@ export function OrderTracker() {
   }
 
   async function handleAddCard(card: Card, printing: CardPrinting | null) {
+    if (!storage.isActive()) return;
     if (!selectedPlan) return;
 
     const destination = selectedPlan.items.find(
@@ -483,6 +491,7 @@ export function OrderTracker() {
     itemId: number,
     payload: UpdateAcquisitionItemPayload,
   ) {
+    if (!storage.isActive()) return;
     setBusyItemId(itemId);
     try {
       await updateAcquisitionItem(itemId, payload);
@@ -499,6 +508,7 @@ export function OrderTracker() {
   }
 
   async function handlePrintingAllocation(allocation: PrintingAllocation) {
+    if (!storage.isActive()) return "Workspace changed.";
     if (!selectedPlan || !printingAction) return "Select a purchase plan first.";
     const { item, mode } = printingAction;
     const destination = selectedPlan.items.find(
@@ -562,6 +572,7 @@ export function OrderTracker() {
   }
 
   async function handleReceiveItem(itemId: number, quantity: number) {
+    if (!storage.isActive()) return "Workspace changed.";
     setBusyItemId(itemId);
     try {
       await receiveAcquisitionItem(itemId, quantity);
@@ -576,6 +587,7 @@ export function OrderTracker() {
   }
 
   async function handleRemoveItem(item: AcquisitionPlanItem) {
+    if (!storage.isActive()) return;
     setBusyItemId(item.id);
     try {
       await removeAcquisitionItem(item.id);
@@ -606,6 +618,7 @@ export function OrderTracker() {
   }
 
   async function handleRemoval() {
+    if (!storage.isActive()) return;
     if (!removalRequest) return;
     const { item, action } = removalRequest;
     setBusyItemId(item.id);
@@ -666,6 +679,7 @@ export function OrderTracker() {
   }
 
   async function handleBatch(action: AcquisitionBatchAction) {
+    if (!storage.isActive()) return;
     if (!selectedPlan || !selectedIds.length) return;
     setBulkBusy(true);
     try {

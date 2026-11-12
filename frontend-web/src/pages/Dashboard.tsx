@@ -33,7 +33,8 @@ import type {
   RandomMatchupResponse,
 } from "../types/api";
 import { formatPercent, formatRecord, formatUsdCents } from "../utils/format";
-import { readLocalState, writeLocalState } from "../utils/localState";
+import { useWorkspace } from "../features/auth/workspaceContext";
+import type { WorkspaceStorage } from "../features/auth/workspaceStorage";
 
 type CommandStyle = CSSProperties & {
   "--command-primary": string;
@@ -89,30 +90,31 @@ function relativeDate(value: string | null) {
 }
 
 function prepareDeckBuilder(
+  storage: WorkspaceStorage,
   version: Pick<DashboardDeckVersionBrief, "deck_id" | "id">,
 ) {
-  writeLocalState("cardfight.deck-builder.selected-deck", String(version.deck_id));
-  writeLocalState("cardfight.deck-builder.selected-version", String(version.id));
+  storage.write("cardfight.deck-builder.selected-deck", String(version.deck_id));
+  storage.write("cardfight.deck-builder.selected-version", String(version.id));
 }
 
-function prepareOrderTracker(planId: number) {
-  writeLocalState("cardfight.order-tracker.selected-plan", planId);
+function prepareOrderTracker(storage: WorkspaceStorage, planId: number) {
+  storage.write("cardfight.order-tracker.selected-plan", planId);
 }
 
-function prepareTesting(focus: DashboardTestingFocus) {
+function prepareTesting(storage: WorkspaceStorage, focus: DashboardTestingFocus) {
   const opponent = focus.suggested_opponent;
-  writeLocalState("cardfight.play-lab.mode", "custom");
-  writeLocalState(
+  storage.write("cardfight.play-lab.mode", "custom");
+  storage.write(
     "cardfight.play-lab.format",
     opponent && opponent.type !== focus.deck.type ? "Any" : focus.deck.type,
   );
-  writeLocalState("cardfight.play-lab.custom-deck-one", focus.deck.id);
-  writeLocalState("cardfight.play-lab.custom-deck-two", opponent?.id ?? "");
-  writeLocalState("cardfight.play-lab.winner", null);
-  writeLocalState("cardfight.play-lab.first-player", focus.deck.id);
+  storage.write("cardfight.play-lab.custom-deck-one", focus.deck.id);
+  storage.write("cardfight.play-lab.custom-deck-two", opponent?.id ?? "");
+  storage.write("cardfight.play-lab.winner", null);
+  storage.write("cardfight.play-lab.first-player", focus.deck.id);
 
   if (opponent) {
-    writeLocalState("cardfight.play-lab.matchup", {
+    storage.write("cardfight.play-lab.matchup", {
       deck1: focus.deck,
       deck2: opponent,
       first_player: focus.deck,
@@ -121,13 +123,13 @@ function prepareTesting(focus: DashboardTestingFocus) {
   }
 }
 
-function readMatchDraft() {
-  const matchup = readLocalState<RandomMatchupResponse | null>(
+function readMatchDraft(storage: WorkspaceStorage) {
+  const matchup = storage.read<RandomMatchupResponse | null>(
     "cardfight.play-lab.matchup",
     null,
   );
   if (!matchup?.deck1 || !matchup.deck2) return null;
-  const notes = readLocalState("cardfight.play-lab.notes", "");
+  const notes = storage.read("cardfight.play-lab.notes", "");
   return { matchup, notes };
 }
 
@@ -173,6 +175,7 @@ function ReadinessRing({ progress, complete }: { progress: number; complete: boo
 }
 
 function ResumeBuildCard({ version }: { version: DashboardDeckVersionBrief | null }) {
+  const { storage } = useWorkspace();
   if (!version) {
     return (
       <Link to="/deck-builder" data-command="resume" className="group flex min-w-0 flex-col gap-3 rounded-2xl border border-dashed border-white/10 bg-white/[0.025] p-4 transition hover:border-cyan-300/25 hover:bg-cyan-300/[0.04]">
@@ -186,7 +189,7 @@ function ResumeBuildCard({ version }: { version: DashboardDeckVersionBrief | nul
   return (
     <Link
       to="/deck-builder"
-      onClick={() => prepareDeckBuilder(version)}
+      onClick={() => prepareDeckBuilder(storage, version)}
       data-command="resume"
       className="group flex min-w-0 flex-col gap-3 rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.035] p-4 transition hover:-translate-y-0.5 hover:border-cyan-300/30 hover:bg-cyan-300/[0.06]"
     >
@@ -207,6 +210,7 @@ function ResumeBuildCard({ version }: { version: DashboardDeckVersionBrief | nul
 }
 
 function ResumePurchaseCard({ plan }: { plan: AcquisitionPlan | null }) {
+  const { storage } = useWorkspace();
   if (!plan) {
     return (
       <Link to="/order-tracker" data-command="resume" className="group flex min-w-0 flex-col gap-3 rounded-2xl border border-dashed border-white/10 bg-white/[0.025] p-4 transition hover:border-violet-300/25 hover:bg-violet-300/[0.04]">
@@ -221,7 +225,7 @@ function ResumePurchaseCard({ plan }: { plan: AcquisitionPlan | null }) {
   return (
     <Link
       to="/order-tracker"
-      onClick={() => prepareOrderTracker(plan.id)}
+      onClick={() => prepareOrderTracker(storage, plan.id)}
       data-command="resume"
       className="group flex min-w-0 flex-col gap-3 rounded-2xl border border-violet-300/15 bg-violet-300/[0.035] p-4 transition hover:-translate-y-0.5 hover:border-violet-300/30 hover:bg-violet-300/[0.06]"
     >
@@ -260,12 +264,13 @@ function PlayDraftCard({ draft }: { draft: ReturnType<typeof readMatchDraft> }) 
 }
 
 export function Dashboard() {
+  const { storage } = useWorkspace();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const toast = useToast();
-  const localDraft = useMemo(() => readMatchDraft(), []);
+  const localDraft = useMemo(() => readMatchDraft(storage), [storage]);
 
   useCommandCenterMotion(rootRef, Boolean(data));
 
@@ -332,7 +337,7 @@ export function Dashboard() {
             <h3>{focus.deck.name}</h3>
             <p className="testing-description">{focus.active_version_matches} active-version matches</p>
             <div className="testing-record"><div><strong>{formatPercent(focus.record.win_pct)}</strong><span>Win rate</span></div><div><strong>{formatRecord(focus.record.wins, focus.record.losses)}</strong><span>Match record</span></div><div className="testing-form">{focus.recent_results.slice(0, 4).map((result, index) => <span className={result === "W" ? "form-win" : "form-loss"} key={index}>{result}</span>)}</div></div>
-            <Link to="/play" onClick={() => prepareTesting(focus)} className="testing-cta">{focus.suggested_opponent ? `Test vs ${focus.suggested_opponent.name}` : "Start testing"}<ArrowRight size={16} /></Link>
+            <Link to="/play" onClick={() => prepareTesting(storage, focus)} className="testing-cta">{focus.suggested_opponent ? `Test vs ${focus.suggested_opponent.name}` : "Start testing"}<ArrowRight size={16} /></Link>
             <span className="testing-last">Last tested {shortDate(focus.last_tested_at)}</span>
           </> : <div className="testing-empty"><Trophy size={36} strokeWidth={1} /><h3>Ready to play?</h3><p>No active decks.</p><Link to="/decks" className="cinema-button">Create a deck <ArrowRight size={16} /></Link></div>}
         </aside>
@@ -367,19 +372,19 @@ export function Dashboard() {
       <div className="mt-4 grid items-start gap-4 xl:grid-cols-2">
         <section data-command="panel" className="workspace-panel">
           <WorkspaceSectionHeader title="Attention" actions={<span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-bold text-slate-400">{command.attention.length}</span>} />
-          {command.attention.length ? <div className="mt-4 grid gap-2">{command.attention.map((item) => <Link key={item.key} to={item.to} onClick={() => { if (item.kind === "build" && item.deck_id && item.version_id) prepareDeckBuilder({ deck_id: item.deck_id, id: item.version_id }); if (item.kind === "purchase" && item.plan_id) prepareOrderTracker(item.plan_id); if (item.kind === "testing" && focus) prepareTesting(focus); }} data-command="attention" className={`group flex min-w-0 flex-col gap-3 rounded-2xl border p-4 transition hover:-translate-y-0.5 ${ATTENTION_TONES[item.tone]}`}><div className="flex items-start justify-between gap-4"><div className="flex min-w-0 gap-3"><span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-current/15 bg-black/15">{attentionIcon(item.kind)}</span><div><h4 className="font-black text-white">{item.title}</h4>{item.kind === "purchase" || item.kind === "build" ? <p className="mt-1 text-sm leading-6 text-slate-400">{item.body}</p> : null}</div></div><span className="shrink-0 text-sm font-black">{item.value}</span></div></Link>)}</div> : <div className="mt-5 rounded-2xl border border-dashed border-emerald-300/15 bg-emerald-300/[0.025] p-8 text-center"><CheckCircle2 className="mx-auto h-6 w-6 text-emerald-300" /><p className="mt-3 font-black text-slate-200">All clear</p></div>}
+          {command.attention.length ? <div className="mt-4 grid gap-2">{command.attention.map((item) => <Link key={item.key} to={item.to} onClick={() => { if (item.kind === "build" && item.deck_id && item.version_id) prepareDeckBuilder(storage, { deck_id: item.deck_id, id: item.version_id }); if (item.kind === "purchase" && item.plan_id) prepareOrderTracker(storage, item.plan_id); if (item.kind === "testing" && focus) prepareTesting(storage, focus); }} data-command="attention" className={`group flex min-w-0 flex-col gap-3 rounded-2xl border p-4 transition hover:-translate-y-0.5 ${ATTENTION_TONES[item.tone]}`}><div className="flex items-start justify-between gap-4"><div className="flex min-w-0 gap-3"><span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-current/15 bg-black/15">{attentionIcon(item.kind)}</span><div><h4 className="font-black text-white">{item.title}</h4>{item.kind === "purchase" || item.kind === "build" ? <p className="mt-1 text-sm leading-6 text-slate-400">{item.body}</p> : null}</div></div><span className="shrink-0 text-sm font-black">{item.value}</span></div></Link>)}</div> : <div className="mt-5 rounded-2xl border border-dashed border-emerald-300/15 bg-emerald-300/[0.025] p-8 text-center"><CheckCircle2 className="mx-auto h-6 w-6 text-emerald-300" /><p className="mt-3 font-black text-slate-200">All clear</p></div>}
         </section>
 
         <section data-command="panel" className="workspace-panel">
           <WorkspaceSectionHeader title="Active builds" />
-          <div className="mt-4 space-y-2">{command.build_readiness.length ? command.build_readiness.map((version) => <Link key={version.id} to="/deck-builder" onClick={() => prepareDeckBuilder(version)} className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-black/20 p-4 transition hover:border-cyan-300/20 hover:bg-cyan-300/[0.04]"><ReadinessRing progress={version.progress} complete={version.is_complete} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h4 className="truncate font-black text-white">{version.deck.name}</h4><FormatBadge type={version.deck.type} /></div><p className="mt-1 truncate text-xs text-slate-400">{version.version_name} · {version.main_deck_count} main · {version.ride_deck_count} ride</p><p className={`mt-2 text-xs font-bold ${version.is_complete ? "text-emerald-200" : "text-amber-200/80"}`}>{version.is_complete ? "Ready" : version.issues[0] ?? "Needs review"}</p></div><ArrowRight className="h-4 w-4 shrink-0 text-slate-700 transition group-hover:translate-x-1 group-hover:text-cyan-200" /></Link>) : <p className="rounded-2xl border border-dashed border-white/10 p-6 text-center text-sm text-slate-500">No active versions yet.</p>}</div>
+          <div className="mt-4 space-y-2">{command.build_readiness.length ? command.build_readiness.map((version) => <Link key={version.id} to="/deck-builder" onClick={() => prepareDeckBuilder(storage, version)} className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-black/20 p-4 transition hover:border-cyan-300/20 hover:bg-cyan-300/[0.04]"><ReadinessRing progress={version.progress} complete={version.is_complete} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h4 className="truncate font-black text-white">{version.deck.name}</h4><FormatBadge type={version.deck.type} /></div><p className="mt-1 truncate text-xs text-slate-400">{version.version_name} · {version.main_deck_count} main · {version.ride_deck_count} ride</p><p className={`mt-2 text-xs font-bold ${version.is_complete ? "text-emerald-200" : "text-amber-200/80"}`}>{version.is_complete ? "Ready" : version.issues[0] ?? "Needs review"}</p></div><ArrowRight className="h-4 w-4 shrink-0 text-slate-700 transition group-hover:translate-x-1 group-hover:text-cyan-200" /></Link>) : <p className="rounded-2xl border border-dashed border-white/10 p-6 text-center text-sm text-slate-500">No active versions yet.</p>}</div>
         </section>
       </div>
 
       <div className="mt-4 grid items-start gap-4 xl:grid-cols-2">
         <section data-command="panel" className="workspace-panel">
           <WorkspaceSectionHeader title="Activity" actions={<Link to="/matches" className="workspace-button border border-white/10 text-xs text-slate-300 hover:bg-white/5">Open history <ArrowRight className="h-3.5 w-3.5" /></Link>} />
-          <div className="mt-4 divide-y divide-white/[0.07]">{command.activity.length ? command.activity.map((event) => <Link key={event.id} to={event.to} onClick={() => { if (event.kind === "version" && event.deck_id && event.version_id) prepareDeckBuilder({ deck_id: event.deck_id, id: event.version_id }); if (event.kind === "purchase" && event.plan_id) prepareOrderTracker(event.plan_id); }} data-command="activity" className="group flex items-center gap-4 py-3 first:pt-0 last:pb-0"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-400 group-hover:text-cyan-200">{activityIcon(event.kind)}</span><div className="min-w-0 flex-1"><p className="truncate font-bold text-slate-200 group-hover:text-white">{event.title}</p><p className="mt-0.5 truncate text-sm text-slate-600">{event.detail}</p></div><span className="shrink-0 text-xs font-bold text-slate-600">{relativeDate(event.timestamp)}</span></Link>) : <p className="py-8 text-center text-sm text-slate-500">No activity yet.</p>}</div>
+          <div className="mt-4 divide-y divide-white/[0.07]">{command.activity.length ? command.activity.map((event) => <Link key={event.id} to={event.to} onClick={() => { if (event.kind === "version" && event.deck_id && event.version_id) prepareDeckBuilder(storage, { deck_id: event.deck_id, id: event.version_id }); if (event.kind === "purchase" && event.plan_id) prepareOrderTracker(storage, event.plan_id); }} data-command="activity" className="group flex items-center gap-4 py-3 first:pt-0 last:pb-0"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-400 group-hover:text-cyan-200">{activityIcon(event.kind)}</span><div className="min-w-0 flex-1"><p className="truncate font-bold text-slate-200 group-hover:text-white">{event.title}</p><p className="mt-0.5 truncate text-sm text-slate-600">{event.detail}</p></div><span className="shrink-0 text-xs font-bold text-slate-600">{relativeDate(event.timestamp)}</span></Link>) : <p className="py-8 text-center text-sm text-slate-500">No activity yet.</p>}</div>
         </section>
 
         <aside data-command="panel" className="workspace-panel">
