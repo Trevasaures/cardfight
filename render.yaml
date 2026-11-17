@@ -1,0 +1,35 @@
+services:
+  - name: cardfight-staging
+    type: web
+    runtime: docker
+    plan: free
+    region: ohio
+    autoDeployTrigger: "off"
+    healthCheckPath: /api/ready
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cardfight-staging-db
+          property: connectionString
+      - key: CARDFIGHT_AUTH_ADMISSION_HOLD
+        value: "true"
+      - key: CARDFIGHT_AUTH_ISSUER
+        sync: false
+      - key: CARDFIGHT_AUTH_CLIENT_ID
+        sync: false
+      - key: CARDFIGHT_AUTH_CLIENT_SECRET
+        sync: false
+      - key: CARDFIGHT_AUTH_TRANSACTION_KEY
+        generateValue: true
+      - key: CARDFIGHT_AUTH_RESTORE_EPOCH
+        generateValue: true
+      - key: CARD_IMAGE_ANALYZER_PROVIDER
+        value: mock
+
+databases:
+  - name: cardfight-staging-db
+    plan: free
+    region: ohio
+    postgresMajorVersion: "18"
+    databaseName: cardfight_staging
+    ipAllowList: []

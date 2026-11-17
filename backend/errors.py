@@ -43,12 +43,25 @@ def json_object(*, force: bool = False) -> dict:
     return payload
 
 
+def log_api_exception(message: str, error: Exception) -> None:
+    if current_app.config["AUTH_MODE"] == "local":
+        current_app.logger.exception(message)
+        return
+
+    # Driver and provider exception text can contain credentials or records,
+    # even when SQLAlchemy hides bound parameters. Route rules omit path values.
+    route = request.url_rule.rule if request.url_rule else "unmatched route"
+    current_app.logger.error(
+        "%s for %s %s (%s)", message, request.method, route, type(error).__name__
+    )
+
+
 def rollback_session() -> None:
     """Release a failed transaction without replacing the original API error."""
     try:
         db.session.rollback()
-    except Exception:
-        current_app.logger.exception("Could not roll back the API transaction")
+    except Exception as error:
+        log_api_exception("Could not roll back the API transaction", error)
         db.session.remove()
 
 
@@ -77,5 +90,5 @@ def register_api_errors(app) -> None:
             response.content_type = "application/json"
             return response
 
-        current_app.logger.exception("Unexpected API failure")
+        log_api_exception("Unexpected API failure", error)
         return error_response("internal server error", 500)

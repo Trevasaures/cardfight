@@ -6,6 +6,7 @@ from backend.errors import (
     ValidationError,
     error_response,
     json_object,
+    log_api_exception,
     rollback_session,
 )
 from backend.services.cards import (
@@ -183,8 +184,8 @@ def update_card_printing_route(printing_id):
 def analyze_card_image_route():
     try:
         result = analyze_card_image(request.files.get("image"))
-    except AuthenticationError:
-        current_app.logger.exception("Card image analysis authentication failed")
+    except AuthenticationError as exc:
+        log_api_exception("Card image analysis authentication failed", exc)
         if current_app.config["AUTH_MODE"] != "local":
             return error_response("Card image analysis provider is unavailable.", 502)
         return error_response(
@@ -192,7 +193,7 @@ def analyze_card_image_route():
             401,
         )
     except RateLimitError as exc:
-        current_app.logger.exception("Card image analysis quota/rate limit failed")
+        log_api_exception("Card image analysis quota/rate limit failed", exc)
 
         error_code = None
         try:
@@ -217,8 +218,8 @@ def analyze_card_image_route():
             ),
             429,
         )
-    except APIError:
-        current_app.logger.exception("Card image analysis API failed")
+    except APIError as exc:
+        log_api_exception("Card image analysis API failed", exc)
         return error_response(
             "Card image analysis provider is unavailable. Try again later.", 502
         )

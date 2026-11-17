@@ -308,6 +308,136 @@ def test_hosted_entrypoint_enforces_public_host(configured_hosted_app, monkeypat
         assert wrong_host.get_json()["code"] == "origin_denied"
 
 
+@pytest.fixture()
+def hosted_frontend(configured_hosted_app, monkeypatch, tmp_path):
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "nations").mkdir()
+    (dist / "index.html").write_text("<html>Cardfight SPA</html>", encoding="utf-8")
+    (dist / "assets" / "index-AbCD_123.js").write_text("/* chunk */", encoding="utf-8")
+    (dist / "nations" / "stoicheia.png").write_bytes(b"artwork")
+    (dist / ".private").write_bytes(b"hidden")
+    (tmp_path / "private.txt").write_bytes(b"outside build")
+    monkeypatch.setenv("CARDFIGHT_AUTH_MODE", "oidc")
+    monkeypatch.setenv("CARDFIGHT_FRONTEND_DIST", str(dist))
+    application = runpy.run_module("backend.hosted")["app"]
+    return application.test_client(), configured_hosted_app.config["AUTH_PUBLIC_ORIGIN"], dist
+
+
+def test_hosted_frontend_serves_the_shell_and_revalidates_public_assets(hosted_frontend):
+    client, origin, _ = hosted_frontend
+    for path in ("/", "/sign-in", "/decks/12", "/index.html"):
+        response = client.get(path, base_url=origin)
+        assert response.status_code == 200
+        assert response.mimetype == "text/html"
+        assert response.get_data(as_text=True) == "<html>Cardfight SPA</html>"
+        assert response.cache_control.no_cache
+    assert client.head("/decks/12", base_url=origin).get_data() == b""
+
+    response = client.get("/nations/stoicheia.png", base_url=origin)
+    assert response.get_data() == b"artwork"
+    assert response.mimetype == "image/png"
+    assert response.cache_control.no_cache
+
+    chunk = "/assets/index-AbCD_123.js"
+    response = client.get(chunk, base_url=origin)
+    assert response.get_data() == b"/* chunk */"
+    assert response.cache_control.max_age == 31_536_000
+    assert response.cache_control.public
+    assert response.cache_control.immutable
+    assert client.get(
+        chunk, base_url=origin, headers={"If-None-Match": response.headers["ETag"]}
+    ).status_code == 304
+
+
+def test_hosted_frontend_keeps_backend_errors_and_host_validation(hosted_frontend):
+    client, origin, _ = hosted_frontend
+    response = client.get("/api/decks", base_url=origin)
+    assert response.status_code == 401
+    assert response.get_json()["code"] == "auth_required"
+    assert response.cache_control.no_store
+    assert client.get("/api/health", base_url=origin).is_json
+    assert client.get("/auth/missing", base_url=origin).status_code == 404
+    assert client.get("/auth/start", base_url=origin).status_code == 405
+    assert client.post("/auth/callback", base_url=origin).status_code == 405
+    assert client.post("/join", base_url=origin).status_code == 405
+    assert client.post("/decks", base_url=origin).status_code == 404
+
+    response = client.get(
+        "/decks",
+        base_url="https://untrusted.example",
+        headers={"X-Forwarded-Host": "cardfight.example"},
+    )
+    assert response.status_code == 403
+    assert response.get_json()["code"] == "origin_denied"
+
+
+def test_hosted_frontend_leaves_the_invitation_and_login_routes_active(hosted_frontend):
+    client, origin, _ = hosted_frontend
+    with client.application.app_context():
+        db.create_all()
+        token, _ = make_invitation()
+        response = client.get("/join", base_url=origin, query_string={"invitation": token})
+        assert response.status_code == 302
+        assert response.location == "/sign-in"
+
+        response = start_login(client, return_to="/decks")
+        state = parse_qs(urlsplit(response.location).query)["state"][0]
+        response = finish_login(client, state)
+        assert response.status_code == 302
+        assert response.location == "/decks"
+        assert cookie_from(response)["secure"]
+        assert session_state(client)["authenticated"] is True
+        assert client.get("/decks", base_url=origin).mimetype == "text/html"
+
+
+def test_hosted_frontend_rejects_missing_assets_and_traversal(hosted_frontend):
+    client, origin, _ = hosted_frontend
+    for path in (
+        "/assets/missing",
+        "/nations/missing",
+        "/favicon.ico",
+        "/.private",
+        "/%2e%2e/private.txt",
+        "/assets/%2e%2e/%2e%2e/private.txt",
+        "/assets/%2e%2e%5c%2e%2e%5cprivate.txt",
+    ):
+        response = client.get(path, base_url=origin)
+        assert response.status_code == 404, path
+        assert response.is_json
+
+
+def test_hosted_frontend_rejects_symlinks_outside_the_build(hosted_frontend):
+    client, origin, dist = hosted_frontend
+    try:
+        (dist / "assets" / "outside.txt").symlink_to(dist.parent / "private.txt")
+    except (OSError, NotImplementedError):
+        pytest.skip("This environment cannot create a symbolic link.")
+    assert client.get("/assets/outside.txt", base_url=origin).status_code == 404
+
+
+def test_hosted_entrypoint_omits_frontend_without_a_configured_build(
+    configured_hosted_app, monkeypatch
+):
+    monkeypatch.setenv("CARDFIGHT_AUTH_MODE", "oidc")
+    monkeypatch.delenv("CARDFIGHT_FRONTEND_DIST", raising=False)
+    application = runpy.run_module("backend.hosted")["app"]
+    result = application.test_client().get(
+        "/", base_url=configured_hosted_app.config["AUTH_PUBLIC_ORIGIN"]
+    )
+    assert result.status_code == 404
+    assert result.is_json
+
+
+def test_hosted_entrypoint_rejects_a_configured_build_without_an_index(
+    configured_hosted_app, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("CARDFIGHT_AUTH_MODE", "oidc")
+    monkeypatch.setenv("CARDFIGHT_FRONTEND_DIST", str(tmp_path))
+    with pytest.raises(ValueError, match="CARDFIGHT_FRONTEND_DIST"):
+        runpy.run_module("backend.hosted")
+
+
 @pytest.mark.parametrize(
     "origin", ["http://0.0.0.0", "http://192.0.2.10", "https://cardfight.example"]
 )

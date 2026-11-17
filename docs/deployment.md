@@ -61,6 +61,9 @@ SQLite file.
 
 ## Hosted API
 
+For a first staging deployment of the built frontend and API together, follow
+the [hosted staging runbook](staging.md).
+
 Set `DATABASE_URL` to your hosted PostgreSQL 18 database and initialize its
 schema. Configure the provider and HTTPS public origin before starting the
 hosted entry point. [Authentication setup](authentication-setup.md)

@@ -504,7 +504,7 @@ def init_auth(app):
         # identity memoization must still never cross browser/request boundaries.
         for key in ("auth_session", "auth_account", "auth_invalid", "account_context"):
             g.pop(key, None)
-        if request.path in {"/health", "/api/health"}:
+        if request.path in {"/health", "/api/health", "/ready", "/api/ready"}:
             return None
         try:
             host = urlsplit("//" + request.host).hostname
