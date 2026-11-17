@@ -3,14 +3,13 @@ import re
 from flask import Flask, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
+from sqlalchemy.engine import make_url
 
-from backend.config import PROJECT_ROOT, default_config
+from backend.config import PROJECT_ROOT, default_config, environment_int
 from backend.auth import init_auth
-from backend import (
-    auth_models,
-)  # Register additive identity metadata; never create it here.
 from backend.database import db
 from backend.errors import register_api_errors
+from backend.postgres import PG_CONNECTION_ARGS
 from backend.routes import all_blueprints
 from backend.schema import ensure_schema_current
 
@@ -26,6 +25,18 @@ def create_app(config=None):
     app.json.sort_keys = False
     (PROJECT_ROOT / "instance").mkdir(exist_ok=True)
 
+    url = make_url(app.config["SQLALCHEMY_DATABASE_URI"])
+    if url.get_backend_name() == "postgresql":
+        if url.drivername != "postgresql+psycopg" or not url.database or not url.username:
+            raise ValueError("Use a postgresql+psycopg DATABASE_URL with a database and username.")
+        options = app.config.get("SQLALCHEMY_ENGINE_OPTIONS", {})
+        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+            "pool_size": environment_int("CARDFIGHT_DB_POOL_SIZE", 5, minimum=1),
+            "max_overflow": environment_int("CARDFIGHT_DB_MAX_OVERFLOW", 5, minimum=0),
+            "pool_pre_ping": True,
+            **options,
+            "connect_args": {**options.get("connect_args", {}), **PG_CONNECTION_ARGS},
+        }
     db.init_app(app)
     # Flask-CORS accepts regexes; compile escaped full matches so configuration
     # remains a list of literal origins, including IPv6 addresses.

@@ -22,37 +22,6 @@ No tenant or credentials are included. Automated tests use a controlled provider
 adapter and signed test tokens. Real Google authorization, email delivery, tenant
 policies, and reverse-proxy cookies still require the staging checks below.
 
-## Preserve the existing database first
-
-Stop application writers and create a checkpoint with the project environment:
-
-```powershell
-python -m backend.backup create
-python -m backend.migrate rehearse "C:/path/to/your/backups/BACKUP.sqlite3"
-```
-
-Use the actual returned backup filename. Rehearsal restores a disposable copy,
-applies the complete migration chain, checks all old stored values, and verifies
-the application and artwork. It never upgrades the source database.
-
-For initial identity testing, restore to a **new** filename and point the local
-server at that copy using an absolute `DATABASE_URL`:
-
-```powershell
-python -m backend.backup restore "C:/path/to/your/backups/BACKUP.sqlite3" --destination "C:/Users/you/AppData/Local/Cardfight/auth-test/cardfight.db" --for-ownership
-```
-
-Use `python -m backend.migrate status` after selecting that file. If it reports
-`unversioned`, run `python -m backend.migrate baseline`; if `pending`, run
-`python -m backend.migrate upgrade`. Existing files receive another verified
-checkpoint and rehearsal before upgrading. Never seed as part of migration or
-recovery. Revision `0002_identity` creates seven empty identity tables and leaves
-all legacy workspace values and IDs unchanged. Revision `0003_ownership`
-adds the owner references. On Windows, use `-DatabasePath` with the migrated
-copy to start the API and frontend against that file. Add `-Fresh` for a local
-restart without sign-in. Use regular startup with the OIDC development
-settings below to test account access.
-
 ## Create a development identity provider
 
 1. Create an Auth0 development tenant and a **Regular Web Application** named
@@ -130,6 +99,66 @@ reverse proxy, that is an aggregate application limit (20 login starts per
 minute). Configure additional client limits at the edge for a public deployment;
 do not enable blanket trust of forwarded headers to obtain client addresses.
 
+## Test sign-in on loopback
+
+Follow [PostgreSQL setup](database-migrations.md#initialize-postgresql) to create
+a separate empty database named `cardfight_auth_test` with its own login role,
+`cardfight_auth_test`. Create a password-file entry for that database and role.
+Keep the provider settings in the ignored `.env` and select the test database
+through environment variables in a dedicated PowerShell terminal. Run these
+commands from the checkout with the project's virtual environment active.
+
+```powershell
+$env:DATABASE_URL = "postgresql+psycopg://cardfight_auth_test@127.0.0.1:5432/cardfight_auth_test"
+$env:CARDFIGHT_AUTH_MODE = "oidc-dev"
+$env:CARDFIGHT_AUTH_PUBLIC_ORIGIN = "http://127.0.0.1:5173"
+$env:CARDFIGHT_AUTH_ADMISSION_HOLD = "false"
+
+python -m backend.postgres upgrade
+if ($LASTEXITCODE -ne 0) { throw "Cardfight could not initialize the test database." }
+python -m backend.postgres status --require-current
+if ($LASTEXITCODE -ne 0) { throw "The test database is not ready." }
+python -m backend.auth_admin invite --email "your-verified-email@example.com"
+if ($LASTEXITCODE -ne 0) { throw "Cardfight could not create the test invitation." }
+.\start.ps1
+```
+
+Stop any prior Cardfight services using ports 5000 or 5173 before launching.
+Use regular startup for sign-in testing. `-Fresh` starts the local lab without
+sign-in.
+
+Open the private invitation URL printed by the command and sign in with the
+matching email. Use the same sign-in method on later visits. To test both methods,
+create a separate invitation for a different verified email address and test it
+in another browser profile. Use `http://127.0.0.1:5173/api/auth/session` in each
+signed-in browser to check that its `account.id` stays the same on repeat sign-in.
+
+For existing SQLite workspace records, use a verified copy and follow the
+transfer and owner assignment steps. [Legacy recovery guide](legacy-sqlite-recovery.md)
+
+### Run the API and frontend in separate terminals
+
+Use the same test settings in the API terminal.
+
+```powershell
+waitress-serve --host=127.0.0.1 --port=5000 backend.app:app
+```
+
+```powershell
+cd frontend-web
+npm ci
+npm run dev
+```
+
+Open `http://127.0.0.1:5173` consistently. Vite proxies `/api`, `/auth` and `/join`
+to Flask. Mixing `localhost` with `127.0.0.1` changes the origin and cookie scope.
+Leave `VITE_CARDFIGHT_API_URL` unset for authentication.
+
+The Windows `start.ps1` launcher uses the same proxies and prints the configured
+development origin. Restart an older Vite process after updating the launcher or
+client so it picks up the current API address. Startup checks for occupied ports
+and validates the selected schema. Run migrations explicitly before starting.
+
 ## Create admission records explicitly
 
 The operator commands run on the trusted server console; they do not call an
@@ -153,78 +182,6 @@ successful, browser-bound login with the invited verified email can accept it.
 After reviewing all initial admission records, set
 `CARDFIGHT_AUTH_ADMISSION_HOLD=false` and restart the server for sign-in testing.
 On a test copy, admitted accounts can now open their own workspaces.
-
-### Assign your existing workspace on the test copy
-
-Keep the provider settings in the ignored `.env` file and use a dedicated
-PowerShell terminal for the test database and sign-in mode. Run these commands
-from the Cardfight checkout after restoring and upgrading the test copy.
-
-```powershell
-$copy = Join-Path $env:LOCALAPPDATA "Cardfight\auth-test\cardfight.db"
-$python = ".\.venv\Scripts\python.exe"
-$env:DATABASE_URL = "sqlite:///" + $copy.Replace('\', '/')
-$env:CARDFIGHT_AUTH_MODE = "oidc-dev"
-$env:CARDFIGHT_AUTH_PUBLIC_ORIGIN = "http://127.0.0.1:5173"
-$env:CARDFIGHT_AUTH_ADMISSION_HOLD = "false"
-
-& $python -m backend.migrate status --database $copy --require-current
-if ($LASTEXITCODE -ne 0) { throw "The test copy is not ready." }
-& $python -m backend.auth_admin invite --email "your-verified-email@example.com"
-if ($LASTEXITCODE -ne 0) { throw "Cardfight could not create the invitation." }
-.\start.ps1 -DatabasePath $copy
-```
-
-Stop any prior Cardfight services using ports 5000 or 5173 before launching.
-Regular startup uses the sign-in settings above. `-Fresh` selects the local lab
-without sign-in.
-
-Open the private invitation URL printed by the command and sign in with the
-matching email. Use the same sign-in method on later visits. Before creating
-any new decks, matches, or acquisition plans, open
-`http://127.0.0.1:5173/api/auth/session` in the same browser and copy
-`account.id`. That value is the Cardfight account UUID.
-
-```powershell
-$account = "<account.id from the session page>"
-$backupDir = Join-Path (Split-Path -Parent $copy) "backups"
-& $python -m backend.ownership assign-copy --database $copy --account $account --backup-dir $backupDir
-```
-
-The assignment checkpoints the test database, rehearses against a restored
-copy, and assigns the unowned decks, matches, and acquisition plans in one
-transaction. Keep the `.ownership-restore.json` receipt generated by
-`restore --for-ownership` beside that database. The receipt identifies the
-original restored file through upgrades and sign-ins. For a test copy without
-a receipt, checkpoint it and restore that backup to a new path with the flag.
-The selected copy must contain only unowned workspace records. The result
-reports the assigned counts and backup path. Reload Deck Library while signed
-in to see the imported decks.
-
-### Run the API and frontend in separate terminals
-
-Use the same test settings in the API terminal.
-
-```powershell
-waitress-serve --host=127.0.0.1 --port=5000 backend.app:app
-```
-
-```powershell
-cd frontend-web
-npm ci
-npm run dev
-```
-
-Open `http://127.0.0.1:5173` consistently. Vite proxies `/api`, `/auth` and `/join`
-to Flask. Mixing `localhost` with `127.0.0.1` changes the origin and cookie scope.
-Leave `VITE_CARDFIGHT_API_URL` unset for authentication. The default local lab
-continues to work by selecting `local` explicitly.
-
-The Windows `start.ps1` launcher also uses these same-origin proxies and prints
-the configured development origin. Restart an older Vite process after updating
-the launcher/client; the old process may still have the previous absolute API
-address. An occupied port or failed schema check now stops startup rather than
-reporting a service as ready. The launcher applies no automatic migrations.
 
 Account suspension and session revocation are also explicit console operations:
 
@@ -314,7 +271,9 @@ that was suspended after the checkpoint:
 
 1. Stop serving and set `CARDFIGHT_AUTH_ADMISSION_HOLD=true` in deployment state
    outside the backup. Keep serving closed while recovery is in progress.
-2. Restore and verify to a new path, following the [backup runbook](backup-and-restore.md).
+2. Restore and verify to a separate database using the
+   [PostgreSQL recovery instructions](database-migrations.md#back-up-and-restore-postgresql).
+   For a legacy SQLite file, follow the [SQLite backup runbook](backup-and-restore.md).
 3. Generate a new `CARDFIGHT_AUTH_RESTORE_EPOCH` and transaction encryption key
    outside the restored database. Old sessions, pending login transactions and
    invitation context fail against this generation. Rotate compromised provider

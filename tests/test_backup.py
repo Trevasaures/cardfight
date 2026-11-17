@@ -14,6 +14,7 @@ from PIL import Image
 import pytest
 
 from backend import backup as backup_module
+from backend import migrate as migration_module
 from backend.app import create_app
 from backend.backup import (
     BackupError,
@@ -487,6 +488,40 @@ def isolated_backup_configuration(monkeypatch, tmp_path):
     for setting in ("CARDFIGHT_BACKUP_DIR", "LOCALAPPDATA", "XDG_STATE_HOME"):
         monkeypatch.delenv(setting, raising=False)
     return project
+
+
+@pytest.mark.parametrize(
+    "database_url", [None, "postgresql+psycopg://cardfight@127.0.0.1:5432/cardfight"],
+)
+def test_sqlite_commands_do_not_guess_old_local_database(
+    saved_database, isolated_backup_configuration, monkeypatch, tmp_path, capsys,
+    database_url,
+):
+    legacy = isolated_backup_configuration / "instance" / "cardfight.db"
+    legacy.parent.mkdir()
+    legacy.write_bytes(saved_database.read_bytes())
+    before = file_digest(legacy)
+    if database_url is None:
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+    else:
+        monkeypatch.setenv("DATABASE_URL", database_url)
+
+    for module, command, flag in (
+        (backup_module, "create", "--source"),
+        (migration_module, "upgrade", "--database"),
+    ):
+        backup_dir = tmp_path / f"{command} checkpoints"
+        arguments = [command, "--backup-dir", str(backup_dir)]
+        assert module.main(arguments) == 1
+        assert f"Supply {flag} with the legacy SQLite file path." in capsys.readouterr().err
+        assert file_digest(legacy) == before
+        assert not backup_dir.exists()
+
+        # An explicit path still selects the SQLite file in either configuration.
+        assert module.main([*arguments, flag, str(legacy)]) == 0
+        assert file_digest(legacy) == before
+        capsys.readouterr()
+        assert len(list(backup_dir.glob("*.sqlite3"))) == (1 if command == "create" else 0)
 
 
 @pytest.mark.parametrize("platform,use_os_setting", [("win32", True), ("win32", False), ("linux", True), ("linux", False)])

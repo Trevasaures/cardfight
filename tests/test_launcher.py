@@ -12,6 +12,8 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 POWERSHELL = shutil.which("pwsh") or shutil.which("powershell")
 WINDOWS_POWERSHELL = shutil.which("powershell.exe") if sys.platform == "win32" else None
+POSTGRES_TEST_URL = "postgresql+psycopg://test-user:launcher-test-secret@127.0.0.1/cardfight_launcher_test"
+DEFAULT_POSTGRES_URL = "postgresql+psycopg://cardfight@127.0.0.1:5432/cardfight"
 pytestmark = pytest.mark.skipif(POWERSHELL is None, reason="PowerShell is unavailable")
 
 
@@ -28,8 +30,11 @@ if ($probeSource -match 'print\(json.dumps') {
     'http://localhost:5173'
   } else { 'http://127.0.0.1:5173' }
   $mode = if ($global:LauncherTestScenario -eq 'CanonicalOidcOrigin') { 'oidc' } else { 'local' }
-  @{ mode = $mode; origin = $origin; host = ([uri]$origin).Host } | ConvertTo-Json -Compress
-} elseif ($args[0] -eq '-c' -and $args[1] -eq 'import backend.app') {
+  $postgresql = $args[2] -eq 'True' -and $env:DATABASE_URL -match '^postgresql\+psycopg://'
+  @{ mode = $mode; origin = $origin; host = ([uri]$origin).Host; postgresql = $postgresql } | ConvertTo-Json -Compress
+} elseif (($args[0] -eq '-c' -and $args[1] -eq 'import backend.app') -or
+          ($args[0] -eq '-' -and $probeSource -match 'import backend.app')) {
+  if ($args[0] -eq '-') { [void]$global:LauncherTestEvents.Add('python:postgres-preflight') }
   [void]$global:LauncherTestEvents.Add('python:app-preflight')
   $global:LauncherTestPreflightEnvironment = Get-LauncherTestEnvironment
   if ($global:LauncherTestScenario -in @('ApiPreflightFails', 'OwnedPreflightFails')) {
@@ -242,6 +247,7 @@ def run_launcher(tmp_path):
     harness.write_text(HARNESS, encoding="utf-8")
     existing_database = tmp_path / "existing player data.db"
     existing_database.write_bytes(b"existing database sentinel")
+    sqlite_url = f"sqlite:///{existing_database.as_posix()}"
     player_database = workspace / "instance" / "cardfight.db"
     player_database.parent.mkdir()
     player_database.write_bytes(b"personal database sentinel")
@@ -250,13 +256,14 @@ def run_launcher(tmp_path):
     def run(
         scenario="Success", *, unset_parent=False, native_legacy=False,
         fresh=False, frontend_only=False, api_only=False, unset_fresh_env=False,
-        seed=False, database_path=None,
+        seed=False, database_path=None, database_url=None, dotenv_url=None,
+        native_probe=False, postgres_preflight_fails=False,
     ):
         shell = WINDOWS_POWERSHELL if native_legacy else POWERSHELL
         environment = {
             **os.environ,
             "LOCALAPPDATA": str(local_app_data),
-            "DATABASE_URL": f"sqlite:///{existing_database.as_posix()}",
+            "DATABASE_URL": database_url or sqlite_url,
             "CARDFIGHT_AUTH_MODE": "oidc-dev",
             "CARDFIGHT_AUTH_PUBLIC_ORIGIN": "http://localhost:5173",
         }
@@ -288,9 +295,8 @@ def run_launcher(tmp_path):
         if unset_fresh_env:
             for key in ("DATABASE_URL", "CARDFIGHT_AUTH_MODE", "CARDFIGHT_AUTH_PUBLIC_ORIGIN"):
                 environment.pop(key)
-        if native_legacy:
-            # Run the real settings probe with isolated modules and .env. The
-            # frontend-only flag skips the backend app import and its DB checks.
+        if native_legacy or native_probe:
+            # Use the real config parser and an isolated app import with no database connection.
             for directory in (workspace / "backend", workspace / "backend" / "auth"):
                 directory.mkdir()
                 (directory / "__init__.py").touch()
@@ -298,7 +304,23 @@ def run_launcher(tmp_path):
                 shutil.copy2(PROJECT_ROOT / relative, workspace / relative)
             (workspace / ".env").write_text(
                 "CARDFIGHT_AUTH_MODE=oidc-dev\n"
-                "CARDFIGHT_AUTH_PUBLIC_ORIGIN=http://localhost:5173\n",
+                "CARDFIGHT_AUTH_PUBLIC_ORIGIN=http://localhost:5173\n"
+                + (f"DATABASE_URL={dotenv_url}\n" if dotenv_url else ""),
+                encoding="utf-8",
+            )
+            expected_database_url = (
+                database_url
+                or dotenv_url
+                or (DEFAULT_POSTGRES_URL if unset_fresh_env else sqlite_url)
+            )
+            (workspace / "backend" / "app.py").write_text(
+                "import os\n"
+                "from dotenv import load_dotenv\n"
+                "from backend.config import PROJECT_ROOT, default_config\n"
+                'load_dotenv(PROJECT_ROOT / ".env")\n'
+                f'assert default_config()["SQLALCHEMY_DATABASE_URI"] == {expected_database_url!r}\n'
+                f'assert os.environ["CARDFIGHT_AUTH_MODE"] == {("local" if fresh else "oidc-dev")!r}\n'
+                + ('raise RuntimeError(os.environ["DATABASE_URL"])\n' if postgres_preflight_fails else ''),
                 encoding="utf-8",
             )
             environment = {
@@ -306,6 +328,7 @@ def run_launcher(tmp_path):
                 for key, value in environment.items()
                 if not key.startswith("CARDFIGHT_AUTH_")
                 and key != "PYTHON_DOTENV_DISABLED"
+                and not (dotenv_url and not database_url and key == "DATABASE_URL")
             }
             command.extend(["-PythonExecutable", sys.executable])
         completed = subprocess.run(
@@ -318,6 +341,7 @@ def run_launcher(tmp_path):
             check=False,
         )
         assert completed.returncode == 0, completed.stdout + completed.stderr
+        assert "launcher-test-secret" not in completed.stderr
         output = next(
             (
                 line.removeprefix("LAUNCHER_TEST_RESULT=")
@@ -445,7 +469,7 @@ def test_invalid_launch_configuration_starts_nothing(run_launcher):
     assert not any(event.startswith("port:") for event in result["events"])
 
 
-def test_fresh_restarts_owned_services_with_existing_local_database(run_launcher, tmp_path):
+def test_fresh_restarts_owned_services_with_explicit_sqlite_database(run_launcher):
     result = run_launcher("OwnedBoth", fresh=True)
     assert result["ok"], result["error"]
     assert [start["kind"] for start in result["starts"]] == ["api", "frontend"]
@@ -455,10 +479,9 @@ def test_fresh_restarts_owned_services_with_existing_local_database(run_launcher
         assert events.index("python:app-preflight") < events.index(f"stop:{process_id}")
         assert events.index(f"stop:{process_id}") < events.index("start:api")
 
-    database = tmp_path / "isolated launcher" / "instance" / "cardfight.db"
     api, frontend = result["starts"]
     assert api["environment"] == result["preflight_environment"] == {
-        "database_url": f"sqlite:///{database.as_posix()}",
+        "database_url": result["environment_before"]["database_url"],
         "auth_mode": "local",
         "auth_origin": "http://127.0.0.1:5173",
     }
@@ -471,26 +494,94 @@ def test_fresh_restarts_owned_services_with_existing_local_database(run_launcher
 
 
 @pytest.mark.parametrize("fresh", [False, True])
+def test_configured_postgres_is_inherited_by_the_api(run_launcher, fresh):
+    result = run_launcher(
+        "OwnedBoth" if fresh else "Success", fresh=fresh, database_url=POSTGRES_TEST_URL,
+    )
+    assert result["ok"], result["error"]
+    api, frontend = result["starts"]
+    assert api["environment"] == result["preflight_environment"]
+    assert api["environment"]["database_url"] == POSTGRES_TEST_URL
+    assert api["environment"]["auth_mode"] == ("local" if fresh else "oidc-dev")
+    assert ("--force" in " ".join(frontend["arguments"])) is fresh
+    assert result["environment_after"] == result["environment_before"]
+    assert "python:postgres-preflight" in result["events"]
+    assert "launcher-test-secret" not in " ".join(result["events"])
+
+
+@pytest.mark.parametrize("fresh", [False, True])
+def test_configured_postgres_in_root_dotenv_is_loaded_without_exporting_the_url(run_launcher, fresh):
+    result = run_launcher(native_probe=True, fresh=fresh, dotenv_url=POSTGRES_TEST_URL)
+    assert result["ok"], result["error"]
+    assert [start["kind"] for start in result["starts"]] == ["api", "frontend"]
+    assert result["starts"][0]["environment"]["database_url"] is None
+    assert result["environment_after"] == result["environment_before"]
+    assert "launcher-test-secret" not in " ".join(result["events"])
+
+
+def test_fresh_keeps_sqlite_configured_in_dotenv(run_launcher, tmp_path):
+    database = tmp_path / "existing player data.db"
+    result = run_launcher(
+        native_probe=True, fresh=True, api_only=True,
+        dotenv_url=f'sqlite:///{database.as_posix()}',
+    )
+    assert result["ok"], result["error"]
+    assert [start["kind"] for start in result["starts"]] == ["api"]
+    assert result["starts"][0]["environment"]["database_url"] is None
+    assert result["environment_after"] == result["environment_before"]
+
+
+def test_postgres_preflight_error_keeps_credentials_private_and_services_running(run_launcher):
+    result = run_launcher(
+        "OwnedBoth", fresh=True, native_probe=True,
+        database_url=POSTGRES_TEST_URL, dotenv_url="sqlite:///other-copy.db",
+        postgres_preflight_fails=True,
+    )
+    assert result["ok"] is False
+    assert "backend.postgres status --require-current" in result["error"]
+    assert "launcher-test-secret" not in result["error"]
+    assert not result["starts"] and not result["stopped"]
+    assert result["environment_after"] == result["environment_before"]
+
+
+def test_invalid_postgres_url_fails_before_checking_ports_or_printing_credentials(run_launcher):
+    invalid_url = POSTGRES_TEST_URL.replace("127.0.0.1/", "127.0.0.1:invalid-port/")
+    result = run_launcher("OwnedBoth", fresh=True, native_probe=True, database_url=invalid_url)
+    assert result["ok"] is False
+    assert "Invalid launcher configuration" in result["error"]
+    assert not result["starts"] and not result["stopped"]
+    assert not any(event.startswith("port:") for event in result["events"])
+
+
+@pytest.mark.parametrize("fresh", [False, True])
 def test_database_path_selects_existing_copy_and_restores_environment(
     run_launcher, tmp_path, fresh
 ):
     copy = tmp_path / "restored workspace.db"
     copy.write_bytes(b"disposable workspace")
-    result = run_launcher(fresh=fresh, api_only=True, database_path=copy)
+    result = run_launcher(fresh=fresh, api_only=True, database_path=copy, database_url=POSTGRES_TEST_URL)
     assert result["ok"] is True
     expected = "sqlite:///" + copy.as_posix()
     assert result["preflight_environment"]["database_url"] == expected
     assert result["starts"][0]["environment"]["database_url"] == expected
     assert result["environment_after"] == result["environment_before"]
+    assert "python:postgres-preflight" not in result["events"]
     assert copy.read_bytes() == b"disposable workspace"
 
 
-def test_fresh_api_only_restores_initially_unset_environment(run_launcher):
-    result = run_launcher("OwnedBoth", fresh=True, api_only=True, unset_fresh_env=True)
+def test_fresh_api_only_uses_postgres_default_and_restores_unset_environment(run_launcher):
+    result = run_launcher(
+        "OwnedBoth", fresh=True, api_only=True, unset_fresh_env=True, native_probe=True,
+    )
     assert result["ok"], result["error"]
     assert [start["kind"] for start in result["starts"]] == ["api"]
     assert [stopped["id"] for stopped in result["stopped"]] == [65011]
     assert "port:5173" not in result["events"]
+    assert result["starts"][0]["environment"] == {
+        "database_url": None,
+        "auth_mode": "local",
+        "auth_origin": "http://127.0.0.1:5173",
+    }
     assert result["environment_before"] == result["environment_after"] == {
         "database_url": None, "auth_mode": None, "auth_origin": None,
     }

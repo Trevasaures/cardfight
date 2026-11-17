@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_DATABASE_URL = "postgresql+psycopg://cardfight@127.0.0.1:5432/cardfight"
 LOCAL_FRONTEND_ORIGINS = (
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -52,10 +53,7 @@ def frontend_origins():
 def default_config():
     return {
         "DEBUG": False,
-        "SQLALCHEMY_DATABASE_URI": os.getenv(
-            "DATABASE_URL",
-            f"sqlite:///{(PROJECT_ROOT / 'instance/cardfight.db').as_posix()}",
-        ),
+        "SQLALCHEMY_DATABASE_URI": os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL),
         "SQLALCHEMY_TRACK_MODIFICATIONS": False,
         "CORS_ORIGINS": frontend_origins(),
         # Local mode is intentionally single-user and loopback-only. OIDC modes
@@ -91,3 +89,16 @@ def environment_bool(name, default):
     if value.lower() not in {"true", "false"}:
         raise ValueError(f"{name} must be true or false")
     return value.lower() == "true"
+
+
+def environment_int(name, default, *, minimum):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        result = int(value)
+        if result >= minimum:
+            return result
+    except ValueError:
+        pass
+    raise ValueError(f"{name} must be an integer of at least {minimum}.")

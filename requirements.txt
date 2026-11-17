@@ -32,6 +32,8 @@ mako==1.4.3
 markupsafe==3.0.4
 openai==2.44.0
 pillow==13.0.0
+psycopg==3.3.9
+psycopg-binary==3.3.9
 pycparser==3.12
 pydantic==2.14.1
 pydantic-core==2.50.1
