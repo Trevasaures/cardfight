@@ -12,10 +12,12 @@ staging. See the [identity design](adr/0001-identity-and-access.md).
 
 ## Local API
 
-Install the version-pinned runtime lock in a virtual environment:
+Install the runtime dependencies in a virtual environment and initialize
+the database before starting the service.
 
 ```sh
 python -m pip install -r requirements.txt
+python -m backend.postgres upgrade
 waitress-serve --host=127.0.0.1 --port=5000 backend.app:app
 ```
 
@@ -23,10 +25,45 @@ Waitress supports Windows and Unix. This command runs on loopback with debug
 disabled. The Windows `start.ps1` launcher uses the same local entry point and
 starts Vite on the configured loopback origin.
 
+## Database readiness
+
+PostgreSQL 18 is the default database. Create it first, run
+`python -m backend.postgres upgrade`, and confirm readiness with
+`python -m backend.postgres status --require-current`. Startup validates
+the selected schema and revision read-only. [PostgreSQL setup](database-migrations.md#initialize-postgresql)
+
+Use the [legacy recovery guide](legacy-sqlite-recovery.md) to open, verify,
+or transfer an existing SQLite workspace.
+
+### PostgreSQL smoke test
+
+Set `DATABASE_URL` to the separate PostgreSQL 18 rehearsal database and use the
+[PostgreSQL initialization steps](database-migrations.md#initialize-postgresql).
+After the readiness check succeeds, run the API in the same PowerShell terminal.
+
+```powershell
+$env:CARDFIGHT_AUTH_MODE = "local"
+waitress-serve --host=127.0.0.1 --port=5000 backend.app:app
+```
+
+Use a free loopback port if another API instance is already running. From
+another PowerShell terminal, check that the API responds and that the new,
+unseeded database has an empty deck list.
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:5000/api/health | Select-Object -ExpandProperty Content
+Invoke-WebRequest http://127.0.0.1:5000/api/decks | Select-Object -ExpandProperty Content
+```
+
+`.\start.ps1 -Fresh` restarts the loopback lab using the selected database
+and rebuilds the frontend cache. `-DatabasePath` explicitly selects an existing
+SQLite file.
+
 ## Hosted API
 
-Configure the provider and HTTPS public origin, then start the hosted entry
-point. [Authentication setup](authentication-setup.md)
+Set `DATABASE_URL` to your hosted PostgreSQL 18 database and initialize its
+schema. Configure the provider and HTTPS public origin before starting the
+hosted entry point. [Authentication setup](authentication-setup.md)
 
 ```sh
 CARDFIGHT_AUTH_MODE=oidc waitress-serve --host=127.0.0.1 --port=5000 backend.hosted:app
@@ -34,22 +71,10 @@ CARDFIGHT_AUTH_MODE=oidc waitress-serve --host=127.0.0.1 --port=5000 backend.hos
 
 `backend.hosted:app` requires `CARDFIGHT_AUTH_MODE=oidc` before serving requests.
 
-Hosted SQLite startup rejects custom triggers and requires custom unique indexes
-on private tables to include the account owner, owning parent, or row ID in the
-index key with `BINARY` collation. The startup check also applies to `oidc-dev`.
-Review reported custom schema objects on a separate restored copy. Local startup
-and the migration tools retain supported custom objects.
 Startup also validates the HTTPS origin and complete OIDC settings. Keep the
-upstream listener reachable only by the HTTPS reverse proxy.
-
-Persistent databases must be initialized or upgraded explicitly before launching
-the WSGI process. For a new database use `python -m backend.migrate upgrade`;
-existing unversioned data first uses `python -m backend.migrate baseline`.
-Stop all writers before either command. Existing data receives a verified backup
-and disposable upgrade rehearsal before migration. Gate startup/deployment with
-`python -m backend.migrate status --require-current`. Startup itself performs
-read-only schema checks and never applies upgrades. Follow the
-[migration runbook](database-migrations.md) for recovery and legacy support.
+upstream listener reachable only by the HTTPS reverse proxy. Use a separate
+staging database and verify sign-in and account isolation there before enabling
+admission on the hosted service.
 
 ## Frontend
 
@@ -75,8 +100,14 @@ the Host validation and cannot establish that the auth routes are reachable.
 
 ## Configuration and data
 
-- `DATABASE_URL` selects the SQLAlchemy database. SQLite remains the default;
-  keep `instance/cardfight.db` and back it up before changing deployment or schema.
+- `DATABASE_URL` selects the database. The default development URL is
+  `postgresql+psycopg://cardfight@127.0.0.1:5432/cardfight`. For a remote
+  server, use certificate and hostname verification with `sslmode=verify-full`
+  and the server's trusted CA configuration. Supply database credentials
+  through the service's secret configuration or PostgreSQL password file.
+- `CARDFIGHT_DB_POOL_SIZE` and `CARDFIGHT_DB_MAX_OVERFLOW` tune the PostgreSQL
+  connection pool per API process. Size the total across processes for the
+  database connection budget. The pool checks connections before reuse.
 - `CARDFIGHT_CORS_ORIGINS` accepts comma-separated literal HTTP(S) frontend
   origins. Its default contains localhost/127.0.0.1 on ports 5173 and 4173. Set it
   to your frontend's exact origin for local tooling. Local API writes accept
@@ -93,29 +124,11 @@ remain in server logs. The local launcher writes logs under `instance/`.
 
 ## Backups and recovery
 
-Before changing hosting, dependencies that affect stored data, or database schema,
-create a SQLite checkpoint and verify a disposable restored copy with the matching
-application version:
-
-```sh
-python -m backend.backup create
-python -m backend.backup verify "C:/path/to/your/backups/BACKUP.sqlite3" --app-check
-```
-
-Use the full backup path returned by `create`. Set `CARDFIGHT_BACKUP_DIR` to an
-absolute directory outside the checkout, such as your OneDrive backup folder;
-without it, backups use the per-user application-data directory. Migration
-checkpoints use the same destination. Each database must remain beside its
-`.manifest.json` file. The online backup includes committed WAL data, but stop
-application writes for the final pre-upgrade or cutover checkpoint. Keep a
-verified copy off the machine. Backup scheduling, retention, and cloud copies
-require separate configuration.
-
-Restore to a new path, then switch `DATABASE_URL` after stopping the app; the
-restore command refuses to overwrite an existing target or its sidecars. Follow
-the [backup and recovery runbook](backup-and-restore.md) for retention, verification
-gates, compatible-code rehearsal, and rollback after a failed upgrade. Do not
-reseed as a recovery step.
+Keep a PostgreSQL archive outside the checkout and verify its restore in a
+separate database before schema changes or cutover. Use the
+[PostgreSQL backup and restore commands](database-migrations.md#back-up-and-restore-postgresql).
+For a SQLite file or its checkpoint, see the
+[legacy recovery and transfer guide](legacy-sqlite-recovery.md).
 
 ## Checks before release
 

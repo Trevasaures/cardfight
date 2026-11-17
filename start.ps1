@@ -1,8 +1,8 @@
 <#
 Starts the local Flask application with Waitress and the React development server.
 Use -DevDebug explicitly for Flask's debugger/reloader in local mode only.
-Use -Fresh to restart the local lab with a rebuilt Vite cache and the usual SQLite database.
-Use -DatabasePath to select an existing SQLite file, such as a restored test copy.
+Use -Fresh to restart in local mode with a rebuilt Vite cache and the selected database.
+Use -DatabasePath for a legacy SQLite database, such as a restored test copy.
 Logs go to instance/, and both services stay in hidden background processes.
 #>
 param(
@@ -36,36 +36,54 @@ $pythonExecutable = if (Test-Path -LiteralPath $projectPython) {
 }
 $logDirectory = Join-Path $PSScriptRoot "instance"
 
-if ($Fresh) {
-  $launchSettings = @{ mode = "local"; origin = "http://127.0.0.1:5173"; host = "127.0.0.1" }
-} else {
-  # Read only non-secret launch metadata before checking database readiness.
-  $launchSettingsCode = @'
+# Read only non-secret launch metadata before checking database readiness.
+$launchSettingsCode = @'
 import json
+import os
+import sys
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 from dotenv import load_dotenv
-from backend.config import PROJECT_ROOT, default_config
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
+from backend.config import DEFAULT_DATABASE_URL, PROJECT_ROOT, default_config
 from backend.auth.settings import AuthSettings
+
 load_dotenv(PROJECT_ROOT / ".env")
-settings = AuthSettings.from_app(SimpleNamespace(config=default_config()))
-if settings.mode == "oidc":
-    raise SystemExit("start.ps1 is a loopback development launcher; use the hosting runbook for production OIDC.")
-origin = settings.origin if settings.mode == "oidc-dev" else "http://127.0.0.1:5173"
+fresh, use_configured_db = (value == "True" for value in sys.argv[1:])
+postgresql = False
+if use_configured_db:
+    try:
+        backend = make_url(os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)).get_backend_name()
+    except (ArgumentError, ValueError):
+        raise SystemExit("Check the configured DATABASE_URL format.") from None
+    if backend not in {"sqlite", "postgresql"}:
+        raise SystemExit("Cardfight supports SQLite and PostgreSQL databases.")
+    postgresql = backend == "postgresql"
+
+mode = "local"
+origin = "http://127.0.0.1:5173"
+if not fresh:
+    settings = AuthSettings.from_app(SimpleNamespace(config=default_config()))
+    if settings.mode == "oidc":
+        raise SystemExit("start.ps1 is a loopback development launcher; use the hosting runbook for production OIDC.")
+    if settings.mode == "oidc-dev":
+        mode = "oidc"
+        origin = settings.origin
 parsed = urlsplit(origin)
 if parsed.scheme != "http" or parsed.port != 5173:
     raise SystemExit("The development frontend requires an HTTP loopback origin on port 5173.")
-print(json.dumps({"mode": "local" if settings.mode == "local" else "oidc", "origin": origin, "host": parsed.hostname}))
+print(json.dumps({"mode": mode, "origin": origin, "host": parsed.hostname, "postgresql": postgresql}))
 '@
-  Push-Location -LiteralPath $PSScriptRoot
-  try {
-    # Standard input preserves Python's quotes in Windows PowerShell 5.1.
-    $launchSettingsJson = $launchSettingsCode | & $pythonExecutable -
-    if ($LASTEXITCODE -ne 0) { throw "Invalid launcher configuration. No services were started." }
-    $launchSettings = $launchSettingsJson | ConvertFrom-Json
-  } finally {
-    Pop-Location
-  }
+$useConfiguredDatabase = -not ($DatabasePath -or $FrontendOnly)
+Push-Location -LiteralPath $PSScriptRoot
+try {
+  # Standard input preserves Python's quotes in Windows PowerShell 5.1.
+  $launchSettingsJson = $launchSettingsCode | & $pythonExecutable - $Fresh.IsPresent.ToString() $useConfiguredDatabase.ToString()
+  if ($LASTEXITCODE -ne 0) { throw "Invalid launcher configuration. No services were started." }
+  $launchSettings = $launchSettingsJson | ConvertFrom-Json
+} finally {
+  Pop-Location
 }
 
 function Get-PortOwners([int]$Port) {
@@ -142,8 +160,7 @@ foreach ($port in $ports) {
 $previousLaunchEnvironment = @{}
 try {
   $launchEnvironment = @{}
-  if ($Fresh -or $DatabasePath) {
-    if (-not $DatabasePath) { $DatabasePath = Join-Path $logDirectory "cardfight.db" }
+  if ($DatabasePath) {
     if (-not (Test-Path -LiteralPath $DatabasePath -PathType Leaf)) {
       throw "The SQLite database was not found at $DatabasePath. No services were restarted."
     }
@@ -165,9 +182,23 @@ try {
     try {
       # Validate the selected schema read-only before starting either service.
       if (-not $FrontendOnly) {
-        & $pythonExecutable -c "import backend.app"
-        if ($LASTEXITCODE -ne 0) {
-          throw "API readiness check failed before startup or restart. To test a migrated copy, use -DatabasePath."
+        if ($launchSettings.postgresql) {
+          # Connection errors can include details from the configured URL.
+          $postgresPreflightCode = @'
+try:
+    import backend.app
+except Exception:
+    raise SystemExit(1) from None
+'@
+          $postgresPreflightCode | & $pythonExecutable - | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            throw "PostgreSQL API readiness check failed. Verify the connection and run python -m backend.postgres status --require-current. See docs/database-migrations.md for first-time setup. No services were restarted."
+          }
+        } else {
+          & $pythonExecutable -c "import backend.app"
+          if ($LASTEXITCODE -ne 0) {
+            throw "API readiness check failed before startup or restart. To test a migrated copy, use -DatabasePath."
+          }
         }
       }
       if ($Seed) {

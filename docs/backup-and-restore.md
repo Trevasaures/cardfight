@@ -5,12 +5,17 @@ active. The `python` commands and forward-slash relative paths below work in
 PowerShell and Unix shells. Use `python3` if that is your environment's Python
 command.
 
+Use this runbook for legacy SQLite databases. For the current PostgreSQL setup,
+follow [PostgreSQL backup and restore](database-migrations.md#back-up-and-restore-postgresql).
+See the [legacy recovery guide](legacy-sqlite-recovery.md) for schema upgrades,
+verified transfer to PostgreSQL, and workspace ownership assignment.
+
 ## What to preserve
 
-The default database is `instance/cardfight.db`. An absolute, file-backed SQLite
-`DATABASE_URL` can select another location. The database contains decks, versions,
-matches, card and printing metadata, purchase plans, and stored artwork bytes.
-Git does not preserve this local data.
+Older installations commonly stored their SQLite database at
+`instance/cardfight.db`. Identify the file you actually used before creating a
+checkpoint. It contains decks, versions, matches, card and printing metadata,
+purchase plans, and stored artwork bytes. Git does not preserve this local data.
 
 A backup consists of two adjacent files: a timestamped, uniquely named `.sqlite3`
 database and its `<filename>.manifest.json` manifest. Keep both files together,
@@ -25,19 +30,18 @@ outside the database. Preserve needed configuration separately and securely.
 
 ## Create a checkpoint
 
-```sh
-python -m backend.backup create
-```
-
-The command loads the root `.env` without importing `backend.app` or running its
-startup schema validation. It uses the configured absolute SQLite file path, or
-`instance/cardfight.db` when `DATABASE_URL` is not configured. This utility backs
-up file-backed SQLite databases; it is not a backup command for other database
-engines. Explicit paths override the configured source and backup directory:
+Select the SQLite file explicitly. Replace `instance/cardfight.db` with the path
+to your legacy database if it lives elsewhere:
 
 ```sh
-python -m backend.backup create --source "instance/cardfight.db" --backup-dir "C:/path/to/your/backups"
+python -m backend.backup create --source "instance/cardfight.db"
 ```
+
+You can omit `--source` when `DATABASE_URL` explicitly selects an absolute,
+file-backed SQLite path. The command reads the root `.env` without starting
+Flask. `--source` overrides the configured source, including when the app's
+`DATABASE_URL` points to PostgreSQL. Add `--backup-dir "C:/path/to/your/backups"`
+to override the destination for this checkpoint.
 
 Configure the external destination in the ignored root `.env`:
 
@@ -88,15 +92,14 @@ does not establish compatibility with every future application version.
 For an unversioned checkpoint with the new migration-enabled application, use
 raw `backup verify` without `--app-check`, then `python -m backend.migrate rehearse`
 with that checkpoint path. The rehearsal upgrades only the restored copy before
-running the new app's read-only checks. See the
-[migration runbook](database-migrations.md); do not alter the original checkpoint
-just to satisfy the new startup guard.
+running the new app's read-only checks. Retain the original checkpoint for
+recovery. [Legacy migration rehearsal](legacy-sqlite-recovery.md#rehearse-a-checkpoint-without-changing-its-source)
 
-Require a successful `verify --app-check` before a migration, a hosting cutover,
-or deleting an older recovery point. After copying a backup off the machine,
-verify that copy as well. A failed or missing-manifest verification is not a
-passed checkpoint: keep the source and earlier verified backups, investigate the
-failure, and create and verify a replacement before proceeding.
+Before a migration, cutover, or deletion of an older recovery point, verify the
+checkpoint and complete the application check with compatible code or a migrated
+rehearsal copy. After copying a backup off the machine, verify that copy as well.
+If verification fails or the manifest is missing, keep the source and earlier
+verified backups while you investigate and verify a replacement.
 
 ## Retention and external copies
 

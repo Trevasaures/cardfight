@@ -54,6 +54,8 @@ pip-requirements-parser==32.0.1
 pip-tools==7.6.2
 platformdirs==4.13.0
 pluggy==1.6.0
+psycopg==3.3.9
+psycopg-binary==3.3.9
 py-serializable==2.1.0
 pycparser==3.12
 pydantic==2.14.1

@@ -1,4 +1,4 @@
-"""Read-only startup guard. All persistent schema changes use backend.migrate."""
+"""Read-only startup validation for the configured database."""
 
 from contextlib import closing
 from pathlib import Path
@@ -8,6 +8,7 @@ from urllib.request import url2pathname
 
 from backend.backup import BackupError, _read_connection
 from backend.migrate import MigrationError, inspect_database
+from backend.postgres import inspect_postgres
 
 # These columns keep custom uniqueness conflicts inside one workspace.
 _PRIVATE_INDEX_SCOPES = {
@@ -66,8 +67,11 @@ def _ensure_hosted_schema(path):
 
 def ensure_schema_current(engine, *, hosted=False):
     """Refuse missing/unversioned/drifted persistent data without initializing it."""
+    if engine.dialect.name == "postgresql":
+        inspect_postgres(engine, require_current=True)
+        return
     if engine.dialect.name != "sqlite":
-        raise MigrationError("This migration baseline supports SQLite only.")
+        raise MigrationError("Cardfight supports SQLite and PostgreSQL only.")
     database = engine.url.database
     if not database or database == ":memory:":
         # Disposable unit-test databases are explicitly built by their fixtures.

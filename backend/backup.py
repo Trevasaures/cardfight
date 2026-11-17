@@ -305,24 +305,25 @@ def verify_backup(backup, *, app_check=False):
         return result
 
 
-def default_source():
-    """Read configuration without importing the application or opening its database."""
+def default_source(path_option="--source"):
+    """Resolve an explicitly configured SQLite file without opening it."""
     from dotenv import load_dotenv
     from sqlalchemy.engine import make_url
 
     load_dotenv(PROJECT_ROOT / ".env")
     configured = os.getenv("DATABASE_URL")
+    select_path = f"Supply {path_option} with the legacy SQLite file path."
     if configured is None:
-        return PROJECT_ROOT / "instance" / "cardfight.db"
+        raise BackupError(select_path)
     try:
         url = make_url(configured)
     except Exception as exc:
-        raise BackupError("Invalid DATABASE_URL. Supply --source with the SQLite file path.") from exc
+        raise BackupError(f"Invalid DATABASE_URL. {select_path}") from exc
     if url.get_backend_name() != "sqlite":
-        raise BackupError("This workflow supports file-backed SQLite only.")
+        raise BackupError(f"This workflow supports file-backed SQLite only. {select_path}")
     database = url.database
     if not database or database == ":memory:" or url.query or not Path(database).is_absolute():
-        raise BackupError("Supply --source for in-memory, URI, or relative DATABASE_URL settings.")
+        raise BackupError(f"In-memory, URI, or relative SQLite DATABASE_URL is unsupported. {select_path}")
     return Path(database)
 
 

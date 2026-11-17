@@ -2,7 +2,7 @@
 
 Cardfight Lab is a local deck-building, matchup-tracking, and analytics application for **Cardfight!! Vanguard**. It began as a small random matchup generator and has grown into a full React and Flask application for maintaining decks, versioning deck lists, recording games, and learning from match history.
 
-The project is designed primarily as a personal testing lab. Everything runs locally, and the default database is a SQLite file stored inside the repository's ignored `instance/` directory.
+Cardfight uses PostgreSQL 18 for new workspaces. Run a personal lab locally without signing in, or configure an invite-only workspace with Google or email sign-in.
 
 > This is a fan-made project and is not affiliated with or endorsed by Bushiroad.
 
@@ -31,7 +31,7 @@ The project is designed primarily as a personal testing lab. Everything runs loc
 
 ## How it works
 
-The React frontend communicates with a Flask JSON API. Flask routes delegate application logic to backend service modules, and Flask-SQLAlchemy persists the data in SQLite.
+The React frontend communicates with a Flask JSON API. Flask routes delegate application logic to backend service modules, and Flask-SQLAlchemy uses the same models with SQLite and PostgreSQL.
 
 A typical session looks like this:
 
@@ -44,7 +44,7 @@ A typical session looks like this:
 
 ## Purchase plans
 
-Order Tracker keeps active plans and an Archive view. Archive becomes available when a non-empty plan has every target copy on hand and no incoming deliveries. Archived plans retain quantities, prices, and notes, are read-only until restored, and no longer appear in dashboard purchase work. Existing SQLite databases receive the archive column automatically on backend startup.
+Order Tracker keeps active plans and an Archive view. Archive becomes available when a non-empty plan has every target copy on hand and no incoming deliveries. Archived plans retain quantities, prices, and notes, are read-only until restored, and no longer appear in dashboard purchase work. Older SQLite databases receive the archive column during the explicit schema upgrade.
 
 Purchase rows and plan totals display actual **On hand / target** counts, including copies planned to leave the current deck. Changing a target preserves ownership and the working deck. Readiness only counts copies applied to each card's target, so outgoing or surplus copies cannot cover a missing replacement; incoming coverage follows the same rule.
 
@@ -107,7 +107,7 @@ Selected-card actions prioritize the current zone: units expose Attack/Rest/Stan
 - Python 3.11 or newer; Python 3.12 is recommended.
 - Flask and Flask-CORS.
 - Flask-SQLAlchemy and SQLAlchemy.
-- SQLite by default.
+- PostgreSQL 18 through Psycopg.
 - Pytest for backend regression tests.
 - OpenAI Python SDK for optional card-image analysis.
 
@@ -130,6 +130,7 @@ Install these tools before starting:
 - [Python](https://www.python.org/downloads/) 3.11+
 - [Node.js](https://nodejs.org/) 24 LTS (the version used in CI)
 - npm, which is included with Node.js
+- PostgreSQL 18
 - Git
 
 The commands below assume your terminal is open at the top-level `cardfight` directory.
@@ -165,34 +166,31 @@ cd ..
 ### 4. Create the local environment file
 
 ```powershell
-Copy-Item .env.example .env
+if (-not (Test-Path -LiteralPath .env)) { Copy-Item .env.example .env }
 ```
 
+The example uses the local PostgreSQL database and role named `cardfight`.
+Create them in PostgreSQL 18 and set up the password file as described in
+the [PostgreSQL setup guide](docs/database-migrations.md#initialize-postgresql).
+Set `DATABASE_URL` in `.env` if your database uses different connection details.
 The default mock image analyzer does not require an API key.
 
-### 5. Initialize, seed, and launch the application
+### 5. Initialize and launch the application
 
 ```powershell
-python -m backend.migrate upgrade
-.\start.ps1 -Seed
-```
-
-The migration command above initializes a new database. If you already have saved
-data from before version tracking, stop the app and follow the
-[existing-database baseline workflow](docs/database-migrations.md) first.
-
-This starts:
-
-- Flask API: `http://127.0.0.1:5000`
-- React application: `http://127.0.0.1:5173`
-
-The `-Seed` flag is only necessary when adding starter decks that are not already in the database. For later sessions, use:
-
-```powershell
+python -m backend.postgres upgrade
 .\start.ps1
 ```
 
-Available launcher options:
+The migration creates the initial Cardfight schema in the empty database.
+For saved SQLite data, use the [legacy recovery and transfer guide](docs/legacy-sqlite-recovery.md).
+
+The API runs at `http://127.0.0.1:5000`. Open `http://127.0.0.1:5173`
+for the React application. The default setup opens in local mode without
+sign-in. For Google or email sign-in, see the
+[authentication setup guide](docs/authentication-setup.md).
+
+### Launcher options
 
 ```powershell
 .\start.ps1                 # Backend and React frontend
@@ -202,6 +200,7 @@ Available launcher options:
 .\start.ps1 -FrontendOnly   # React frontend only
 .\start.ps1 -ApiOnly -Seed  # Seed, then start Flask only
 .\start.ps1 -DevDebug       # Explicitly enable the development debugger
+.\start.ps1 -DatabasePath "C:/path/to/cardfight.db"  # Open an existing SQLite file
 ```
 
 The launcher uses `.venv` when present, starts hidden background processes, and writes service logs to `instance/*.log`. It checks schema readiness and occupied ports before starting, and reports success only after the services respond. Normal startup uses Waitress; `-DevDebug` selects Flask's debugger/reloader for local mode only.
@@ -212,15 +211,24 @@ the exact configured `CARDFIGHT_AUTH_PUBLIC_ORIGIN`; local mode prints
 `http://127.0.0.1:5173`. Regular startup checks the schema and leaves
 migrations to the migration command.
 
-`-Fresh` restarts the API and frontend in local mode without sign-in and asks
-Vite to rebuild its dependency cache. It defaults to `instance/cardfight.db`.
-Use `-DatabasePath` to select an existing upgraded copy. The launcher only
-stops existing services it can verify belong to this checkout. If another
-process occupies a port, it reports the PID and exits.
+`-Fresh` restarts the API and frontend in loopback local mode without sign-in
+and asks Vite to rebuild its dependency cache. It uses the configured database.
+`-DatabasePath` takes precedence and selects an existing upgraded SQLite file.
+The launcher verifies database readiness before restarting services it can verify
+belong to this checkout. If another process occupies a port, it reports the PID
+and exits.
+
+Use a separate database for rehearsal. Set `DATABASE_URL` in a dedicated
+terminal to override `.env`, then run `.\start.ps1` for the configured
+sign-in mode or `.\start.ps1 -Fresh` for local mode. The local mode shows
+unassigned workspace data. Use the signed-in workspace to see records owned
+by an account.
 
 ## Setup on macOS or Linux
 
-There is no shell launcher yet, but the same application can be prepared with:
+Install PostgreSQL 18 and create the `cardfight` database and role. See the
+[PostgreSQL setup guide](docs/database-migrations.md#initialize-postgresql).
+Then set up the application:
 
 ```bash
 git clone <your-repository-url>
@@ -235,9 +243,8 @@ cd frontend-web
 npm ci
 cd ..
 
-cp .env.example .env
-python -m backend.migrate upgrade
-python -m backend.seed
+if [ ! -e .env ]; then cp .env.example .env; fi
+python -m backend.postgres upgrade
 ```
 
 After setup, start Flask and Vite in separate terminals as described below.
@@ -301,6 +308,8 @@ Copy `.env.example` to `.env`. Flask loads the root `.env` file during startup.
 
 ```dotenv
 FLASK_DEBUG=false
+DATABASE_URL=postgresql+psycopg://cardfight@127.0.0.1:5432/cardfight
+CARDFIGHT_AUTH_MODE=local
 CARDFIGHT_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173
 
 CARD_IMAGE_ANALYZER_PROVIDER=mock
@@ -323,94 +332,23 @@ OPENAI_API_KEY=<your-api-key>
 
 Review analyzed fields before saving them. Card names, numbers, rarities, and unusual or newly released set information may still need correction.
 
-### Optional database URL
+Set `DATABASE_URL` to connect to a different PostgreSQL database. Keep the
+password in a PostgreSQL password file or deployment secret. The API validates
+the selected schema at startup. Use explicit commands to initialize a database,
+check its revision, or back up saved data. [PostgreSQL database guide](docs/database-migrations.md)
 
-Without configuration, Flask uses:
+## Optional starter decks
 
-```text
-instance/cardfight.db
-```
-
-Set `DATABASE_URL` in `.env` to use another SQLAlchemy database URL:
-
-```dotenv
-# Windows
-DATABASE_URL=sqlite:///C:/Users/you/data/cardfight.db
-
-# macOS or Linux
-DATABASE_URL=sqlite:////home/you/data/cardfight.db
-```
-
-SQLite is the expected development database. Other database engines have not been the primary target of this project.
-
-## SQLite database creation and seeding
-
-### Explicit database initialization and upgrades
-
-Initialize a new SQLite database before starting the API or running the seed:
-
-```bash
-python -m backend.migrate upgrade
-python -m backend.migrate status --require-current
-```
-
-The default file is `instance/cardfight.db`. Existing unversioned databases use
-`python -m backend.migrate baseline` once, after stopping app writes. That command
-creates a verified backup, rehearses the supported schema transition on a restored
-copy, and checks existing values before committing the Alembic baseline. Future
-versioned upgrades use `upgrade`.
-
-Startup validates persistent schemas without creating tables, stamping revisions,
-or running compatibility upgrades. Missing, unsupported, and incomplete schemas
-produce actionable errors. See the [migration runbook](docs/database-migrations.md)
-for supported legacy layouts, rehearsal, upgrade, and backup recovery commands.
-
-### Seeding starter decks
-
-Starter deck names and formats live in the root `deck.py` file. Edit its `decks` list if you want a custom initial collection, then run:
+Starter deck names and formats live in `deck.py`. To add them to an initialized
+local lab, run:
 
 ```bash
 python -m backend.seed
 ```
 
-The seed is additive:
-
-- It inserts a deck only when no deck with that name exists.
-- It does not delete matches, cards, versions, or existing deck records.
-- It does not overwrite an existing deck's metadata.
-
-After seeding, use the Deck Library in the web application to set nations, icons, formats, and other deck details.
-
-### Backing up and recovering saved data
-
-Create a SQLite checkpoint before upgrades, schema changes, or moving to another host:
-
-```bash
-python -m backend.backup create
-python -m backend.backup verify "C:/path/to/your/backups/BACKUP.sqlite3" --app-check
-```
-
-Use the full backup path printed by `create`. The default source is the configured
-absolute SQLite `DATABASE_URL`, or `instance/cardfight.db` when no URL is
-configured. Set `CARDFIGHT_BACKUP_DIR` in the ignored root `.env` to choose your
-external backup folder; manual checkpoints and migration checkpoints share it.
-Without this setting, backups use the per-user application-data directory outside
-the checkout. Keep each `.sqlite3` beside its `.manifest.json`. Artwork is included.
-These commands do not schedule backups, prune files, or confirm cloud sync.
-
-The online backup can capture committed data while the app runs. Stop writes for the final pre-upgrade checkpoint, verify it with the matching application version, and restore only to a separate new path. See the [backup and recovery runbook](docs/backup-and-restore.md) for commands, retention, rehearsal, and rollback. Seeding does not restore saved data.
-
-### Creating a completely fresh database
-
-1. Stop the Flask application and back up the existing database if its data matters.
-2. Set `DATABASE_URL` to a separate, new SQLite file's absolute path.
-3. Run `python -m backend.migrate upgrade` to initialize that file.
-4. Optionally run `python -m backend.seed`, then start the app.
-
-The original file remains available. Seeding a new database adds only the starter
-decks from `deck.py`; it does not restore match history, cards, or deck lists.
-
-The `instance/` directory and SQLite files are ignored by Git, so each clone maintains its own local data.
+On Windows, you can also use `.\start.ps1 -Seed`. Seeding adds missing starter
+deck names to the unassigned local workspace. Use Deck Library to set nations,
+icons, formats, and other deck details.
 
 ## Project structure
 
@@ -419,9 +357,10 @@ cardfight/
 ├── backend/
 │   ├── app.py                 # Flask application factory and API setup
 │   ├── database.py            # Shared SQLAlchemy instance
-│   ├── models.py              # Database models and relationships
+│   ├── models/                # Accounts, catalog, decks, matches and acquisition models
 │   ├── schema.py              # Read-only database revision/schema startup guard
-│   ├── migrate.py             # Explicit backup/rehearsal/migration commands
+│   ├── migrate.py             # SQLite backup, rehearsal and schema upgrades
+│   ├── postgres.py            # PostgreSQL schema inspection and upgrades
 │   ├── seed.py                # Additive starter-deck seed
 │   ├── routes/                # HTTP request/response layer
 │   └── services/              # Validation, queries, and business logic
@@ -436,9 +375,10 @@ cardfight/
 │       ├── App.tsx            # Route definitions
 │       └── main.tsx           # React entry point
 ├── tests/                     # Backend regression tests
-├── migrations/                # Versioned database schema source, shipped with app
+├── migrations/                # Versioned SQLite and PostgreSQL schema source
+│   └── postgresql/            # PostgreSQL baseline, transfer and ownership tools
 ├── docs/                      # Setup, workflows, recovery and design records
-├── instance/                  # Ignored live local database and service logs only
+├── instance/                  # Ignored service logs and optional legacy SQLite data
 ├── deck.py                    # Starter deck definitions for seeding
 ├── main.py                    # Optional terminal matchup client
 ├── requirements.txt           # Python dependencies
@@ -450,8 +390,9 @@ cardfight/
 Source stays in this repository: the API, React app, tests and migration history
 are released together. `backend/services/` contains ordinary Python business
 logic called by Flask. It does not represent additional running servers.
-`migrations/` records schema changes; it is required to initialize a database and
-upgrade existing data safely, including after the future PostgreSQL transfer.
+`migrations/` records schema changes and ships with the app to initialize and
+upgrade databases explicitly. `migrations/postgresql/` also contains the verified
+SQLite transfer and PostgreSQL workspace assignment commands.
 
 Generated caches (`__pycache__`, `.pytest_cache`), dependencies (`.venv`,
 `frontend-web/node_modules`) and frontend build output are ignored and rebuildable.
@@ -459,21 +400,14 @@ Keep long-lived backups, restored copies and rehearsal reports outside the
 checkout. Rehearsals use temporary storage that is removed automatically.
 Completed ticket scratch directories do not belong in the project root.
 
-The PostgreSQL transfer is tracked by [#56](https://github.com/Trevasaures/cardfight/issues/56).
-It will create a compatible PostgreSQL schema, copy a backed-up SQLite dataset,
-and verify IDs, relationships, timestamps, sequences and artwork before cutover.
-Schema history remains alongside the app; a SQLite SQL dump does not replace it.
-Separate repositories are useful for independently deployed applications such as
-the match service, rather than for this app's tests or database maintenance code.
-
 ## Backend architecture
 
 The backend follows a small route/service/model structure:
 
 - `backend/routes/` validates HTTP-level input, translates errors into status codes, and returns JSON.
 - `backend/services/` owns business rules, database queries, serialization, statistics, and card-image analysis.
-- `backend/models.py` defines the SQLAlchemy entities and relationships.
-- `backend/app.py` configures Flask, CORS, SQLite foreign keys, schema readiness checks, and blueprint registration.
+- `backend/models/` groups the SQLAlchemy entities by accounts, catalog, decks, matches, and acquisition. Import the model classes from `backend.models`.
+- `backend/app.py` configures Flask, CORS, database connections, schema readiness checks, and blueprint registration.
 
 The default local mode remains a loopback-only personal workspace. Google and
 email sign-in, invitation-only accounts and server sessions are available through
@@ -488,14 +422,21 @@ The hosted identity design is recorded in the
 The setup guide covers provider and staging verification for sign-in and
 account isolation.
 
-The major database entities are:
+### Database models
 
-- `Deck`: a named deck identity, format, nation metadata, and aggregate record.
-- `DeckVersion`: a saved build of a deck with a name, notes, and active state.
-- `DeckCard`: a card, printing, quantity, zone, and ordering within one version.
-- `Card`: shared gameplay identity such as name, grade, nation, and card type.
-- `CardPrinting`: set code, set name, collector number, rarity, and image/product metadata.
-- `Match`: two participating decks, optional deck versions, result, first player, format, date, and notes.
+| Module | Models and relationships |
+| --- | --- |
+| `accounts` | `AuthAccount` is the app identity, role, and admission record. `ExternalIdentity` binds it to a provider issuer and subject. `AuthInvitation` tracks admission, `AppSession` tracks authenticated or pre-sign-in sessions, and `AuthTransaction` tracks the provider handoff. `AuthAuditEvent` and `AuthThrottle` support audit history and rate limits. |
+| `catalog` | `Card` describes gameplay and has `CardPrinting` rows for distinct releases. Printings can reference a stored `CardImage` with full artwork and thumbnail bytes. `CardSet` stores reusable set codes and names. The catalog is shared, and hosted catalog writes require an admin. |
+| `decks` | `Deck` holds the name, format, nation, and aggregate record. A deck has saved `DeckVersion` builds, each with `DeckCard` rows for card, optional printing, quantity, zone, and order. |
+| `matches` | `Match` links two decks and optionally their exact versions, and records the result, first player, format, date, and notes. |
+| `acquisition` | `AcquisitionPlan` can link a deck and its source and target versions. Its `AcquisitionPlanItem` rows store card and optional printing, quantities, prices, removal confirmations, and notes. |
+
+`Deck`, `Match`, and `AcquisitionPlan` carry `owner_account_id`. Deck versions,
+deck cards, and purchase items inherit their workspace through their parent.
+Hosted queries and writes are scoped to the verified account, including linked
+decks and versions. A `NULL` owner identifies the legacy local workspace. Deck
+names are unique within each account and within the local workspace separately.
 
 Deck-building rules are enforced in the service layer as well as reflected in the frontend. Known set codes are mapped to authoritative set names through `backend/services/card_set_names.py`, while unlisted and upcoming products can still be entered as custom sets.
 
@@ -584,6 +525,8 @@ It requests a matchup from the API, prompts for the winner and notes, and saves 
 
 The default provider is intentionally `mock`. Set the provider, model, and API key in `.env` to enable OpenAI-backed analysis.
 
-### The database contains outdated local data
+### The database is unavailable or the schema is pending
 
-Back up the SQLite file first. Then either edit records through the application or recreate `instance/cardfight.db` and seed again.
+Check the configured PostgreSQL connection and run
+`python -m backend.postgres status --require-current`. For an old SQLite
+workspace, follow the [legacy recovery guide](docs/legacy-sqlite-recovery.md).

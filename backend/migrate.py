@@ -119,7 +119,7 @@ def inspect_database(path, *, require_current=False):
             action = "baseline" if result["status"] == "unversioned" else "upgrade"
             raise MigrationError(
                 f"Database schema is {result['status']}. Stop the app and run "
-                f"python -m backend.migrate {action}; see docs/database-migrations.md. "
+                f"python -m backend.migrate {action} --database PATH. See docs/legacy-sqlite-recovery.md. "
                 "Startup has not changed the database."
             )
         return result
@@ -314,7 +314,7 @@ def main(argv=None):
         if arguments.command == "rehearse":
             result = rehearse_backup(arguments.backup)
         else:
-            path = arguments.database or default_source()
+            path = arguments.database or default_source("--database")
             if arguments.command == "status":
                 result = inspect_database(path, require_current=arguments.require_current)
             else:

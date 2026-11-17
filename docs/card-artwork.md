@@ -36,12 +36,12 @@ printing identity through the deck entry; an artwork update does not reset play.
   once. Detail images fit within 1200 × 1680; thumbnails within 240 × 336. Neither
   variant is upscaled. A smaller original can remain the detail image when its
   size and orientation are already suitable. The thumbnail is always WebP.
-- `CardImage` stores immutable variants as deferred SQLite BLOB columns. A hash of
+- `CardImage` stores immutable variants as deferred binary columns. A hash of
   the input and processing recipe identifies an asset. Identical imports reuse it.
   `CardPrinting.image_id` references the asset without loading its bytes.
 - `backend/routes/card_images.py` serves individual variants with content types,
   ETags, and immutable cache headers. A conditional request can return 304 without
-  reading the BLOB. Card/deck JSON contains only image references.
+  reading the image bytes. Card/deck JSON contains only image references.
 - `CardArtworkInput` stages the preview in form state. The shared `CardArtwork`
   component uses thumbnails by default and full artwork in detail views, with an
   accessible enlargement dialog. `apiAssetUrl` resolves local paths against the
@@ -70,9 +70,9 @@ editors omit that object. Printing editors use
 `PATCH /api/cards/printings/<printing_id>` so an alternate edit cannot change the
 primary printing. Artwork removal clears both `image_id` and legacy `image_url`.
 
-Application startup creates the image table and adds the nullable printing
-reference/index through the existing schema upgrade helper. Existing card and
-deck records are preserved. Artwork is included in normal SQLite backups.
+The PostgreSQL v1 schema includes the image table, nullable printing reference,
+and index. Database backups include the saved artwork bytes.
+[PostgreSQL backup and restore](database-migrations.md#back-up-and-restore-postgresql)
 
 ## Checks
 
