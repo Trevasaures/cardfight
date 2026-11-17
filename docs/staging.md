@@ -79,17 +79,25 @@ the resources. [Render free limits](https://render.com/docs/free)
    generation. Set the Auth0 callback and web origin
    to the generated web service URL once Render assigns it.
    [Render Blueprints](https://render.com/docs/infrastructure-as-code)
-2. For the initial schema setup, temporarily allow your workstation's public IP
-   on the staging database and use its **external** URL in a dedicated terminal.
-   Render Free web services lack a pre-deploy command and shell access. Verify
-   the external hostname and database name in Render, then run the two database
-   commands above with that URL before deploying the web service. Remove the
-   external allowlist entry when initialization finishes.
-   [Connection and access settings](https://render.com/docs/postgresql-creating-connecting)
+2. To initialize the empty database over Render's private network, temporarily
+   set the staging service's `dockerCommand` in the Blueprint to the command
+   below and sync that change. A Free web service has no pre-deploy command or
+   shell access. Check the deployment log for `"status": "current"` and
+   `"revision": "0001_postgresql"`. The operator command exits after the
+   upgrade, so Render can report an early exit before the web service binds
+   its port.
+
+   ```sh
+   python -m deploy.container python -m backend.postgres upgrade
+   ```
+
+   [Render Blueprint Docker commands](https://render.com/docs/blueprint-spec#docker)
    [Render deploy lifecycle](https://render.com/docs/deploys)
-3. Manually deploy the reviewed commit. The blueprint uses `/api/ready` to
-   check that the service can read the staging schema. Keep the staging database
-   disposable and record evidence outside the service and database before they expire.
+3. Restore `dockerCommand: python -m deploy.container` and sync the Blueprint.
+   Confirm Render starts a new deploy of the reviewed commit, or deploy it
+   manually if needed. The Blueprint uses `/api/ready` to check that the
+   service can read the staging schema. Keep verification evidence outside the
+   disposable service and database.
    [Render health checks](https://render.com/docs/health-checks)
 
 ## Verify the public service
