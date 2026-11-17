@@ -6,10 +6,7 @@ services:
     region: ohio
     autoDeployTrigger: "off"
     healthCheckPath: /api/ready
-    dockerCommand: >-
-      python -m deploy.container sh -c
-      'python -m backend.postgres status && python -m backend.postgres upgrade &&
-      python -m backend.postgres status --require-current && exec python -m deploy.container'
+    dockerCommand: python -m deploy.container python -m backend.postgres upgrade
     envVars:
       - key: DATABASE_URL
         fromDatabase:
